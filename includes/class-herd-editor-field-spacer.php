@@ -98,10 +98,12 @@ class Herd_Editor_Field_Spacer extends acf_field {
 	 * for every field type at once. A spacer's width is the point of the field,
 	 * but it is not a setting the field owns.
 	 *
-	 * Label is not rendered here either, for the same reason — it is ACF's, on the
-	 * General tab, and optional on every field. A labelled spacer is a section
-	 * heading, which is arguably the Accordion field's job; it is supported
-	 * because ACF supports it, and it is not encouraged.
+	 * Label is not rendered here either, and it is not rendered on the form at
+	 * all: `herd_editor_spacer_silence()` drops it on the way to the screen. A
+	 * spacer never says anything. What ACF's Field Label input becomes for this
+	 * type is a name for whoever is building the field group — it is what the
+	 * field group editor's list of fields shows, so three spacers in one group
+	 * can be told apart — and it goes no further than that screen.
 	 *
 	 * @param array $field The field array.
 	 * @return void

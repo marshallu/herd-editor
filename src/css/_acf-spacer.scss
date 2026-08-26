@@ -23,7 +23,7 @@ $host: ".herd-editor__field-host";
  * input is rendered — but `-webkit-user-modify` and stray `tabindex` from a
  * copied wrapper have both put an empty box in the tab order before, and a
  * screen reader user arriving at a nameless empty field has no way to work out
- * what it wants. `aria-hidden="true"` on an unlabelled spacer is set in PHP by
+ * what it wants. `aria-hidden="true"` is set in PHP by
  * `herd_editor_spacer_wrapper()`; this is the pointer half of the same idea.
  */
 #{$host} .acf-field-spacer {
@@ -35,29 +35,21 @@ $host: ".herd-editor__field-host";
 	user-select: none;
 }
 
-/* An empty label is still a line box and 4px of margin. */
-#{$host} .acf-field-spacer > .acf-label:empty,
-#{$host} .acf-field-spacer > .acf-input:empty {
-	display: none;
-	margin: 0;
-}
-
 /*
- * A labelled spacer is a section heading and reads as one — the same 11px
- * uppercase the Display options header uses, so the two do not compete. It keeps
- * its pointer events off; the label is text, not a control.
+ * A SPACER NEVER SAYS ANYTHING. `herd_editor_spacer_silence()` drops the label
+ * on the way to the screen, so ACF emits `<div class="acf-label"></div>` with no
+ * element inside it — but that div is still a line box and 4px of margin, and it
+ * is not `:empty` either, because the newline ACF prints inside it is a text
+ * node. It is removed outright.
+ *
+ * There is deliberately no rule for a labelled spacer. A spacer that reads
+ * "SPACER" in the middle of a form is the field describing itself to an editor
+ * who did not ask, and a label somebody does want on screen is a heading, which
+ * is the Accordion field's job. The label survives in storage as the spacer's
+ * name in the field group editor's list and goes no further.
  */
-#{$host} .acf-field-spacer > .acf-label label {
-	color: var(--herd-ink-3);
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: .07em;
-	text-transform: uppercase;
-	/* The wrapper turns both off so a blank spacer cannot be clicked or dragged
-	   across. A label is text somebody wrote and reads like a heading, so it gets
-	   them back. */
-	pointer-events: auto;
-	user-select: text;
+#{$host} .acf-field-spacer > .acf-label {
+	display: none;
 }
 
 /*

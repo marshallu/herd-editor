@@ -120,6 +120,30 @@ function herd_editor_spacer_load_field( $field ) {
 add_filter( 'acf/load_field/type=spacer', 'herd_editor_spacer_load_field' );
 
 /**
+ * A spacer never renders text.
+ *
+ * The label is dropped on the way to the screen, not on the way to the database.
+ * A field group holding three spacers needs to tell them apart, and the field
+ * group editor's list of fields is drawn from `$field['label']` — blanking it in
+ * `load_field()` would leave an author staring at three unnamed rows. So the
+ * label survives as the spacer's name for whoever is building the field group,
+ * and never reaches a form.
+ *
+ * `acf_render_field_wrap()` runs `acf_prepare_field()` before it emits anything,
+ * and `acf_render_field_label()` prints no element at all for an empty label —
+ * not an empty one — so this leaves nothing behind to hide.
+ *
+ * @param array $field The field array.
+ * @return array The field, with nothing left to say.
+ */
+function herd_editor_spacer_silence( $field ) {
+	$field['label']        = '';
+	$field['instructions'] = '';
+	return $field;
+}
+add_filter( 'acf/prepare_field/type=spacer', 'herd_editor_spacer_silence' );
+
+/**
  * Publish the spacer's state onto its rendered wrapper.
  *
  * Two attributes, both read by src/css/_acf-spacer.scss and neither by anything
@@ -128,10 +152,11 @@ add_filter( 'acf/load_field/type=spacer', 'herd_editor_spacer_load_field' );
  * `data-herd-spacer` carries the style, so the stylesheet does not have to trust
  * a class an editor can retype in the wrapper class input.
  *
- * `aria-hidden` is the accessibility half of "renders as nothing visible". A
- * blank spacer is a gap; a screen reader user should never arrive at an empty
- * form field and have to work out what it wants. A labelled spacer is not
- * hidden, because at that point somebody has deliberately put text on screen.
+ * `aria-hidden` is the accessibility half of "renders as nothing visible", and it
+ * is unconditional because `herd_editor_spacer_silence()` above means there is
+ * never anything in a spacer for a screen reader to reach. A spacer is a gap,
+ * and arriving at one would leave a screen reader user working out what an empty
+ * unnamed field wants from them.
  *
  * `acf/field_wrapper_attributes` has no type variation of its own, so the check
  * is explicit.
@@ -145,9 +170,7 @@ function herd_editor_spacer_wrapper( $wrapper, $field ) {
 		return $wrapper;
 	}
 	$wrapper['data-herd-spacer'] = isset( $field['herd_spacer_style'] ) && 'line' === $field['herd_spacer_style'] ? 'line' : 'blank';
-	if ( '' === trim( (string) ( isset( $field['label'] ) ? $field['label'] : '' ) ) ) {
-		$wrapper['aria-hidden'] = 'true';
-	}
+	$wrapper['aria-hidden']      = 'true';
 	return $wrapper;
 }
 add_filter( 'acf/field_wrapper_attributes', 'herd_editor_spacer_wrapper', 10, 2 );

@@ -245,11 +245,25 @@ $real_rows = (int) $wpdb->get_var( $wpdb->prepare(
 	"SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE post_id = %d AND meta_key = %s", $page_id, 'hsc_a' ) );
 $check( '     and still writes one for a real field', 1 === $real_rows );
 
-$check( 'AC3  the spacer renders no input at all', ! preg_match( '/<(input|textarea|select)/', (function () {
+$spacer_html = function ( $key ) {
 	ob_start();
-	acf_render_field_wrap( acf_get_field( 'field_hsc_gap' ) );
+	acf_render_field_wrap( acf_get_field( $key ) );
 	return ob_get_clean();
-} )() ) );
+};
+
+$check( 'AC3  the spacer renders no input at all', ! preg_match( '/<(input|textarea|select)/', $spacer_html( 'field_hsc_gap' ) ) );
+
+// A spacer must never put text on a form, whatever its label says. The label is
+// a name for the field group editor's list of fields and goes no further.
+$named          = acf_get_field( 'field_hsc_gap' );
+$named['label'] = 'Spacer';
+acf_update_field( $named );
+$named_html = $spacer_html( 'field_hsc_gap' );
+$check( 'a labelled spacer renders no text', '' === trim( wp_strip_all_tags( $named_html ) ),
+	'"' . trim( wp_strip_all_tags( $named_html ) ) . '"' );
+$check( 'and no label element at all', ! preg_match( '/<label/', $named_html ) );
+$check( 'and is hidden from assistive technology', false !== strpos( $named_html, 'aria-hidden="true"' ) );
+$check( 'while the field group keeps the label as its name', 'Spacer' === acf_get_field( 'field_hsc_gap' )['label'] );
 
 /* ---------------------------------------------------------------------------
  * Validation

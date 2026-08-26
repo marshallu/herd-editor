@@ -39,13 +39,13 @@ A field type that holds no data and exists only to consume horizontal space, so 
 
 - **Width** — ACF's wrapper width, the same control as every other field. This is the point of the field.
 - **Style** — `Blank` (default) or `Line`, a `#dcdcde` hairline across the spacer.
-- **Label** — optional, none by default. A labelled spacer is a section heading, which is arguably the Accordion field's job. It works; it is not encouraged.
+**A spacer never renders text.** ACF's Field Label input still works for a spacer, but only as a name for you: it is what the field group editor's list of fields shows, so three spacers in one group can be told apart. It never reaches a form. A label you *do* want on screen is a heading, which is the Accordion field's job.
 
 A **part-width** spacer fills the rest of a row, so the field after it starts a new one. A 50% select followed by a 50% spacer puts the next field on the row below — the case the field exists for.
 
 A **full-width** spacer (100%, which is also what you get if you leave Width alone) is a row separator: it ends the row before it and starts the row after it. At `Style: Line` that is a rule across the form.
 
-A blank spacer is invisible. It has no border, no background, no label and no height of its own — it takes up grid space and nothing else. It is not focusable, is not in the tab order, and carries `aria-hidden="true"` unless you give it a label, so a screen reader user never lands on an empty field.
+A blank spacer is invisible. It has no border, no background, no text and no height of its own — it takes up grid space and nothing else. It is not focusable, is not in the tab order, and always carries `aria-hidden="true"`, so a screen reader user never lands on an empty field.
 
 ### Conditional logic
 
