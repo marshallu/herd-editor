@@ -53,6 +53,11 @@ $host: ".herd-editor__field-host";
 	font-weight: 600;
 	letter-spacing: .07em;
 	text-transform: uppercase;
+	/* The wrapper turns both off so a blank spacer cannot be clicked or dragged
+	   across. A label is text somebody wrote and reads like a heading, so it gets
+	   them back. */
+	pointer-events: auto;
+	user-select: text;
 }
 
 /*
