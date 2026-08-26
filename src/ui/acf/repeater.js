@@ -15,6 +15,7 @@
 import { cleanText, humanize, truncate } from '../summary.js';
 import { awakenEditors } from './editor.js';
 import { iconSvg } from './icons.js';
+import { contentFields } from './layout-fields.js';
 import { resetMedia } from './media.js';
 
 /** ACF's row actions, restyled as Herd's own. Its handlers bind on `data-event`. */
@@ -61,7 +62,9 @@ function nameType( field ) {
  * @return {{name: string, summary: string}} Row description.
  */
 export function describeRow( cell ) {
-	const fields = Array.from( cell.children ).filter( ( node ) => node.classList?.contains( 'acf-field' ) && isReachable( node ) );
+	// `contentFields` drops the layout fields — a spacer, a message — which hold
+	// nothing and so have nothing to contribute to a line describing the row.
+	const fields = contentFields( cell.children ).filter( isReachable );
 
 	const parts = [];
 	let name = '';

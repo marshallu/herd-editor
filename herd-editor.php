@@ -13,6 +13,8 @@ defined( 'ABSPATH' ) || exit;
 
 define( 'HERD_EDITOR_VERSION', '0.1.0' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
+/** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
+define( 'HERD_EDITOR_FILE', __FILE__ );
 define( 'HERD_EDITOR_DIR', plugin_dir_path( __FILE__ ) );
 /**
  * The oldest ACF Pro this plugin is tested against.
@@ -51,6 +53,16 @@ function herd_editor_has_acf_pro() {
  * ACF itself, so this is inert when ACF is absent.
  */
 require_once HERD_EDITOR_DIR . 'includes/herd-editor-width.php';
+
+/*
+ * Which fields hold no value, and the Spacer field type. Both load on every
+ * request rather than on Herd's screen: a field type has to be registered
+ * wherever a field group might render — the Block Editor, Classic, the REST
+ * API, a front-end `get_field()` call — or the field group holding one reports
+ * an unknown type on every surface but this plugin's own.
+ */
+require_once HERD_EDITOR_DIR . 'includes/herd-editor-layout-fields.php';
+require_once HERD_EDITOR_DIR . 'includes/herd-editor-spacer.php';
 
 function herd_editor_post_types( $post_types ) {
 	return array_values( array_unique( array_filter( (array) $post_types ) ) );

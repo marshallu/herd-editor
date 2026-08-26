@@ -108,3 +108,24 @@ test( 'leaves a row with nothing to say unnamed', () => {
 	assert.equal( row.name, '' );
 	assert.equal( row.summary, '' );
 } );
+
+/* ---------- layout fields are not fields ---------- */
+
+test( 'leaves a spacer out of the row summary', () => {
+	const { name, summary } = describeRow( cell( [
+		field( { type: 'text', value: 'Financial aid' } ),
+		field( { type: 'spacer' } ),
+		field( { type: 'select', option: { value: 'wide', label: 'Wide' } } ),
+	] ) );
+	assert.equal( name, 'Financial aid' );
+	assert.equal( summary, 'Wide' );
+} );
+
+test( 'a row of one field and one spacer still names itself', () => {
+	const { name, summary } = describeRow( cell( [
+		field( { type: 'spacer' } ),
+		field( { type: 'text', value: 'Housing' } ),
+	] ) );
+	assert.equal( name, 'Housing' );
+	assert.equal( summary, '' );
+} );

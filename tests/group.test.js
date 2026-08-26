@@ -134,3 +134,36 @@ test( 'a group opens on load when the field group asked, or when it stands alone
 	// Neither reason: collapsed, which is what every group did before the setting.
 	assert.equal( opensByDefault( { preferOpen: false, only: false } ), false );
 } );
+
+/* ---------- layout fields are not fields ---------- */
+
+test( 'does not count a spacer as an empty field', () => {
+	// The failure this prevents: every group carrying a spacer badges "Empty"
+	// alongside a filled field, and an editor who learns the badge lies stops
+	// reading it.
+	const status = describeGroup( [ field( { type: 'text', value: 'Marshall' } ), field( { type: 'spacer' } ) ] );
+	assert.equal( status.total, 1 );
+	assert.equal( status.filled, 1 );
+	assert.equal( badgeFor( status ), '' );
+} );
+
+test( 'does not count a message as an empty field either', () => {
+	// Message predates the spacer and has been counted the whole time.
+	const status = describeGroup( [ field( { type: 'text', value: 'Marshall' } ), field( { type: 'message' } ) ] );
+	assert.equal( status.total, 1 );
+	assert.equal( badgeFor( status ), '' );
+} );
+
+test( 'a spacer never makes a group look incomplete', () => {
+	// `is-required` on a spacer can only arrive through an import or a
+	// hand-written array, and it must not open the group or block anything.
+	const status = describeGroup( [ field( { type: 'spacer', required: true } ), field( { type: 'text', value: 'Set' } ) ] );
+	assert.equal( status.missing, '' );
+	assert.equal( badgeFor( status ), '' );
+} );
+
+test( 'a group of nothing but spacers is still empty', () => {
+	const status = describeGroup( [ field( { type: 'spacer' } ), field( { type: 'spacer' } ) ] );
+	assert.equal( status.total, 0 );
+	assert.equal( badgeFor( status ), 'Empty' );
+} );

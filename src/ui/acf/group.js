@@ -26,6 +26,7 @@
 
 import { cleanText, humanize, truncate } from '../summary.js';
 import { awakenEditors } from './editor.js';
+import { contentFields } from './layout-fields.js';
 import { fieldText, isReachable } from './repeater.js';
 
 /** Two fragments, like the repeater row: a third never survives the ellipsis. */
@@ -91,9 +92,13 @@ export function subLabel( field ) {
  * @return {{summary: string, filled: number, total: number, missing: string}} Group status.
  */
 export function describeGroup( fields ) {
-	const reachable = Array.from( fields || [] ).filter(
-		( node ) => node?.classList?.contains( 'acf-field' ) && isReachable( node )
-	);
+	/*
+	 * Layout fields are off the table before conditional logic is even consulted.
+	 * A spacer is not an empty field, and a group of one filled field beside one
+	 * spacer must not badge "Empty" — an editor who learns the badge lies stops
+	 * reading it.
+	 */
+	const reachable = contentFields( fields ).filter( isReachable );
 
 	const parts = [];
 	let filled = 0;
