@@ -1,0 +1,233 @@
+/*
+ * The two widgets that render outside the Herd wrapper.
+ *
+ * jQuery UI's datepicker and select2's dropdown are appended to <body>, so no
+ * selector scoped under .herd-editor-screen can reach them. They are matched on
+ * the namespace classes src/ui/acf/portals.js puts on them instead — never on
+ * bare .select2-dropdown or .ui-datepicker, which would follow ACF onto its own
+ * screens elsewhere in this admin.
+ *
+ * Both ship core blue out of the box: select2 highlights the active result in
+ * #0073aa and the datepicker paints its header and active day the same way.
+ */
+
+/* ---------- select2 ---------- */
+
+/*
+ * The closed control has to line up with the plain selects beside it. ACF sizes
+ * the rendered span from its own stylesheet, so the height is set on the
+ * selection box rather than the container.
+ */
+.select2-container.herd-select2 .select2-selection--single {
+	border-color: var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	height: auto;
+	min-height: 31px;
+}
+
+.select2-container.herd-select2 .select2-selection--single .select2-selection__rendered {
+	color: var(--herd-ink, #1d2327);
+	font-size: 13px;
+	line-height: 1.5;
+	padding: 4px 24px 4px 9px;
+}
+
+.select2-container.herd-select2 .select2-selection--single .select2-selection__arrow {
+	height: 29px;
+}
+
+.select2-container.herd-select2 .select2-selection--multiple {
+	border-color: var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	min-height: 31px;
+	padding: 2px 4px;
+}
+
+.select2-container.herd-select2 .select2-selection--multiple .select2-selection__choice {
+	background: var(--herd-green-tint, #e9f7ee);
+	border: 1px solid var(--herd-green-line, #a9ddbd);
+	border-radius: 4px;
+	color: var(--herd-green-ink, #04742d);
+	font-size: 12px;
+	margin: 2px 4px 2px 0;
+	padding: 1px 6px;
+}
+
+.select2-container.herd-select2 .select2-selection--multiple .select2-selection__choice__remove {
+	color: var(--herd-ink-3, #7d838a);
+	margin-right: 4px;
+}
+
+.select2-container.herd-select2 .select2-selection--multiple .select2-selection__choice__remove:hover {
+	color: var(--herd-danger, #b32d2e);
+}
+
+.select2-container.herd-select2.select2-container--open .select2-selection,
+.select2-container.herd-select2.select2-container--focus .select2-selection {
+	border-color: var(--herd-green, #00b140);
+	box-shadow: 0 0 0 3px var(--herd-green-tint, #e9f7ee);
+}
+
+/* The dropdown is the half that carries core blue. */
+.select2-dropdown.herd-select2 {
+	background: var(--herd-surface, #fff);
+	border-color: var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+}
+
+.select2-dropdown.herd-select2 .select2-search--dropdown {
+	padding: 6px;
+}
+
+.select2-dropdown.herd-select2 .select2-search--dropdown .select2-search__field {
+	border: 1px solid var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	font-size: 13px;
+	padding: 5px 8px;
+}
+
+.select2-dropdown.herd-select2 .select2-search--dropdown .select2-search__field:focus {
+	border-color: var(--herd-green, #00b140);
+	box-shadow: 0 0 0 3px var(--herd-green-tint, #e9f7ee);
+	outline: none;
+}
+
+.select2-dropdown.herd-select2 .select2-results__option {
+	color: var(--herd-ink, #1d2327);
+	font-size: 13px;
+	padding: 6px 9px;
+}
+
+.select2-dropdown.herd-select2 .select2-results__option--highlighted[aria-selected],
+.select2-dropdown.herd-select2 .select2-results__option--highlighted[data-selected] {
+	background: var(--herd-green-tint, #e9f7ee);
+	color: var(--herd-green-ink, #04742d);
+}
+
+.select2-dropdown.herd-select2 .select2-results__option[aria-selected="true"],
+.select2-dropdown.herd-select2 .select2-results__option[data-selected="true"] {
+	background: var(--herd-canvas, #f0f0f1);
+	color: var(--herd-ink, #1d2327);
+}
+
+.select2-dropdown.herd-select2 .select2-results__message {
+	color: var(--herd-ink-3, #7d838a);
+	font-size: 12px;
+}
+
+/* ---------- jQuery UI datepicker ---------- */
+
+/*
+ * One #ui-datepicker-div is shared by the whole page, so the namespace class is
+ * added on open and this block only applies while a Herd field owns it.
+ */
+#ui-datepicker-div.herd-datepicker {
+	background: var(--herd-surface, #fff);
+	border: 1px solid var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	box-shadow: 0 2px 8px rgba(0, 0, 0, .08);
+	font-family: inherit;
+	font-size: 13px;
+	padding: 6px;
+	width: auto;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-header {
+	background: transparent;
+	border: 0;
+	color: var(--herd-ink, #1d2327);
+	padding: 2px 0 6px;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-title {
+	font-size: 13px;
+	font-weight: 500;
+	line-height: 24px;
+	margin: 0 28px;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-prev,
+#ui-datepicker-div.herd-datepicker .ui-datepicker-next {
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	cursor: pointer;
+	height: 24px;
+	top: 4px;
+	width: 24px;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-prev:hover,
+#ui-datepicker-div.herd-datepicker .ui-datepicker-next:hover {
+	background: var(--herd-canvas, #f0f0f1);
+	border: 0;
+	top: 4px;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-prev { left: 2px; }
+#ui-datepicker-div.herd-datepicker .ui-datepicker-next { right: 2px; }
+
+#ui-datepicker-div.herd-datepicker th {
+	color: var(--herd-ink-3, #7d838a);
+	font-size: 11px;
+	font-weight: 400;
+	padding: 4px 0;
+}
+
+#ui-datepicker-div.herd-datepicker td {
+	padding: 1px;
+}
+
+#ui-datepicker-div.herd-datepicker td a,
+#ui-datepicker-div.herd-datepicker td span {
+	background: transparent;
+	border: 0;
+	border-radius: 4px;
+	color: var(--herd-ink, #1d2327);
+	padding: 5px 7px;
+	text-align: center;
+}
+
+#ui-datepicker-div.herd-datepicker td a:hover {
+	background: var(--herd-canvas, #f0f0f1);
+}
+
+#ui-datepicker-div.herd-datepicker td a.ui-state-active,
+#ui-datepicker-div.herd-datepicker td a.ui-state-highlight {
+	background: var(--herd-green-tint, #e9f7ee);
+	box-shadow: inset 0 0 0 1px var(--herd-green-line, #a9ddbd);
+	color: var(--herd-green-ink, #04742d);
+}
+
+#ui-datepicker-div.herd-datepicker td.ui-datepicker-unselectable span {
+	color: var(--herd-ink-3, #7d838a);
+	opacity: .6;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-buttonpane {
+	border-top: 1px solid var(--herd-line-soft, #eceded);
+	margin: 6px 0 0;
+	padding: 6px 0 0;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-buttonpane button {
+	background: var(--herd-surface, #fff);
+	border: 1px solid var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	color: var(--herd-ink-2, #50575e);
+	cursor: pointer;
+	font-size: 12px;
+	opacity: 1;
+	padding: 4px 10px;
+}
+
+#ui-datepicker-div.herd-datepicker .ui-datepicker-buttonpane button:hover {
+	background: var(--herd-canvas, #f0f0f1);
+	color: var(--herd-ink, #1d2327);
+}
+
+#ui-datepicker-div.herd-datepicker :focus-visible {
+	outline: 2px solid var(--herd-green-ink, #04742d);
+	outline-offset: 1px;
+}

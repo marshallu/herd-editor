@@ -1,0 +1,468 @@
+/*
+ * Repeater rows as collapsed summary rows.
+ *
+ * ACF renders a repeater as a table. Herd lays that table out as a grid so the
+ * row's own handle cells — the drag grip on the left, add/duplicate/remove on
+ * the right — end up flanking a summary header that src/ui/acf/repeater.js
+ * inserts at the top of the fields cell. Nothing leaves the row, so ACF's
+ * delegated events and its sortable still work.
+ *
+ * DOM shape:
+ *   .acf-repeater.herd-repeater
+ *     > .herd-repeater__head
+ *     > table > tbody > tr.acf-row.herd-card
+ *         > td.acf-row-handle.order
+ *         > td.acf-fields > .herd-cardrow + .acf-field...
+ *         > td.acf-row-handle.remove
+ */
+
+@use './widths';
+
+$host: ".herd-editor__field-host";
+
+#{$host} .herd-repeater {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	overflow: hidden;
+}
+
+/* ---------- repeater header ---------- */
+
+.herd-repeater__head {
+	align-items: center;
+	background: #fbfbfc;
+	border-bottom: 1px solid var(--herd-line);
+	box-sizing: border-box;
+	display: flex;
+	gap: 9px;
+	/* Already what Collapse all and Add row come to; said out loud so the group
+	   header can land on the same line rather than guess at it. */
+	min-height: var(--herd-header-h);
+	padding: 7px 10px;
+}
+
+.herd-repeater__title {
+	color: var(--herd-ink);
+	font-size: 12px;
+	font-weight: 500;
+}
+
+.herd-repeater__count {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+}
+
+.herd-repeater__spacer {
+	flex: 1;
+}
+
+/* Collapse all and the add button are the same control at different weights. */
+#{$host} .herd-repeater__head .herd-btn {
+	flex: none;
+}
+
+/* The field's own label is now the header's title. */
+#{$host} .acf-field-repeater:has(.herd-repeater) > .acf-label {
+	display: none;
+}
+
+/* ---------- table as a grid ---------- */
+
+/*
+ * Wipe every border the table carries before drawing our own. ACF, WP core admin
+ * and the site's admin CSS all have opinions about table cells, and a dark rule
+ * from any of them reads as a bar across the row once the table is laid out as a
+ * grid. Herd draws one hairline between rows and nothing else.
+ */
+/*
+ * `!important` because the site's own admin CSS carries it:
+ *
+ *   .acf-repeater.-block > table > tbody > tr > td {
+ *     border-top: 4px solid var(--mu-black) !important;
+ *   }
+ *
+ * That rule is the black bar across every row. These selectors are more specific
+ * than it, so matching its `!important` is enough to win.
+ */
+#{$host} .herd-repeater table.acf-table,
+#{$host} .herd-repeater table.acf-table tbody,
+#{$host} .herd-repeater table.acf-table tr,
+#{$host} .herd-repeater table.acf-table td {
+	background: transparent !important;
+	border: 0 !important;
+	box-shadow: none !important;
+	outline: 0;
+}
+
+#{$host} .herd-repeater > table.acf-table,
+#{$host} .herd-repeater > table.acf-table > tbody {
+	display: block;
+}
+
+#{$host} .herd-repeater tr.acf-row:not(.acf-clone) {
+	align-items: start;
+	border-top: 1px solid var(--herd-line-soft) !important;
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* ACF appends its clone row last, so the first `tr` is a real row. */
+#{$host} .herd-repeater tr.acf-row:not(.acf-clone):first-of-type {
+	border-top: 0 !important;
+}
+
+#{$host} .herd-repeater tr.acf-row > td {
+	padding: 0;
+}
+
+#{$host} .herd-repeater tr.acf-row > td.acf-fields {
+	display: block;
+}
+
+/* ACF's fields inside a row keep their own top rules; the row header is the only
+   divider this design wants. */
+#{$host} .herd-repeater td.acf-fields > .acf-field {
+	border-top: 0;
+}
+
+/*
+ * The handle cells align with the collapsed header rather than the top of an
+ * open row's fields, so the grip and tools sit on the same line as the name.
+ */
+/* Specific enough to beat the `tr.acf-row > td` rule above. */
+#{$host} .herd-repeater tr.acf-row > td.acf-row-handle {
+	align-items: center;
+	align-self: start;
+	color: var(--herd-ink-3);
+	display: flex;
+	flex-direction: row;
+	font-size: 11px;
+	gap: 5px;
+	height: 48px;
+	width: auto;
+}
+
+/*
+ * ACF's sortable takes `> td.order` as its handle, so this cell has to stay. Its
+ * width is the token said out loud rather than left to emerge from the padding
+ * and the icon, so the column and the inset an open row's fields take from it
+ * cannot drift apart.
+ */
+#{$host} .herd-repeater tr.acf-row > td.acf-row-handle.order {
+	box-sizing: border-box;
+	cursor: grab;
+	padding: 0 4px 0 8px;
+	width: var(--herd-row-inset);
+}
+
+#{$host} .herd-repeater td.acf-row-handle.order:active {
+	cursor: grabbing;
+}
+
+.herd-grip {
+	color: var(--herd-line);
+	display: flex;
+	font-style: normal;
+}
+
+.herd-grip svg {
+	height: 16px;
+	width: 16px;
+}
+
+#{$host} .herd-repeater td.acf-row-handle.order:hover .herd-grip {
+	color: var(--herd-ink-3);
+}
+
+/* Herd moved the anchors into the row header; the cell has nothing left to show. */
+#{$host} .herd-repeater tr.acf-row > td.acf-row-handle.remove {
+	display: none;
+}
+
+/*
+ * Herd's own row tools. Always visible: a control that appears on hover is one
+ * you cannot find without already knowing it is there, and on a dense list of
+ * rows that is most of them.
+ */
+.herd-cardrow__tools {
+	display: flex;
+	flex: none;
+	gap: 2px;
+}
+
+.herd-cardrow__tool {
+	align-items: center;
+	border-radius: var(--herd-r-sm);
+	box-shadow: none;
+	color: var(--herd-ink-3);
+	display: flex;
+	height: 24px;
+	justify-content: center;
+	text-decoration: none;
+	width: 24px;
+}
+
+.herd-cardrow__tool .dashicons {
+	font-size: 16px;
+	height: 16px;
+	line-height: 1;
+	width: 16px;
+}
+
+.herd-cardrow__tool:hover {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+/* Destructive at rest is grey; a trash icon that is always red reads as an error
+   state on a row with nothing wrong. */
+.herd-cardrow__tool.is-destructive:hover {
+	background: var(--herd-canvas);
+	color: var(--herd-danger);
+}
+
+.herd-cardrow__tool:focus-visible {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+/* ---------- dragging ---------- */
+
+/*
+ * jQuery UI drags the row itself rather than a clone, positioning it absolutely
+ * and leaving a placeholder in the gap. The placeholder is built by copying the
+ * dragged row's class list onto a fresh `tr` full of `&nbsp;` cells, so every
+ * rule above applies to it too — it needs to be told to look like a slot.
+ */
+#{$host} .herd-repeater tr.acf-row.ui-sortable-helper {
+	background: var(--herd-surface);
+	border-radius: var(--herd-r);
+	box-shadow: 0 6px 16px rgba(0, 0, 0, .14);
+}
+
+#{$host} .herd-repeater tr.ui-sortable-placeholder {
+	background: var(--herd-green-tint) !important;
+	border-top: 0 !important;
+	visibility: visible !important;
+}
+
+#{$host} .herd-repeater tr.ui-sortable-placeholder > td {
+	visibility: hidden;
+}
+
+/* ---------- the row header ---------- */
+
+.herd-cardrow {
+	align-items: center;
+	cursor: pointer;
+	display: flex;
+	gap: 10px;
+	padding: 7px 4px 7px 0;
+}
+
+.herd-cardrow:hover,
+#{$host} .acf-row.is-open .herd-cardrow {
+	background: transparent;
+}
+
+.herd-cardrow__thumb {
+	align-items: center;
+	background: var(--herd-canvas);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	display: flex;
+	flex: none;
+	height: 34px;
+	justify-content: center;
+	overflow: hidden;
+	width: 34px;
+}
+
+/* No image and no icon: src/ui/acf/repeater.js leaves the element empty rather
+   than filling it with a placeholder, and an empty box is not a thumbnail. */
+.herd-cardrow__thumb:empty {
+	display: none;
+}
+
+.herd-cardrow__thumb svg {
+	height: 16px;
+	width: 16px;
+}
+
+.herd-cardrow__thumb img {
+	height: 100%;
+	object-fit: cover;
+	width: 100%;
+}
+
+.herd-cardrow__main {
+	flex: 1;
+	min-width: 0;
+}
+
+.herd-cardrow__name,
+.herd-cardrow__summary {
+	display: block;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-cardrow__name {
+	color: var(--herd-ink);
+	font-size: 13px;
+}
+
+.herd-cardrow__name.is-placeholder {
+	color: var(--herd-ink-3);
+}
+
+.herd-cardrow__summary {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+}
+
+.herd-cardrow__chev {
+	color: var(--herd-ink-3);
+	flex: none;
+	font-size: 16px;
+	height: 16px;
+	line-height: 1;
+	transition: transform .15s ease;
+	width: 16px;
+}
+
+#{$host} .acf-row.is-open .herd-cardrow__chev {
+	transform: rotate(180deg);
+}
+
+.herd-cardrow:focus-visible {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+/* ---------- open and closed ---------- */
+
+/*
+ * Padding does not belong here, however much it looks like it should: ACF ships
+ *
+ *   td.acf-fields { padding: 0 !important }
+ *
+ * so anything this rule says about padding is dropped no matter how specific it
+ * is. The open row below matches that `!important` where it needs to.
+ */
+#{$host} .herd-repeater td.acf-fields {
+	background: transparent;
+}
+
+/* Collapsed is the default state. */
+#{$host} .herd-repeater tr.acf-row:not(.is-open) > td.acf-fields > .acf-field {
+	display: none !important;
+}
+
+#{$host} .herd-repeater tr.acf-row.is-open {
+	background: #fbfbfc;
+}
+
+/*
+ * Inside an open row the fields flow like any other Herd form — the same twelve
+ * column grid, so a width authored on a sub-field means here what it means at
+ * the top level. This was a wrapping flexbox until widths arrived; a row is the
+ * one container where the two models are visibly different, and the note on
+ * `.acf-field-true-false` below says how.
+ */
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields {
+	@include widths.grid(14px, 18px);
+	/*
+	 * The grip column is what insets the fields on the left; ACF's remove cell is
+	 * hidden, so nothing does it on the right and the cell draws that edge itself.
+	 * `!important` to answer ACF's own `td.acf-fields { padding: 0 !important }` —
+	 * one shorthand, so the whole box is stated rather than half of it winning.
+	 */
+	padding: 0 var(--herd-row-inset) 14px 0 !important;
+}
+
+/*
+ * The header belongs to the row, not to the field body: it reaches back out over
+ * the inset above so its tools land where a collapsed row's do.
+ */
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .herd-cardrow {
+	grid-column: 1 / -1;
+	margin-right: calc(-1 * var(--herd-row-inset));
+}
+
+/*
+ * Full width is the default and every exception below overrides it on source
+ * order, so this must not carry a `:not()`. The excluded class counts toward
+ * specificity, and `:not(.acf-field-true-false)` outranked the compact widths
+ * that follow — every row came out one field per line, which is most of why an
+ * open row was a screen tall.
+ *
+ * `padding: 0` is the reset a group body already does (_acf-group.scss). ACF
+ * reads `td.acf-fields` as an `.acf-fields` and gives each field 16px, which is
+ * a metabox's metrics inside a cell that already draws its own inset. The gap
+ * owns the rhythm.
+ */
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field {
+	grid-column: 1 / -1;
+	margin: 0;
+	min-width: 0;
+	padding: 0;
+	width: auto !important;
+}
+
+/*
+ * A toggle is as wide as its label and never stretches. It restates the padding
+ * `.acf-field-true-false` gives itself in _acf.scss, which the rule above — six
+ * classes deeper — now reaches.
+ *
+ * `justify-self` is what keeps it from stretching now that the row is a grid;
+ * under the old flexbox that was `flex: 0 0 auto`, which also let as many
+ * toggles pack onto a row as happened to fit. A grid track count cannot vary per
+ * item, so a toggle takes half a row and two of them pair up — the same half
+ * row a compact control gets in the block form. An authored width overrides the
+ * span below and leaves `justify-self` alone, which is right: a 50% toggle is a
+ * toggle in half a row, not a switch stretched across one.
+ */
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-true-false {
+	grid-column: span 6;
+	justify-self: start;
+	margin: 0;
+	padding: 4px 0;
+}
+
+@include widths.spans("#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields");
+
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-select,
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-button-group,
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-text,
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-url,
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-email,
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-number {
+	flex: 1 1 240px;
+}
+
+/* The image is the row's anchor; it takes its own column beside the text. */
+#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-image {
+	flex: 0 0 auto;
+}
+
+/* ---------- table furniture Herd does not use ---------- */
+
+#{$host} .herd-repeater > table.acf-table > thead,
+#{$host} .herd-repeater .acf-row-handle .acf-icon.-collapse,
+#{$host} .herd-repeater .acf-row-number {
+	display: none;
+}
+
+/* The add button now lives in the header; the empty bar it left does not. */
+#{$host} .herd-repeater > .acf-actions:empty,
+#{$host} .herd-repeater > .acf-actions:has(> .clear:only-child) {
+	display: none;
+}
+
+#{$host} .herd-repeater > .acf-actions {
+	padding: 0 10px 10px;
+}

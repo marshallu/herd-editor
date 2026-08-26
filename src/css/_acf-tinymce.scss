@@ -1,0 +1,201 @@
+/*
+ * TinyMCE and the editor tab strip.
+ *
+ * The largest visual leak in the editor. 45 WYSIWYG fields sit in blocks, and
+ * more once repeater rows multiply them. Herd already styles the placeholder
+ * ACF shows before the editor boots (_acf.scss), so the field looks native at
+ * rest — then the real toolbar loads on first focus and the whole control turns
+ * core grey-blue. The resting state was never the problem; this is the open one.
+ *
+ * TinyMCE renders inside the field, so ordinary scoping reaches it. Only the
+ * chrome is restyled — the edit area keeps WordPress's content styles, which are
+ * the frontend's business rather than the editor's.
+ */
+
+$surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail__panel";
+
+@mixin on-fields($sel) {
+	@each $scope in $surfaces {
+		/*
+		 * Nested rather than interpolated as `#{$scope} #{$sel}`: when $sel is a
+		 * comma list, interpolation scopes only the first selector in it and
+		 * leaves the rest global.
+		 */
+		#{$scope} {
+			#{$sel} {
+				@content;
+			}
+		}
+	}
+}
+
+/* ---------- wrapper ---------- */
+
+@include on-fields(".acf-editor-wrap .wp-editor-container") {
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	overflow: hidden;
+}
+
+@include on-fields(".acf-editor-wrap .mce-tinymce") {
+	box-shadow: none;
+}
+
+@include on-fields(".acf-editor-wrap .mce-panel") {
+	background: var(--herd-surface);
+	border-color: var(--herd-line-soft);
+	filter: none;
+}
+
+/* ---------- toolbar ---------- */
+
+@include on-fields(".acf-editor-wrap .mce-toolbar-grp") {
+	background: var(--herd-canvas);
+	border-bottom: 1px solid var(--herd-line);
+	padding: 1px 2px;
+}
+
+@include on-fields(".acf-editor-wrap .mce-toolbar .mce-btn-group") {
+	border: 0;
+	margin: 0;
+	padding: 0 2px;
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn") {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: 4px;
+	box-shadow: none;
+	margin: 1px;
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn button") {
+	color: var(--herd-ink-2);
+	line-height: 1;
+	padding: 3px 5px;
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn:hover, .acf-editor-wrap .mce-btn:focus") {
+	background: var(--herd-surface);
+	border-color: var(--herd-line);
+	box-shadow: none;
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn:hover button, .acf-editor-wrap .mce-btn:focus button") {
+	color: var(--herd-ink);
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn.mce-active, .acf-editor-wrap .mce-btn.mce-active:hover") {
+	background: var(--herd-green-tint);
+	border-color: var(--herd-green-line);
+	box-shadow: none;
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn.mce-active button, .acf-editor-wrap .mce-btn.mce-active button i") {
+	color: var(--herd-green-ink);
+}
+
+@include on-fields(".acf-editor-wrap .mce-btn.mce-disabled button") {
+	color: var(--herd-ink-3);
+}
+
+@include on-fields(".acf-editor-wrap .mce-ico") {
+	color: inherit;
+}
+
+/* The format dropdown is a button with a caret rather than a plain icon. */
+@include on-fields(".acf-editor-wrap .mce-menubtn button") {
+	color: var(--herd-ink-2);
+	font-size: 12px;
+}
+
+@include on-fields(".acf-editor-wrap .mce-menubtn.mce-active, .acf-editor-wrap .mce-menubtn:hover") {
+	background: var(--herd-surface);
+	border-color: var(--herd-line);
+}
+
+/* ---------- status bar ---------- */
+
+@include on-fields(".acf-editor-wrap .mce-statusbar") {
+	border-top: 1px solid var(--herd-line-soft);
+}
+
+@include on-fields(".acf-editor-wrap .mce-path, .acf-editor-wrap .mce-path .mce-path-item, .acf-editor-wrap .mce-path .mce-divider") {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+}
+
+@include on-fields(".acf-editor-wrap .mce-path .mce-path-item:hover") {
+	color: var(--herd-ink);
+}
+
+/* ---------- Visual / Text tabs and quicktags ---------- */
+
+@include on-fields(".acf-editor-wrap .wp-editor-tools") {
+	background: transparent;
+	margin: 0 0 6px;
+	padding: 0;
+}
+
+@include on-fields(".acf-editor-wrap .wp-editor-tabs") {
+	gap: 2px;
+}
+
+@include on-fields(".acf-editor-wrap .wp-switch-editor") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	color: var(--herd-ink-2);
+	font-size: 11px;
+	margin: 0 0 0 2px;
+	padding: 3px 8px;
+}
+
+@include on-fields(".acf-editor-wrap .wp-switch-editor:hover") {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+@include on-fields(".acf-editor-wrap .wp-editor-tabs .wp-switch-editor.switch-tmce:focus, .acf-editor-wrap .wp-editor-tabs .wp-switch-editor.switch-html:focus") {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: 1px;
+}
+
+@include on-fields(".acf-editor-wrap.tmce-active .switch-tmce, .acf-editor-wrap.html-active .switch-html") {
+	background: var(--herd-green-tint);
+	border-color: var(--herd-green-line);
+	color: var(--herd-green-ink);
+}
+
+@include on-fields(".acf-editor-wrap .quicktags-toolbar") {
+	background: var(--herd-canvas);
+	border-bottom: 1px solid var(--herd-line);
+	padding: 2px;
+}
+
+@include on-fields(".acf-editor-wrap .quicktags-toolbar input.button") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: 4px;
+	color: var(--herd-ink-2);
+	font-size: 11px;
+	margin: 1px;
+	padding: 2px 6px;
+}
+
+@include on-fields(".acf-editor-wrap .quicktags-toolbar input.button:hover") {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+@include on-fields(".acf-editor-wrap .wp-media-buttons .button") {
+	border-radius: var(--herd-r);
+	font-size: 12px;
+}
+
+@include on-fields(".acf-editor-wrap textarea.wp-editor-area") {
+	border: 0;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 12px;
+}

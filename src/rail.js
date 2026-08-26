@@ -1,0 +1,133 @@
+/**
+ * Rail assembly.
+ *
+ * WordPress renders every meta box once, into the hidden staging area at the
+ * bottom of the form. This module distributes those .postbox nodes into the rail
+ * tabs and relocates the native Preview and Update actions into the command bar.
+ *
+ * Nothing is cloned and nothing leaves form#post, so every box still posts
+ * exactly as WordPress expects. If anything here throws, the staging area is
+ * revealed so the publish box is never unreachable.
+ */
+
+const STORAGE_KEY = 'herd-editor-rail-tab';
+const FALLBACK_TAB = 'more';
+
+function readMap() {
+	const node = document.getElementById( 'herd-rail-map' );
+	if ( ! node ) return {};
+	try {
+		return JSON.parse( node.textContent ) || {};
+	} catch ( error ) {
+		return {};
+	}
+}
+
+/** The Update and Preview buttons belong in the command bar, not the rail. */
+function liftPublishActions() {
+	const target = document.getElementById( 'herd-bar-native' );
+	if ( ! target ) return;
+	[ 'preview-action', 'publishing-action' ].forEach( ( id ) => {
+		const node = document.getElementById( id );
+		if ( node ) target.appendChild( node );
+	} );
+}
+
+function distribute( map ) {
+	const staging = document.getElementById( 'herd-staging' );
+	const main = document.getElementById( 'herd-main-boxes' );
+	if ( ! staging ) return;
+
+	Array.from( staging.querySelectorAll( '.postbox' ) ).forEach( ( box ) => {
+		const tab = map[ box.id ] || FALLBACK_TAB;
+		const destination = tab === 'main' ? main : document.getElementById( `herd-panel-${ tab }` );
+		( destination || document.getElementById( `herd-panel-${ FALLBACK_TAB }` ) || main ).appendChild( box );
+	} );
+
+	staging.remove();
+}
+
+function selectTab( tabs, panels, name ) {
+	tabs.forEach( ( tab ) => {
+		const selected = tab.dataset.tab === name;
+		tab.setAttribute( 'aria-selected', selected ? 'true' : 'false' );
+		tab.tabIndex = selected ? 0 : -1;
+	} );
+	panels.forEach( ( panel ) => {
+		panel.hidden = panel.dataset.panel !== name;
+	} );
+	try {
+		window.localStorage.setItem( STORAGE_KEY, name );
+	} catch ( error ) {
+		// Private browsing; the tab choice simply is not remembered.
+	}
+}
+
+function buildTabs() {
+	const tablist = document.querySelector( '.herd-rail__tabs' );
+	if ( ! tablist ) return;
+	const panels = Array.from( document.querySelectorAll( '.herd-rail__panel' ) );
+	const tabs = Array.from( tablist.querySelectorAll( '.herd-rail__tab' ) );
+
+	const available = tabs.filter( ( tab ) => {
+		const panel = panels.find( ( candidate ) => candidate.dataset.panel === tab.dataset.tab );
+		if ( ! panel ) return false;
+		if ( panel.children.length ) return true;
+		// Core only registers the revisions box once a post has revisions.
+		if ( tab.dataset.tab === 'history' ) {
+			const empty = document.createElement( 'p' );
+			empty.className = 'herd-rail__empty';
+			empty.textContent = 'No revisions yet.';
+			panel.appendChild( empty );
+			return true;
+		}
+		return false;
+	} );
+
+	if ( ! available.length ) return;
+
+	available.forEach( ( tab ) => {
+		tab.hidden = false;
+	} );
+	tablist.hidden = false;
+
+	let stored = null;
+	try {
+		stored = window.localStorage.getItem( STORAGE_KEY );
+	} catch ( error ) {
+		stored = null;
+	}
+	const initial = available.find( ( tab ) => tab.dataset.tab === stored ) || available[ 0 ];
+	selectTab( available, panels, initial.dataset.tab );
+
+	tablist.addEventListener( 'click', ( event ) => {
+		const tab = event.target.closest( '.herd-rail__tab' );
+		if ( tab && ! tab.hidden ) selectTab( available, panels, tab.dataset.tab );
+	} );
+
+	tablist.addEventListener( 'keydown', ( event ) => {
+		const step = { ArrowLeft: -1, ArrowRight: 1, Home: 'first', End: 'last' }[ event.key ];
+		if ( step === undefined ) return;
+		event.preventDefault();
+		const current = available.findIndex( ( tab ) => tab.getAttribute( 'aria-selected' ) === 'true' );
+		let next = 0;
+		if ( step === 'last' ) next = available.length - 1;
+		else if ( step !== 'first' ) next = ( current + step + available.length ) % available.length;
+		selectTab( available, panels, available[ next ].dataset.tab );
+		available[ next ].focus();
+	} );
+}
+
+export function assembleRail() {
+	try {
+		liftPublishActions();
+		distribute( readMap() );
+		buildTabs();
+	} catch ( error ) {
+		// Never strand the editor without a publish box.
+		const staging = document.getElementById( 'herd-staging' );
+		if ( staging ) staging.style.display = 'block';
+		// eslint-disable-next-line no-console
+		console.error( 'Herd Editor could not assemble the settings rail.', error );
+	}
+}

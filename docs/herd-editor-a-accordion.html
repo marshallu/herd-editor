@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herd Editor — direction A, accordion</title>
+<style>
+  :root{
+    --mu-green:#00B140;
+    --mu-green-ink:#04742D;
+    --mu-green-tint:#E9F7EE;
+    --mu-green-line:#A9DDBD;
+    --ink:#1d2327;
+    --ink-2:#50575e;
+    --ink-3:#7d838a;
+    --line:#dcdcde;
+    --line-soft:#eceded;
+    --surface:#fff;
+    --canvas:#f0f0f1;
+    --chrome:#1d2327;
+    --chrome-2:#2c3338;
+    --danger:#b32d2e;
+    --r:6px;
+    --bar-h:32px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--canvas);
+    color:var(--ink);
+    font:400 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;cursor:pointer}
+  input,select{font:inherit;color:inherit}
+  a{color:var(--mu-green-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  :focus-visible{outline:2px solid var(--mu-green-ink);outline-offset:1px}
+
+  /* ---------- admin chrome ---------- */
+  .adminbar{
+    position:fixed;top:0;left:0;right:0;height:var(--bar-h);z-index:60;
+    background:var(--chrome);color:#c3c4c7;display:flex;align-items:center;gap:18px;padding:0 12px;font-size:13px;
+  }
+  .adminbar b{color:#fff;font-weight:400}
+  .adminbar .right{margin-left:auto;display:flex;align-items:center;gap:8px;color:#c3c4c7}
+  .avatar{width:20px;height:20px;border-radius:50%;background:#50575e}
+
+  .sidebar{
+    position:fixed;top:var(--bar-h);bottom:0;left:0;width:160px;background:var(--chrome);
+    padding:8px 0;overflow:auto;z-index:50;
+  }
+  .sidebar a{display:flex;align-items:center;gap:9px;padding:8px 12px;color:#c3c4c7;font-size:13px;text-decoration:none}
+  .sidebar a:hover{background:var(--chrome-2);color:#72d99a}
+  .sidebar a.on{background:#0f1113;color:#fff;box-shadow:inset 3px 0 0 var(--mu-green)}
+  .sidebar .sep{height:1px;background:#33383d;margin:8px 12px}
+  .ico{width:16px;text-align:center;opacity:.85;font-size:13px}
+
+  .wrap{margin:var(--bar-h) 0 0 160px;padding:0 0 60px}
+
+  /* ---------- command bar ---------- */
+  .cmdbar{
+    position:sticky;top:var(--bar-h);z-index:40;
+    background:var(--surface);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:12px;padding:9px 20px;
+  }
+  .backlink{color:var(--ink-3);font-size:16px;line-height:1;padding:4px;border-radius:var(--r)}
+  .backlink:hover{background:var(--canvas);color:var(--ink);text-decoration:none}
+  .idblock{min-width:0;flex:0 1 auto}
+  .title-in{
+    display:block;border:1px solid transparent;background:transparent;border-radius:var(--r);
+    font-size:15px;font-weight:600;padding:2px 6px;margin:0 0 0 -6px;width:100%;max-width:420px;
+  }
+  .title-in:hover{border-color:var(--line)}
+  .title-in:focus{border-color:var(--mu-green);background:#fff;outline:none}
+  .slugrow{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--ink-3);padding-left:0}
+  .slug-in{
+    border:1px solid transparent;background:transparent;border-radius:4px;font-size:11px;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2);padding:1px 4px;width:150px;
+  }
+  .slug-in:hover{border-color:var(--line)}
+  .slug-in:focus{border-color:var(--mu-green);background:#fff;outline:none}
+  .cmd-right{margin-left:auto;display:flex;align-items:center;gap:10px}
+  .savestate{font-size:12px;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--mu-green)}
+  .pill-status{
+    font-size:11px;font-weight:600;letter-spacing:.02em;padding:3px 9px;border-radius:20px;
+    background:var(--mu-green-tint);color:var(--mu-green-ink);border:1px solid var(--mu-green-line);
+  }
+  .btn{
+    border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:var(--r);
+    padding:6px 12px;font-size:13px;
+  }
+  .btn:hover{background:var(--canvas);border-color:#c3c4c7}
+  .btn-primary{background:var(--mu-green-ink);border-color:var(--mu-green-ink);color:#fff;font-weight:600}
+  .btn-primary:hover{background:#05622a;border-color:#05622a}
+  .btn-icon{border:1px solid var(--line);background:#fff;border-radius:var(--r);padding:6px 9px;font-size:13px;color:var(--ink-2)}
+  .btn-icon:hover{background:var(--canvas)}
+
+  .modebar{
+    background:var(--surface);border-bottom:1px solid var(--line);padding:0 20px 9px;
+    display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-3);
+  }
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .seg button{border:0;background:#fff;padding:4px 10px;font-size:12px;color:var(--ink-2);border-right:1px solid var(--line)}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--ink);color:#fff}
+
+  /* ---------- layout ---------- */
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:20px;padding:20px;align-items:start;max-width:1440px}
+
+  .listhead{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .listhead .count{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600}
+  .listhead .acts{margin-left:auto;display:flex;gap:6px}
+  .ghost{border:0;background:transparent;color:var(--ink-2);font-size:12px;padding:4px 8px;border-radius:var(--r)}
+  .ghost:hover{background:#e4e5e6;color:var(--ink)}
+
+  /* ---------- blocks ---------- */
+  .block{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px}
+  .block.open{border-color:#c3c4c7}
+  .block.hidden-blk .brow-main{opacity:.5}
+  .brow{display:flex;align-items:center;gap:10px;padding:10px 12px;cursor:pointer;user-select:none}
+  .grip{color:#c3c4c7;cursor:grab;font-size:14px;letter-spacing:-2px;line-height:1}
+  .btype{
+    width:26px;height:26px;flex:none;border-radius:5px;background:var(--canvas);color:var(--ink-2);
+    display:flex;align-items:center;justify-content:center;font-size:13px;
+  }
+  .block.open .btype{background:var(--mu-green-tint);color:var(--mu-green-ink)}
+  .brow-main{min-width:0;flex:1}
+  .bname{font-size:13px;font-weight:600;line-height:1.35}
+  .bsum{font-size:12px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.35}
+  .brow-tools{display:flex;align-items:center;gap:2px;opacity:0;transition:opacity .12s}
+  .block:hover .brow-tools,.block.open .brow-tools{opacity:1}
+  .tool{border:0;background:transparent;color:var(--ink-3);padding:5px 6px;border-radius:4px;font-size:13px;line-height:1}
+  .tool:hover{background:var(--canvas);color:var(--ink)}
+  .tool.on{color:var(--mu-green-ink)}
+  .tool.del:hover{color:var(--danger)}
+  .chev{color:var(--ink-3);font-size:11px;padding-left:2px;transition:transform .15s}
+  .block.open .chev{transform:rotate(180deg)}
+
+  .bbody{display:none;border-top:1px solid var(--line-soft);padding:16px}
+  .block.open .bbody{display:block}
+
+  /* ---------- fields ---------- */
+  .fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 18px}
+  .f{min-width:0}
+  .f label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:4px}
+  .f .hint{font-size:11px;color:var(--ink-3);font-weight:400;margin-left:6px}
+  .f input[type=text],.f select,.f textarea{
+    width:100%;border:1px solid var(--line);border-radius:var(--r);padding:7px 9px;background:#fff;font-size:13px;
+  }
+  .f input[type=text]:focus,.f select:focus,.f textarea:focus{border-color:var(--mu-green);outline:none;box-shadow:0 0 0 3px var(--mu-green-tint)}
+  .f textarea{resize:vertical;min-height:60px}
+  .span2{grid-column:1/-1}
+
+  .media{display:flex;gap:12px;align-items:flex-start}
+  .thumb{
+    width:132px;height:78px;flex:none;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;
+    background:linear-gradient(135deg,#cfd8d2,#8fa398);display:flex;align-items:center;justify-content:center;color:#fff;font-size:18px;
+  }
+  .media-meta{font-size:12px;color:var(--ink-2);line-height:1.7;min-width:0}
+  .media-meta .fn{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--ink)}
+  .media-meta .dim{color:var(--ink-3)}
+  .linkbtn{border:0;background:transparent;padding:0;color:var(--mu-green-ink);font-size:12px}
+  .linkbtn:hover{text-decoration:underline}
+  .linkbtn.warn{color:var(--danger)}
+
+  /* ---------- option pills ---------- */
+  .opts{margin-top:16px;padding-top:13px;border-top:1px solid var(--line-soft)}
+  .opts-h{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--ink-3);font-weight:600;margin-bottom:9px;display:flex;align-items:center;gap:8px}
+  .opts-h span{font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink-3);font-size:11px}
+  .pills{display:flex;flex-wrap:wrap;gap:6px}
+  .pill{
+    border:1px solid var(--line);background:#fff;color:var(--ink-2);border-radius:20px;
+    padding:5px 12px;font-size:12px;display:inline-flex;align-items:center;gap:5px;
+  }
+  .pill:hover{border-color:#b4b9be;background:var(--canvas)}
+  .pill .tick{opacity:0;font-size:11px;width:0;transition:none}
+  .pill[aria-pressed=true]{background:var(--mu-green-tint);border-color:var(--mu-green-line);color:var(--mu-green-ink);font-weight:600}
+  .pill[aria-pressed=true] .tick{opacity:1;width:auto}
+
+  .addblock{
+    width:100%;border:1px dashed #b4b9be;background:transparent;border-radius:var(--r);
+    padding:11px;color:var(--ink-2);font-size:13px;margin-top:4px;
+  }
+  .addblock:hover{border-color:var(--mu-green);color:var(--mu-green-ink);background:var(--mu-green-tint)}
+
+  /* ---------- rail ---------- */
+  .rail{position:sticky;top:calc(var(--bar-h) + 96px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .tabs{display:flex;border-bottom:1px solid var(--line);background:var(--canvas)}
+  .tabs button{flex:1;border:0;background:transparent;padding:10px 4px;font-size:12px;font-weight:600;color:var(--ink-3);border-bottom:2px solid transparent}
+  .tabs button:hover{color:var(--ink)}
+  .tabs button.on{background:var(--surface);color:var(--ink);border-bottom-color:var(--mu-green)}
+  .panel{display:none;padding:14px}
+  .panel.on{display:block}
+  .panel .f{margin-bottom:13px}
+  .drop{
+    border:1px dashed #b4b9be;border-radius:var(--r);padding:18px 10px;text-align:center;color:var(--ink-3);font-size:12px;background:var(--canvas);
+  }
+  .drop:hover{border-color:var(--mu-green);color:var(--mu-green-ink)}
+  .meta{border-top:1px solid var(--line-soft);margin-top:4px;padding-top:11px}
+  .meta div{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;color:var(--ink-3)}
+  .meta b{font-weight:500;color:var(--ink)}
+  .counter{font-size:11px;color:var(--ink-3);text-align:right;margin-top:3px}
+  .bar{height:3px;border-radius:2px;background:var(--line-soft);margin-top:6px;overflow:hidden}
+  .bar i{display:block;height:100%;background:var(--mu-green)}
+
+  .revlist{margin:0;padding:0;list-style:none;font-size:12px}
+  .revlist li{display:flex;gap:8px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--line-soft)}
+  .revlist li:last-child{border-bottom:0}
+  .revlist .when{color:var(--ink);flex:1}
+  .revlist .who{color:var(--ink-3)}
+  .revlist .cur{font-size:10px;background:var(--mu-green-tint);color:var(--mu-green-ink);padding:1px 6px;border-radius:10px;font-weight:600}
+
+  .note{
+    margin:0 20px;padding:10px 14px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--mu-green);
+    border-radius:0 var(--r) var(--r) 0;font-size:12px;color:var(--ink-2);
+  }
+  @media (max-width:1100px){
+    .cols{grid-template-columns:minmax(0,1fr)}
+    .rail{position:static}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="adminbar">
+  <b>⌂ MU Old Local</b><span>＋ New</span><span>Local Site Super Admin Tools</span>
+  <div class="right"><span>Howdy, admin</span><div class="avatar"></div></div>
+</div>
+
+<nav class="sidebar">
+  <a href="#"><span class="ico">◉</span>Dashboard</a>
+  <a href="#"><span class="ico">✎</span>Posts</a>
+  <a href="#"><span class="ico">▣</span>Media</a>
+  <a href="#"><span class="ico">▤</span>Forms</a>
+  <a class="on" href="#"><span class="ico">▦</span>Pages</a>
+  <a href="#"><span class="ico">⚯</span>Links</a>
+  <a href="#"><span class="ico">≡</span>Online Pages</a>
+  <a href="#"><span class="ico">≡</span>Program Pages</a>
+  <a href="#"><span class="ico">◫</span>Academic Maps</a>
+  <a href="#"><span class="ico">☺</span>Profiles</a>
+  <div class="sep"></div>
+  <a href="#"><span class="ico">✿</span>Appearance</a>
+  <a href="#"><span class="ico">⊕</span>Plugins</a>
+  <a href="#"><span class="ico">⚒</span>Tools</a>
+  <a href="#"><span class="ico">⚙</span>Settings</a>
+  <a href="#"><span class="ico">▥</span>ACF</a>
+</nav>
+
+<div class="wrap">
+
+  <header class="cmdbar">
+    <a class="backlink" href="#" aria-label="Back to pages">←</a>
+    <div class="idblock">
+      <input class="title-in" value="Meet Marshall" aria-label="Page title">
+      <div class="slugrow">
+        <span>marshall.edu/</span><input class="slug-in" value="meet-marshall" aria-label="Page slug">
+      </div>
+    </div>
+    <div class="cmd-right">
+      <span class="savestate"><span class="dot"></span>Saved 3 min ago</span>
+      <span class="pill-status">Published</span>
+      <button class="btn-icon" title="Undo" aria-label="Undo">↶</button>
+      <button class="btn-icon" title="Redo" aria-label="Redo">↷</button>
+      <button class="btn">Preview</button>
+      <button class="btn btn-primary">Update</button>
+    </div>
+  </header>
+
+  <div class="modebar">
+    <span>Editing with</span>
+    <span class="seg">
+      <button class="on">Herd</button><button>Block</button><button>Classic</button>
+    </span>
+    <span>Same Gutenberg document either way.</span>
+  </div>
+
+  <div class="cols">
+
+    <main>
+      <div class="listhead">
+        <span class="count" id="blockcount">5 blocks</span>
+        <div class="acts">
+          <button class="ghost" id="collapseAll">Collapse all</button>
+          <button class="ghost" id="expandAll">Expand all</button>
+        </div>
+      </div>
+
+      <!-- HERO -->
+      <section class="block open" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype">▤</span>
+          <div class="brow-main">
+            <div class="bname">Hero</div>
+            <div class="bsum">Static image · Discover what it means to be part of the Marshall University family.</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">👁</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">🗑</button>
+          </div>
+          <span class="chev" aria-hidden="true">▾</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f">
+              <label for="heroType">Hero type</label>
+              <select id="heroType"><option>Static image</option><option>Video</option><option>Slideshow</option><option>Color block</option></select>
+            </div>
+            <div class="f">
+              <label for="ctaType">Call to action</label>
+              <select id="ctaType"><option>None</option><option>Single button</option><option>Button pair</option><option>Search bar</option></select>
+            </div>
+            <div class="f span2">
+              <label>Hero image</label>
+              <div class="media">
+                <div class="thumb">▤</div>
+                <div class="media-meta">
+                  <div class="fn">meet-marshall-hero.jpg</div>
+                  <div class="dim">2400 × 1200 · 412 KB</div>
+                  <div><button class="linkbtn">Replace</button> · <button class="linkbtn">Edit alt text</button> · <button class="linkbtn warn">Remove</button></div>
+                </div>
+              </div>
+            </div>
+            <div class="f span2">
+              <label for="subhead">Subheading</label>
+              <input id="subhead" type="text" value="Discover what it means to be part of the Marshall University family.">
+            </div>
+          </div>
+
+          <div class="opts">
+            <div class="opts-h">Display options <span id="heroOptCount">1 of 8 on</span></div>
+            <div class="pills" data-pillset="hero">
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Condensed height</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Heavy overlay</button>
+              <button class="pill" aria-pressed="true"><span class="tick">✓</span>Animate</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Center heading</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Hide breadcrumbs</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Live Your Marshall Moment header</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Homepage</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Hide top navigation</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TEASER -->
+      <section class="block" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype">¶</span>
+          <div class="brow-main">
+            <div class="bname">Teaser</div>
+            <div class="bsum">A place where you belong · 2 paragraphs</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">👁</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">🗑</button>
+          </div>
+          <span class="chev" aria-hidden="true">▾</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f span2">
+              <label for="teaserHead">Heading</label>
+              <input id="teaserHead" type="text" value="A place where you belong">
+            </div>
+            <div class="f span2">
+              <label for="teaserBody">Body</label>
+              <textarea id="teaserBody">Marshall is 12,000 students from 50 states and 60 countries, and every one of them found a way in.</textarea>
+            </div>
+            <div class="f">
+              <label for="teaserAlign">Alignment</label>
+              <select id="teaserAlign"><option>Centered</option><option>Left</option></select>
+            </div>
+            <div class="f">
+              <label for="teaserWidth">Width</label>
+              <select id="teaserWidth"><option>Narrow</option><option>Standard</option><option>Full bleed</option></select>
+            </div>
+          </div>
+          <div class="opts">
+            <div class="opts-h">Display options</div>
+            <div class="pills" data-pillset="teaser">
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Tinted background</button>
+              <button class="pill" aria-pressed="true"><span class="tick">✓</span>Top rule</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Extra top spacing</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CARDS 1 -->
+      <section class="block" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype">▦</span>
+          <div class="brow-main">
+            <div class="bname">Cards collection</div>
+            <div class="bsum">Why Marshall · 4 cards · 3 columns</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">👁</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">🗑</button>
+          </div>
+          <span class="chev" aria-hidden="true">▾</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f span2"><label for="cardsHead">Section heading</label><input id="cardsHead" type="text" value="Why Marshall"></div>
+            <div class="f"><label for="cardsCols">Columns</label><select id="cardsCols"><option>3</option><option>2</option><option>4</option></select></div>
+            <div class="f"><label for="cardsStyle">Card style</label><select id="cardsStyle"><option>Image top</option><option>Icon</option><option>Text only</option></select></div>
+          </div>
+          <div class="opts">
+            <div class="opts-h">Cards <span>drag to reorder</span></div>
+            <div class="pills" style="flex-direction:column;align-items:stretch;gap:6px">
+              <div class="pill" style="border-radius:var(--r);justify-content:flex-start;cursor:default"><span class="grip">⣿</span>Campus life</div>
+              <div class="pill" style="border-radius:var(--r);justify-content:flex-start;cursor:default"><span class="grip">⣿</span>Academics</div>
+              <div class="pill" style="border-radius:var(--r);justify-content:flex-start;cursor:default"><span class="grip">⣿</span>Athletics</div>
+              <div class="pill" style="border-radius:var(--r);justify-content:flex-start;cursor:default"><span class="grip">⣿</span>Research</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CARDS 2 -->
+      <section class="block" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype">▦</span>
+          <div class="brow-main">
+            <div class="bname">Cards collection</div>
+            <div class="bsum">Ways to visit · 6 cards · 2 columns</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">👁</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">🗑</button>
+          </div>
+          <span class="chev" aria-hidden="true">▾</span>
+        </div>
+        <div class="bbody"><div class="fgrid"><div class="f span2"><label>Section heading</label><input type="text" value="Ways to visit"></div></div></div>
+      </section>
+
+      <!-- BILLBOARD -->
+      <section class="block hidden-blk" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype">▬</span>
+          <div class="brow-main">
+            <div class="bname">Billboard</div>
+            <div class="bsum">Hidden on front end · Apply by Nov 1</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool on" data-hide title="Show on front end" aria-label="Show block">👁</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">🗑</button>
+          </div>
+          <span class="chev" aria-hidden="true">▾</span>
+        </div>
+        <div class="bbody"><div class="fgrid"><div class="f span2"><label>Message</label><input type="text" value="Apply by Nov 1"></div></div></div>
+      </section>
+
+      <button class="addblock">＋ Add block</button>
+    </main>
+
+    <!-- RAIL -->
+    <aside class="rail">
+      <div class="tabs" role="tablist">
+        <button class="on" role="tab" data-tab="page">Page</button>
+        <button role="tab" data-tab="seo">SEO</button>
+        <button role="tab" data-tab="history">History</button>
+      </div>
+
+      <div class="panel on" data-panel="page">
+        <div class="f"><label for="vis">Visibility</label><select id="vis"><option>Public</option><option>Password protected</option><option>Private</option></select></div>
+        <div class="f"><label for="parent">Parent page</label><select id="parent"><option>No parent</option><option>About</option><option>Admissions</option></select></div>
+        <div class="f"><label for="tpl">Template</label><select id="tpl"><option>Default template</option><option>Full width</option><option>Landing</option></select></div>
+        <div class="f"><label for="ord">Menu order</label><input id="ord" type="text" value="0" style="width:70px"></div>
+        <div class="f">
+          <label>Featured image</label>
+          <button class="drop" style="width:100%">＋ Set featured image</button>
+        </div>
+        <div class="f">
+          <label>Site options</label>
+          <div class="pills">
+            <button class="pill" aria-pressed="false"><span class="tick">✓</span>Hide top navigation</button>
+          </div>
+        </div>
+        <div class="meta">
+          <div><span>Author</span><b>admin</b></div>
+          <div><span>Published</span><b>Aug 19, 2019</b></div>
+          <div><span>Revisions</span><b><a href="#" data-gohistory>13</a></b></div>
+        </div>
+      </div>
+
+      <div class="panel" data-panel="seo">
+        <div class="f">
+          <label for="seoTitle">SEO title</label>
+          <input id="seoTitle" type="text" value="Meet Marshall | Marshall University">
+          <div class="counter">44 / 60</div>
+          <div class="bar"><i style="width:73%"></i></div>
+        </div>
+        <div class="f">
+          <label for="seoDesc">Meta description</label>
+          <textarea id="seoDesc">See what it means to join the Marshall family, from campus life to academics to what happens after you graduate.</textarea>
+          <div class="counter">116 / 155</div>
+          <div class="bar"><i style="width:75%"></i></div>
+        </div>
+        <div class="f"><label for="canon">Canonical URL <span class="hint">optional</span></label><input id="canon" type="text" placeholder="https://www.marshall.edu/meet-marshall"></div>
+        <div class="f">
+          <label>Indexing</label>
+          <div class="pills">
+            <button class="pill" aria-pressed="false"><span class="tick">✓</span>noindex</button>
+            <button class="pill" aria-pressed="false"><span class="tick">✓</span>nofollow</button>
+          </div>
+        </div>
+        <div class="meta"><div><span>Open Graph</span><b>Inherited</b></div><div><span>Schema</span><b>WebPage</b></div></div>
+      </div>
+
+      <div class="panel" data-panel="history">
+        <ul class="revlist">
+          <li><span class="when">3 min ago</span><span class="who">admin</span><span class="cur">Current</span></li>
+          <li><span class="when">27 min ago</span><span class="who">admin</span></li>
+          <li><span class="when">29 min ago</span><span class="who">admin</span></li>
+          <li><span class="when">Feb 11, 2026</span><span class="who">admin</span></li>
+          <li><span class="when">Sep 16, 2025</span><span class="who">admin</span></li>
+          <li><span class="when">Feb 6, 2025</span><span class="who">admin</span></li>
+        </ul>
+        <button class="btn" style="width:100%;margin-top:12px">Browse all 13 revisions</button>
+      </div>
+    </aside>
+
+  </div>
+
+  <p class="note"><b>Direction A.</b> Blocks stay in document order and read as a page outline. Title and slug move into the sticky bar. Eight metaboxes collapse into three rail tabs, and everything read-only becomes a key/value footer.</p>
+</div>
+
+<script>
+  document.querySelectorAll('[data-toggle]').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('.brow-tools')) return;
+      row.closest('[data-block]').classList.toggle('open');
+    });
+  });
+
+  document.querySelectorAll('[data-hide]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var blk = btn.closest('[data-block]');
+      var off = blk.classList.toggle('hidden-blk');
+      btn.classList.toggle('on', off);
+      btn.title = off ? 'Show on front end' : 'Hide on front end';
+    });
+  });
+
+  document.getElementById('collapseAll').addEventListener('click', function(){
+    document.querySelectorAll('[data-block]').forEach(function(b){ b.classList.remove('open'); });
+  });
+  document.getElementById('expandAll').addEventListener('click', function(){
+    document.querySelectorAll('[data-block]').forEach(function(b){ b.classList.add('open'); });
+  });
+
+  function refreshHeroCount(){
+    var set = document.querySelector('[data-pillset=hero]');
+    if(!set) return;
+    var pills = set.querySelectorAll('.pill');
+    var on = set.querySelectorAll('.pill[aria-pressed=true]').length;
+    document.getElementById('heroOptCount').textContent = on + ' of ' + pills.length + ' on';
+  }
+  document.querySelectorAll('.pill[aria-pressed]').forEach(function(p){
+    p.addEventListener('click', function(){
+      p.setAttribute('aria-pressed', p.getAttribute('aria-pressed') === 'true' ? 'false' : 'true');
+      refreshHeroCount();
+    });
+  });
+  refreshHeroCount();
+
+  function showTab(name){
+    document.querySelectorAll('.tabs button').forEach(function(b){ b.classList.toggle('on', b.dataset.tab === name); });
+    document.querySelectorAll('.panel').forEach(function(p){ p.classList.toggle('on', p.dataset.panel === name); });
+  }
+  document.querySelectorAll('.tabs button').forEach(function(b){
+    b.addEventListener('click', function(){ showTab(b.dataset.tab); });
+  });
+  document.querySelector('[data-gohistory]').addEventListener('click', function(e){ e.preventDefault(); showTab('history'); });
+</script>
+</body>
+</html>

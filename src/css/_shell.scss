@@ -1,0 +1,494 @@
+/* Screen shell: command bar, mode switcher, two-column grid, shared controls. */
+
+.herd-editor-screen {
+	color: var(--herd-ink);
+	margin: 0;
+}
+
+.herd-editor-screen :focus-visible {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: 1px;
+}
+
+/* ---------- command bar ---------- */
+
+.herd-bar {
+	align-items: center;
+	background: var(--herd-surface);
+	border-bottom: 1px solid var(--herd-line);
+	display: flex;
+	gap: 12px;
+	padding: 9px 20px;
+	position: sticky;
+	top: var(--herd-bar-top);
+	z-index: 40;
+}
+
+.herd-bar__back {
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-3);
+	font-size: 16px;
+	line-height: 1;
+	padding: 4px 6px;
+	text-decoration: none;
+}
+
+.herd-bar__back:hover,
+.herd-bar__back:focus {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-bar__id {
+	flex: 0 1 auto;
+	min-width: 0;
+}
+
+.herd-editor-screen #titlediv {
+	margin: 0;
+}
+
+.herd-editor-screen #titlediv #title {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	box-sizing: border-box;
+	display: block;
+	font-size: 15px;
+	font-weight: 600;
+	height: auto;
+	line-height: 1.4;
+	margin: 0 0 0 -6px;
+	max-width: 420px;
+	padding: 2px 6px;
+	width: 100%;
+}
+
+.herd-bar__slug {
+	align-items: center;
+	margin: 0;
+	color: var(--herd-ink-3);
+	display: flex;
+	font-size: 11px;
+	gap: 2px;
+	min-width: 0;
+}
+
+.herd-editor-screen #post_name {
+	background: transparent;
+	border: 1px solid transparent;
+	border-radius: var(--herd-r-sm);
+	box-shadow: none;
+	color: var(--herd-ink-2);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	height: auto;
+	line-height: 1.5;
+	margin: 0;
+	min-height: 0;
+	padding: 1px 4px;
+	width: 160px;
+}
+
+.herd-editor-screen #titlediv #title:hover,
+.herd-editor-screen #post_name:hover {
+	border-color: var(--herd-line);
+}
+
+.herd-editor-screen #titlediv #title:focus,
+.herd-editor-screen #post_name:focus {
+	background: var(--herd-surface);
+	border-color: var(--herd-green);
+	box-shadow: none;
+	outline: none;
+}
+
+.herd-bar__actions {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+	margin-left: auto;
+}
+
+.herd-bar__tools {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.herd-bar__savestate {
+	align-items: center;
+	color: var(--herd-ink-3);
+	display: flex;
+	font-size: 12px;
+	gap: 5px;
+	white-space: nowrap;
+}
+
+.herd-bar__dot {
+	background: var(--herd-green);
+	border-radius: 50%;
+	height: 6px;
+	width: 6px;
+}
+
+.herd-bar__savestate.is-dirty .herd-bar__dot {
+	background: var(--herd-warning);
+}
+
+.herd-bar__status {
+	background: var(--herd-green-tint);
+	border: 1px solid var(--herd-green-line);
+	border-radius: 20px;
+	color: var(--herd-green-ink);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .02em;
+	padding: 3px 9px;
+	white-space: nowrap;
+}
+
+.herd-bar__status.is-muted {
+	background: var(--herd-canvas);
+	border-color: var(--herd-line);
+	color: var(--herd-ink-2);
+}
+
+/* Native #preview-action / #publishing-action relocated into the bar. */
+.herd-bar__native {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+.herd-bar__native #preview-action,
+.herd-bar__native #publishing-action {
+	float: none;
+	margin: 0;
+	padding: 0;
+	text-align: left;
+}
+
+.herd-bar__native .spinner {
+	float: none;
+	margin: 0;
+}
+
+.herd-bar__native .button {
+	border-radius: var(--herd-r);
+	margin: 0;
+}
+
+.herd-bar__native #publish {
+	background: var(--herd-green-ink);
+	border-color: var(--herd-green-ink);
+	box-shadow: none;
+	color: #fff;
+	font-weight: 600;
+	text-shadow: none;
+}
+
+.herd-bar__native #publish:hover,
+.herd-bar__native #publish:focus {
+	background: var(--herd-green-ink-hover);
+	border-color: var(--herd-green-ink-hover);
+	color: #fff;
+}
+
+/* ---------- mode switcher ---------- */
+
+.herd-mode {
+	align-items: center;
+	background: var(--herd-surface);
+	border-bottom: 1px solid var(--herd-line);
+	color: var(--herd-ink-3);
+	display: flex;
+	flex-wrap: wrap;
+	font-size: 12px;
+	gap: 8px;
+	padding: 0 20px 9px;
+}
+
+.herd-seg {
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	display: inline-flex;
+	overflow: hidden;
+}
+
+.herd-seg > * {
+	background: var(--herd-surface);
+	border: 0;
+	border-right: 1px solid var(--herd-line);
+	color: var(--herd-ink-2);
+	font-size: 12px;
+	line-height: 1.4;
+	padding: 4px 10px;
+	text-decoration: none;
+}
+
+.herd-seg > *:last-child {
+	border-right: 0;
+}
+
+.herd-seg > a:hover,
+.herd-seg > a:focus {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+	text-decoration: none;
+}
+
+.herd-seg [aria-current="page"] {
+	background: var(--herd-ink);
+	color: #fff;
+	font-weight: 600;
+}
+
+/* ---------- columns ---------- */
+
+.herd-cols {
+	align-items: start;
+	display: grid;
+	gap: 20px;
+	grid-template-columns: minmax(0, 1fr) var(--herd-rail-w);
+	max-width: 1440px;
+	padding: 20px;
+}
+
+.herd-main {
+	min-width: 0;
+}
+
+/* Meta boxes wait here until src/rail.js distributes them into tabs. */
+.herd-staging {
+	display: none;
+}
+
+.no-js .herd-staging {
+	display: block;
+}
+
+.no-js .herd-rail__tabs {
+	display: none;
+}
+
+/* ---------- shared controls ---------- */
+
+.herd-btn {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink);
+	cursor: pointer;
+	font: inherit;
+	font-size: 13px;
+	padding: 6px 12px;
+}
+
+.herd-btn:hover:not(:disabled) {
+	background: var(--herd-canvas);
+	border-color: var(--herd-line-hover);
+}
+
+.herd-btn:disabled {
+	cursor: default;
+	opacity: var(--herd-disabled);
+}
+
+/*
+ * Add card and friends. Update is the only primary on the screen, so this reads
+ * as an accent rather than a second filled button competing for the same glance.
+ */
+.herd-btn--accent {
+	border-color: var(--herd-green-line);
+	color: var(--herd-green-ink);
+}
+
+.herd-btn--accent:hover:not(:disabled) {
+	background: var(--herd-green-tint);
+	border-color: var(--herd-green);
+	color: var(--herd-green-ink);
+}
+
+.herd-btn--primary {
+	background: var(--herd-green-ink);
+	border-color: var(--herd-green-ink);
+	color: #fff;
+	font-weight: 600;
+}
+
+.herd-btn--primary:hover:not(:disabled) {
+	background: var(--herd-green-ink-hover);
+	border-color: var(--herd-green-ink-hover);
+}
+
+.herd-iconbtn {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-2);
+	cursor: pointer;
+	font: inherit;
+	line-height: 1;
+	padding: 5px 8px;
+}
+
+.herd-iconbtn:hover:not(:disabled) {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-iconbtn:disabled {
+	cursor: default;
+	opacity: var(--herd-disabled);
+}
+
+.herd-ghost {
+	background: transparent;
+	border: 0;
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-2);
+	cursor: pointer;
+	font: inherit;
+	font-size: 12px;
+	padding: 4px 8px;
+}
+
+.herd-ghost:hover {
+	background: #e4e5e6;
+	color: var(--herd-ink);
+}
+
+.herd-badge {
+	background: var(--herd-canvas);
+	border-radius: 10px;
+	color: var(--herd-ink-2);
+	font-size: 11px;
+	font-weight: 400;
+	padding: 2px 8px;
+	white-space: nowrap;
+}
+
+/* Field pattern shared by core-block panels and the inserter. */
+.herd-f {
+	min-width: 0;
+}
+
+.herd-f > label {
+	color: var(--herd-ink-2);
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+.herd-f input[type="text"],
+.herd-f input[type="search"],
+.herd-f select,
+.herd-f textarea {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	box-sizing: border-box;
+	font-size: 13px;
+	margin: 0;
+	padding: 7px 9px;
+	width: 100%;
+}
+
+.herd-f textarea {
+	min-height: 60px;
+	resize: vertical;
+}
+
+.herd-f input:focus,
+.herd-f select:focus,
+.herd-f textarea:focus {
+	border-color: var(--herd-green);
+	box-shadow: 0 0 0 3px var(--herd-green-tint);
+	outline: none;
+}
+
+.herd-notice {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-left: 3px solid var(--herd-ink-3);
+	border-radius: 0 var(--herd-r) var(--herd-r) 0;
+	color: var(--herd-ink-2);
+	font-size: 13px;
+	padding: 10px 14px;
+}
+
+.herd-notice > *:first-child {
+	margin-top: 0;
+}
+
+.herd-notice > *:last-child {
+	margin-bottom: 0;
+}
+
+.herd-notice.is-info {
+	border-left-color: var(--herd-green);
+}
+
+.herd-notice.is-warning {
+	border-left-color: var(--herd-warning);
+}
+
+.herd-notice.is-error {
+	border-left-color: var(--herd-danger);
+}
+
+.herd-spinner {
+	animation: herd-spin 1s linear infinite;
+	border: 2px solid var(--herd-line);
+	border-radius: 50%;
+	border-top-color: var(--herd-green-ink);
+	display: inline-block;
+	height: 14px;
+	width: 14px;
+}
+
+@keyframes herd-spin {
+	to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1100px) {
+	.herd-cols {
+		grid-template-columns: minmax(0, 1fr);
+	}
+}
+
+@media (max-width: 782px) {
+	.herd-bar {
+		flex-wrap: wrap;
+		padding: 9px 12px;
+	}
+
+	.herd-bar__actions {
+		margin-left: 0;
+		width: 100%;
+	}
+
+	.herd-mode {
+		padding: 0 12px 9px;
+	}
+
+	.herd-cols {
+		padding: 12px;
+	}
+
+	.herd-editor-screen #title {
+		font-size: 16px;
+		max-width: none;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.herd-editor-screen * {
+		animation-duration: .001ms !important;
+		transition-duration: .001ms !important;
+	}
+}

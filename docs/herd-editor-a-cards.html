@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herd Editor — direction A, card controls</title>
+<style>
+  :root{
+    --mu-green:#00B140;
+    --mu-green-ink:#04742D;
+    --mu-green-tint:#E9F7EE;
+    --mu-green-line:#A9DDBD;
+    --ink:#1d2327;
+    --ink-2:#50575e;
+    --ink-3:#7d838a;
+    --line:#dcdcde;
+    --line-soft:#eceded;
+    --surface:#fff;
+    --canvas:#f0f0f1;
+    --chrome:#1d2327;
+    --chrome-2:#2c3338;
+    --danger:#b32d2e;
+    --r:6px;
+    --bar-h:32px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--canvas);
+    color:var(--ink);
+    font:400 13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  button{font:inherit;cursor:pointer}
+  input,select,textarea{font:inherit;color:inherit}
+  a{color:var(--mu-green-ink);text-decoration:none}
+  a:hover{text-decoration:underline}
+  :focus-visible{outline:2px solid var(--mu-green-ink);outline-offset:1px}
+
+  .adminbar{position:fixed;top:0;left:0;right:0;height:var(--bar-h);z-index:60;background:var(--chrome);color:#c3c4c7;display:flex;align-items:center;gap:18px;padding:0 12px;font-size:13px}
+  .adminbar b{color:#fff;font-weight:400}
+  .adminbar .right{margin-left:auto;display:flex;align-items:center;gap:8px}
+  .avatar{width:20px;height:20px;border-radius:50%;background:#50575e}
+
+  .sidebar{position:fixed;top:var(--bar-h);bottom:0;left:0;width:160px;background:var(--chrome);padding:8px 0;overflow:auto;z-index:50}
+  .sidebar a{display:flex;align-items:center;gap:9px;padding:8px 12px;color:#c3c4c7;font-size:13px}
+  .sidebar a:hover{background:var(--chrome-2);color:#72d99a;text-decoration:none}
+  .sidebar a.on{background:#0f1113;color:#fff;box-shadow:inset 3px 0 0 var(--mu-green)}
+  .sidebar .sep{height:1px;background:#33383d;margin:8px 12px}
+  .ico{width:16px;text-align:center;opacity:.85}
+
+  .wrap{margin:var(--bar-h) 0 0 160px;padding:0 20px 80px;max-width:1320px}
+
+  .cmdbar{position:sticky;top:var(--bar-h);z-index:40;display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--line);border-top:0;border-radius:0 0 var(--r) var(--r);padding:10px 14px}
+  .backlink{color:var(--ink-2);font-size:16px;line-height:1}
+  .idblock{min-width:0;flex:1}
+  .title-in{border:0;background:transparent;font-size:17px;font-weight:500;width:100%;padding:0;color:var(--ink)}
+  .title-in:hover,.slug-in:hover{background:var(--canvas)}
+  .slugrow{display:flex;align-items:center;font-size:11px;color:var(--ink-3);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .slug-in{border:0;background:transparent;font:inherit;color:var(--ink-2);padding:0 2px;width:150px}
+  .cmd-right{display:flex;align-items:center;gap:8px}
+  .savestate{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:5px}
+  .dot{width:6px;height:6px;border-radius:50%;background:var(--mu-green)}
+  .pill-status{font-size:11px;padding:3px 9px;border-radius:11px;background:var(--mu-green-tint);color:var(--mu-green-ink);border:1px solid var(--mu-green-line)}
+  .btn{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:var(--r);padding:5px 11px;font-size:12px}
+  .btn:hover{border-color:#8c8f94;color:var(--ink)}
+  .btn-primary{background:var(--mu-green-ink);border-color:var(--mu-green-ink);color:#fff}
+  .btn-primary:hover{background:#065c25;border-color:#065c25;color:#fff}
+  .btn-icon{border:1px solid transparent;background:transparent;color:var(--ink-3);border-radius:var(--r);padding:4px 7px;font-size:13px}
+  .btn-icon:hover{background:var(--canvas);color:var(--ink)}
+
+  .modebar{display:flex;align-items:center;gap:9px;padding:9px 2px;font-size:11px;color:var(--ink-3)}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+  .seg button{border:0;border-right:1px solid var(--line);background:var(--surface);color:var(--ink-2);padding:4px 10px;font-size:12px}
+  .seg button:last-child{border-right:0}
+  .seg button.on{background:var(--mu-green-tint);color:var(--mu-green-ink);box-shadow:inset 0 0 0 1px var(--mu-green-line)}
+
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) 268px;gap:16px;align-items:start}
+  .listhead{display:flex;align-items:center;gap:10px;padding:0 2px 8px;font-size:11px;color:var(--ink-3)}
+  .listhead .count{letter-spacing:.03em}
+  .listhead .spacer{flex:1}
+
+  .block{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-bottom:8px;overflow:hidden}
+  .block.open{border-color:#c3c4c7}
+  .block.off .brow-main{opacity:.5}
+  .brow{display:flex;align-items:center;gap:10px;padding:9px 11px;cursor:pointer;background:var(--surface)}
+  .brow:hover{background:#fbfbfc}
+  .block.open .brow{border-bottom:1px solid var(--line-soft);background:#fbfbfc}
+  .grip{color:#c3c4c7;font-size:12px;cursor:grab;letter-spacing:-2px}
+  .btype{width:24px;height:24px;border-radius:4px;background:var(--canvas);color:var(--ink-2);display:grid;place-items:center;font-size:12px;flex:none}
+  .brow-main{min-width:0;flex:1}
+  .bname{font-size:13px;font-weight:500}
+  .bsum{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .brow-tools{display:flex;gap:1px;opacity:0}
+  .brow:hover .brow-tools,.block.open .brow-tools{opacity:1}
+  .tool{border:0;background:transparent;color:var(--ink-3);border-radius:4px;padding:3px 6px;font-size:12px}
+  .tool:hover{background:var(--canvas);color:var(--ink)}
+  .tool.on{background:var(--canvas);color:var(--ink)}
+  .tool.del:hover{color:var(--danger)}
+  .chev{color:var(--ink-3);font-size:10px;transition:transform .12s}
+  .block.open .chev{transform:rotate(180deg)}
+  .bbody{display:none;padding:14px}
+  .block.open .bbody{display:block}
+
+  .fgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+  .f{min-width:0}
+  .f>label{display:block;font-size:11px;color:var(--ink-2);margin-bottom:4px}
+  .f .hint{font-size:11px;color:var(--ink-3);font-weight:400}
+  .span2{grid-column:1/-1}
+  input[type=text],select,textarea{width:100%;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:6px 8px;font-size:13px}
+  input[type=text]:focus,select:focus,textarea:focus{border-color:var(--mu-green);box-shadow:0 0 0 1px var(--mu-green)}
+  select{height:31px;padding:0 8px}
+
+  .swatches{display:flex;gap:12px}
+  .sw{border:0;background:transparent;padding:0;text-align:center;color:var(--ink-2)}
+  .sw .chip{width:28px;height:28px;border-radius:50%;display:grid;place-items:center;margin:0 auto;color:transparent;font-size:14px;border:1px solid rgba(0,0,0,.12)}
+  .sw .lbl{display:block;font-size:10px;margin-top:5px;color:var(--ink-3)}
+  .sw.on .chip{box-shadow:0 0 0 2px var(--surface),0 0 0 3px var(--ink)}
+  .sw.on .lbl{color:var(--ink)}
+  .sw[data-v=green] .chip{background:var(--mu-green);color:#fff}
+  .sw[data-v=white] .chip{background:#fff;color:var(--ink)}
+  .sw[data-v=black] .chip{background:var(--ink);color:#fff}
+  .sw[data-v=gray] .chip{background:#c3c4c7;color:var(--ink)}
+  .sw .chip span{opacity:0}
+  .sw.on .chip span{opacity:1}
+
+  .cols-glyph{display:flex;gap:2px;align-items:center}
+  .cols-glyph i{display:block;width:5px;height:14px;border-radius:1px;background:var(--ink-3)}
+  .seg button.on .cols-glyph i{background:var(--mu-green-ink)}
+
+  .styles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .style{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:8px;text-align:left}
+  .style:hover{border-color:#8c8f94}
+  .style.on{border-color:var(--mu-green);background:var(--mu-green-tint);box-shadow:inset 0 0 0 1px var(--mu-green)}
+  .prev{height:44px;border:1px solid var(--line-soft);border-radius:3px;background:var(--canvas);padding:5px;display:flex;flex-direction:column;gap:3px;margin-bottom:7px}
+  .prev .ph{height:15px;background:#c3c4c7;border-radius:1px}
+  .prev .ln{height:3px;background:#c3c4c7;border-radius:1px}
+  .prev .gl{font-size:12px;color:var(--ink-3);line-height:1}
+  .prev.full{background:#c3c4c7;border-color:#b0b1b4}
+  .style .nm{font-size:12px;color:var(--ink)}
+  .style .ds{font-size:10px;color:var(--ink-3)}
+
+  .cards{border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface);margin-top:14px}
+  .cards-h{display:flex;align-items:center;gap:9px;padding:7px 10px;background:#fbfbfc;border-bottom:1px solid var(--line)}
+  .cards-h .t{font-size:12px;font-weight:500}
+  .cards-h .n{font-size:11px;color:var(--ink-3)}
+  .cards-h .spacer{flex:1}
+
+  .card{border-bottom:1px solid var(--line-soft)}
+  .card:last-child{border-bottom:0}
+  .crow{display:flex;align-items:center;gap:10px;padding:7px 10px;cursor:pointer}
+  .crow:hover{background:#fbfbfc}
+  .cnum{font-size:11px;color:var(--ink-3);width:10px;text-align:right}
+  .cthumb{width:34px;height:34px;border-radius:4px;background:var(--canvas);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink-3);font-size:13px;flex:none}
+  .cmain{flex:1;min-width:0}
+  .cname{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .csum{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .flag{font-size:11px;color:var(--ink-2);background:var(--line-soft);border-radius:10px;padding:1px 8px;white-space:nowrap}
+  .ctools{display:flex;gap:1px;opacity:0}
+  .crow:hover .ctools,.card.open .ctools{opacity:1}
+  .cbody{display:none;padding:0 10px 14px 10px;background:#fbfbfc}
+  .card.open .cbody{display:block}
+  .card.open .crow{background:#fbfbfc}
+
+  .mediarow{display:grid;grid-template-columns:120px minmax(0,1fr);gap:14px}
+  .tile{width:120px;height:88px;border:1px solid var(--line);border-radius:4px;background:var(--canvas);display:grid;place-items:center;color:var(--ink-3);font-size:18px;margin-bottom:6px}
+  .tile-actions{display:flex;gap:4px}
+  .tile-actions .btn{flex:1;padding:3px 6px;font-size:11px}
+  .tile-actions .btn.x{flex:0 0 auto}
+
+  .mini{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);overflow:hidden}
+  .mini-tb{display:flex;gap:1px;padding:3px 5px;border-bottom:1px solid var(--line-soft)}
+  .mini-tb button{border:0;background:transparent;color:var(--ink-2);border-radius:3px;width:24px;height:22px;font-size:12px}
+  .mini-tb button:hover{background:var(--canvas);color:var(--ink)}
+  .mini-body{min-height:54px;padding:7px 9px;font-size:12px;color:var(--ink)}
+  .mini-body:empty::before{content:attr(data-ph);color:var(--ink-3)}
+  .fieldhead{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+  .fieldhead label{font-size:11px;color:var(--ink-2)}
+  .fieldhead .spacer{flex:1}
+  .fieldhead .meta{font-size:11px;color:var(--ink-3)}
+  .linkbtn{border:0;background:transparent;color:var(--mu-green-ink);font-size:11px;padding:0}
+  .linkbtn:hover{text-decoration:underline}
+
+  .linkf{display:flex;align-items:center;gap:9px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:5px 9px}
+  .linkf .g{color:var(--mu-green-ink);font-size:13px}
+  .linkf .m{flex:1;min-width:0}
+  .linkf .m b{display:block;font-size:12px;font-weight:400}
+  .linkf .m span{display:block;font-size:11px;color:var(--ink-3);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .linkf.empty{border-style:dashed;color:var(--ink-3);font-size:12px;justify-content:flex-start;gap:7px}
+
+  .iconpick{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+  .ipk{width:28px;height:28px;border:1px solid var(--line);border-radius:4px;background:var(--surface);color:var(--ink-2);font-size:13px;display:grid;place-items:center;padding:0}
+  .ipk:hover{border-color:#8c8f94}
+  .ipk.on{border-color:var(--mu-green);background:var(--mu-green-tint);color:var(--mu-green-ink);box-shadow:inset 0 0 0 1px var(--mu-green)}
+  .ipk.more{font-size:10px;color:var(--ink-3)}
+
+  .notice{display:none;align-items:center;gap:10px;border:1px solid var(--mu-green-line);background:var(--mu-green-tint);border-radius:var(--r);padding:8px 10px;margin-top:10px;font-size:12px;color:var(--mu-green-ink)}
+  .notice.show{display:flex}
+  .notice .spacer{flex:1}
+
+  .opts{margin-top:14px;border-top:1px solid var(--line-soft);padding-top:11px}
+  .opts-h{font-size:11px;color:var(--ink-2);margin-bottom:7px;display:flex;gap:8px}
+  .opts-h span{color:var(--ink-3)}
+  .pills{display:flex;flex-wrap:wrap;gap:6px}
+  .pill{border:1px solid var(--line);background:var(--surface);color:var(--ink-2);border-radius:14px;padding:4px 11px;font-size:12px;display:inline-flex;align-items:center;gap:5px}
+  .pill:hover{border-color:#8c8f94}
+  .pill .tick{opacity:0;font-size:10px;width:0;transition:width .1s}
+  .pill[aria-pressed=true]{background:var(--mu-green-tint);border-color:var(--mu-green-line);color:var(--mu-green-ink)}
+  .pill[aria-pressed=true] .tick{opacity:1;width:auto}
+  .pill.warn[aria-pressed=true]{background:var(--canvas);border-color:#c3c4c7;color:var(--ink-2)}
+
+  .rail{position:sticky;top:calc(var(--bar-h) + 62px);background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+  .rail-h{padding:9px 12px;border-bottom:1px solid var(--line-soft);font-size:12px;font-weight:500}
+  .rail-b{padding:11px 12px}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:12px;border-bottom:1px solid var(--line-soft)}
+  .kv:last-child{border-bottom:0}
+  .kv .k{color:var(--ink-3)}
+  .rail .f{margin-bottom:10px}
+
+  @media (max-width:1100px){
+    .cols{grid-template-columns:minmax(0,1fr)}
+    .rail{position:static}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="adminbar">
+  <b>⌂ MU Old Local</b><span>＋ New</span><span>Local Site Super Admin Tools</span>
+  <div class="right"><span>Howdy, admin</span><div class="avatar"></div></div>
+</div>
+
+<nav class="sidebar">
+  <a href="#"><span class="ico">◉</span>Dashboard</a>
+  <a href="#"><span class="ico">✎</span>Posts</a>
+  <a href="#"><span class="ico">▣</span>Media</a>
+  <a href="#"><span class="ico">▤</span>Forms</a>
+  <a class="on" href="#"><span class="ico">▦</span>Pages</a>
+  <a href="#"><span class="ico">⚯</span>Links</a>
+  <a href="#"><span class="ico">≡</span>Online Pages</a>
+  <a href="#"><span class="ico">≡</span>Program Pages</a>
+  <a href="#"><span class="ico">◫</span>Academic Maps</a>
+  <a href="#"><span class="ico">☺</span>Profiles</a>
+  <div class="sep"></div>
+  <a href="#"><span class="ico">✿</span>Appearance</a>
+  <a href="#"><span class="ico">⊕</span>Plugins</a>
+  <a href="#"><span class="ico">⚒</span>Tools</a>
+  <a href="#"><span class="ico">⚙</span>Settings</a>
+  <a href="#"><span class="ico">▥</span>ACF</a>
+</nav>
+
+<div class="wrap">
+
+  <header class="cmdbar">
+    <a class="backlink" href="#" aria-label="Back to pages">←</a>
+    <div class="idblock">
+      <input class="title-in" value="Meet Marshall" aria-label="Page title">
+      <div class="slugrow"><span>marshall.edu/</span><input class="slug-in" value="meet-marshall" aria-label="Page slug"></div>
+    </div>
+    <div class="cmd-right">
+      <span class="savestate"><span class="dot"></span>Saved 3 min ago</span>
+      <span class="pill-status">Published</span>
+      <button class="btn-icon" title="Undo" aria-label="Undo">↶</button>
+      <button class="btn-icon" title="Redo" aria-label="Redo">↷</button>
+      <button class="btn">Preview</button>
+      <button class="btn btn-primary">Update</button>
+    </div>
+  </header>
+
+  <div class="modebar">
+    <span>Editing with</span>
+    <span class="seg"><button class="on">Herd</button><button>Block</button><button>Classic</button></span>
+    <span>Same Gutenberg document either way.</span>
+  </div>
+
+  <div class="cols">
+    <main>
+      <div class="listhead">
+        <span class="count" id="blockCount">5 blocks</span>
+        <span class="spacer"></span>
+        <button class="btn" id="collapseAll">Collapse all</button>
+        <button class="btn">＋ Add block</button>
+      </div>
+
+      <section class="block" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype" aria-hidden="true">▣</span>
+          <div class="brow-main">
+            <div class="bname">Hero</div>
+            <div class="bsum">Static image · Discover what it means to be part of the Marshall University family</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">◎</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">✕</button>
+          </div>
+          <span class="chev" aria-hidden="true">▼</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f"><label>Hero type</label><select><option>Static image</option><option>Video</option><option>Slideshow</option></select></div>
+            <div class="f"><label>Background style</label><select><option>Top left</option><option>Center</option><option>Cover</option></select></div>
+          </div>
+          <div class="opts">
+            <div class="opts-h">Display options <span id="heroCount">1 of 6 on</span></div>
+            <div class="pills" data-pillset>
+              <button class="pill" aria-pressed="true"><span class="tick">✓</span>Animate</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Heavy overlay</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Center heading</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Hide breadcrumbs</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Marshall Moment header</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Homepage</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype" aria-hidden="true">¶</span>
+          <div class="brow-main">
+            <div class="bname">Teaser</div>
+            <div class="bsum">Get to know us · Top right · Image</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">◎</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">✕</button>
+          </div>
+          <span class="chev" aria-hidden="true">▼</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f span2"><label>Heading</label><input type="text" value="Get to know us"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block open" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype" aria-hidden="true">▦</span>
+          <div class="brow-main">
+            <div class="bname">Cards collection</div>
+            <div class="bsum">Meet the Marshall family · Minimal · 4 cards, 3 per row</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">◎</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">✕</button>
+          </div>
+          <span class="chev" aria-hidden="true">▼</span>
+        </div>
+
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f"><label>Heading</label><input type="text" value="Meet the Marshall family"></div>
+            <div class="f"><label>Subheading</label><input type="text" placeholder="Optional"></div>
+
+            <div class="f">
+              <label>Background</label>
+              <div class="swatches" data-swatches>
+                <button class="sw on" data-v="green"><span class="chip"><span>✓</span></span><span class="lbl">Green</span></button>
+                <button class="sw" data-v="white"><span class="chip"><span>✓</span></span><span class="lbl">White</span></button>
+                <button class="sw" data-v="black"><span class="chip"><span>✓</span></span><span class="lbl">Black</span></button>
+                <button class="sw" data-v="gray"><span class="chip"><span>✓</span></span><span class="lbl">Gray</span></button>
+              </div>
+            </div>
+
+            <div class="f">
+              <label>Cards per row</label>
+              <span class="seg" data-seg>
+                <button aria-label="Two per row"><span class="cols-glyph"><i></i><i></i></span></button>
+                <button class="on" aria-label="Three per row"><span class="cols-glyph"><i></i><i></i><i></i></span></button>
+                <button aria-label="Four per row"><span class="cols-glyph"><i></i><i></i><i></i><i></i></span></button>
+              </span>
+            </div>
+
+            <div class="f span2">
+              <label>Card style <span class="hint">— changes the fields on every card</span></label>
+              <div class="styles" data-styles>
+                <button class="style on" data-style="minimal">
+                  <span class="prev"><span class="ph"></span><span class="ln" style="width:60%"></span><span class="ln" style="width:82%"></span></span>
+                  <span class="nm">Minimal</span><span class="ds">Image, title, blurb</span>
+                </button>
+                <button class="style" data-style="icon">
+                  <span class="prev"><span class="gl">⚑</span><span class="ln" style="width:52%"></span><span class="ln" style="width:78%"></span></span>
+                  <span class="nm">Icon</span><span class="ds">Icon, color, blurb</span>
+                </button>
+                <button class="style" data-style="feature">
+                  <span class="prev full"></span>
+                  <span class="nm">Feature</span><span class="ds">Full-bleed image</span>
+                </button>
+              </div>
+              <div class="notice" data-notice>
+                <span data-notice-text></span>
+                <span class="spacer"></span>
+                <button class="btn" data-cancel>Keep minimal</button>
+                <button class="btn btn-primary" data-confirm>Switch anyway</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="cards" data-cards>
+            <div class="cards-h">
+              <span class="t">Cards</span>
+              <span class="n" data-cardcount>4 items</span>
+              <span class="spacer"></span>
+              <button class="btn" data-collapsecards>Collapse all</button>
+              <button class="btn">＋ Add card</button>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">1</span>
+                <span class="cthumb">▣</span>
+                <div class="cmain">
+                  <div class="cname">Outstanding undergraduate student</div>
+                  <div class="csum">2025 — Andrew Kennedy · Each year, the CIC faculty select one…</div>
+                </div>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody">
+                <div class="mediarow">
+                  <div>
+                    <div class="tile">▣</div>
+                    <div class="tile-actions"><button class="btn">Replace</button><button class="btn x" aria-label="Remove image">✕</button></div>
+                  </div>
+                  <div>
+                    <div class="fgrid">
+                      <div class="f"><label>Title</label><input type="text" value="Outstanding undergraduate student"></div>
+                      <div class="f"><label>Subtitle</label><input type="text" placeholder="Optional"></div>
+                      <div class="f span2">
+                        <div class="fieldhead"><label>Content</label><span class="spacer"></span><span class="meta">186 / 220</span><button class="linkbtn">Full editor</button></div>
+                        <div class="mini">
+                          <div class="mini-tb"><button title="Bold"><b>B</b></button><button title="Italic"><i>I</i></button><button title="Link">⚯</button><button title="List">≡</button></div>
+                          <div class="mini-body">2025 — Andrew Kennedy. Each year, the CIC faculty select one undergraduate student who has demonstrated not only academic excellence but also who works tirelessly to promote the mission of the program.</div>
+                        </div>
+                      </div>
+                      <div class="f span2">
+                        <label>Call to action</label>
+                        <div class="linkf">
+                          <span class="g">⚯</span>
+                          <span class="m"><b>Andrew Kennedy profile</b><span>/profiles/andrew-kennedy</span></span>
+                          <button class="btn">Edit</button>
+                          <button class="tool" aria-label="Clear link">✕</button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">2</span>
+                <span class="cthumb">▣</span>
+                <div class="cmain">
+                  <div class="cname">Meet the board</div>
+                  <div class="csum">No content · no link</div>
+                </div>
+                <span class="flag">2 empty</span>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody">
+                <div class="mediarow">
+                  <div>
+                    <div class="tile">▣</div>
+                    <div class="tile-actions"><button class="btn">Replace</button><button class="btn x" aria-label="Remove image">✕</button></div>
+                  </div>
+                  <div>
+                    <div class="fgrid">
+                      <div class="f"><label>Title</label><input type="text" value="Meet the board"></div>
+                      <div class="f"><label>Subtitle</label><input type="text" placeholder="Optional"></div>
+                      <div class="f span2">
+                        <div class="fieldhead"><label>Content</label><span class="spacer"></span><span class="meta">0 / 220</span><button class="linkbtn">Full editor</button></div>
+                        <div class="mini">
+                          <div class="mini-tb"><button title="Bold"><b>B</b></button><button title="Italic"><i>I</i></button><button title="Link">⚯</button><button title="List">≡</button></div>
+                          <div class="mini-body" data-ph="Short blurb, two lines or so."></div>
+                        </div>
+                      </div>
+                      <div class="f span2">
+                        <label>Call to action</label>
+                        <div class="linkf empty"><span>⚯</span><span>Choose a link</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">3</span>
+                <span class="cthumb">▣</span>
+                <div class="cmain">
+                  <div class="cname">Shared governance</div>
+                  <div class="csum">No content · no link</div>
+                </div>
+                <span class="flag">2 empty</span>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody">
+                <div class="mediarow">
+                  <div>
+                    <div class="tile">▣</div>
+                    <div class="tile-actions"><button class="btn">Replace</button><button class="btn x" aria-label="Remove image">✕</button></div>
+                  </div>
+                  <div>
+                    <div class="fgrid">
+                      <div class="f"><label>Title</label><input type="text" value="Shared governance"></div>
+                      <div class="f"><label>Subtitle</label><input type="text" placeholder="Optional"></div>
+                      <div class="f span2">
+                        <div class="fieldhead"><label>Content</label><span class="spacer"></span><span class="meta">0 / 220</span><button class="linkbtn">Full editor</button></div>
+                        <div class="mini">
+                          <div class="mini-tb"><button title="Bold"><b>B</b></button><button title="Italic"><i>I</i></button><button title="Link">⚯</button><button title="List">≡</button></div>
+                          <div class="mini-body" data-ph="Short blurb, two lines or so."></div>
+                        </div>
+                      </div>
+                      <div class="f span2">
+                        <label>Call to action</label>
+                        <div class="linkf empty"><span>⚯</span><span>Choose a link</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">4</span>
+                <span class="cthumb">▣</span>
+                <div class="cmain">
+                  <div class="cname">Our community</div>
+                  <div class="csum">No content · no link</div>
+                </div>
+                <span class="flag">2 empty</span>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody">
+                <div class="mediarow">
+                  <div>
+                    <div class="tile">▣</div>
+                    <div class="tile-actions"><button class="btn">Replace</button><button class="btn x" aria-label="Remove image">✕</button></div>
+                  </div>
+                  <div>
+                    <div class="fgrid">
+                      <div class="f"><label>Title</label><input type="text" value="Our community"></div>
+                      <div class="f"><label>Subtitle</label><input type="text" placeholder="Optional"></div>
+                      <div class="f span2">
+                        <div class="fieldhead"><label>Content</label><span class="spacer"></span><span class="meta">0 / 220</span><button class="linkbtn">Full editor</button></div>
+                        <div class="mini">
+                          <div class="mini-tb"><button title="Bold"><b>B</b></button><button title="Italic"><i>I</i></button><button title="Link">⚯</button><button title="List">≡</button></div>
+                          <div class="mini-body" data-ph="Short blurb, two lines or so."></div>
+                        </div>
+                      </div>
+                      <div class="f span2">
+                        <label>Call to action</label>
+                        <div class="linkf empty"><span>⚯</span><span>Choose a link</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fgrid" style="margin-top:14px">
+            <div class="f span2">
+              <label>Collection call to action</label>
+              <div class="linkf empty"><span>⚯</span><span>Choose a link</span></div>
+            </div>
+          </div>
+
+          <div class="opts">
+            <div class="opts-h">Display options <span data-optcount>0 of 3 on</span></div>
+            <div class="pills" data-pillset>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Animate</button>
+              <button class="pill" aria-pressed="false"><span class="tick">✓</span>Fancy</button>
+              <button class="pill warn" aria-pressed="false"><span class="tick">◎</span>Hidden on front end</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block open" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype" aria-hidden="true">▦</span>
+          <div class="brow-main">
+            <div class="bname">Cards collection</div>
+            <div class="bsum">Stay up to date · Icon · 3 cards, 3 per row</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">◎</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">✕</button>
+          </div>
+          <span class="chev" aria-hidden="true">▼</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f"><label>Heading</label><input type="text" value="Stay up to date"></div>
+            <div class="f"><label>Subheading</label><input type="text" placeholder="Optional"></div>
+          </div>
+
+          <div class="cards">
+            <div class="cards-h">
+              <span class="t">Cards</span><span class="n">3 items</span>
+              <span class="spacer"></span>
+              <button class="btn" data-collapsecards>Collapse all</button>
+              <button class="btn">＋ Add card</button>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">1</span>
+                <span class="cthumb">⚑</span>
+                <div class="cmain">
+                  <div class="cname">Latest news</div>
+                  <div class="csum">White · Check out the latest Marshall news and information.</div>
+                </div>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody">
+                <div class="fgrid">
+                  <div class="f">
+                    <label>Icon</label>
+                    <select><option>Announcement</option><option>Calendar</option><option>Map pin</option></select>
+                    <div class="iconpick" data-iconpick>
+                      <button class="ipk on" aria-label="Announcement">⚑</button>
+                      <button class="ipk" aria-label="Calendar">▤</button>
+                      <button class="ipk" aria-label="Map pin">⚲</button>
+                      <button class="ipk" aria-label="Book">▤</button>
+                      <button class="ipk" aria-label="Star">✦</button>
+                      <button class="ipk more" aria-label="More icons">+42</button>
+                    </div>
+                  </div>
+                  <div class="f">
+                    <label>Card color</label>
+                    <div class="swatches" data-swatches>
+                      <button class="sw on" data-v="white"><span class="chip"><span>✓</span></span><span class="lbl">White</span></button>
+                      <button class="sw" data-v="green"><span class="chip"><span>✓</span></span><span class="lbl">Green</span></button>
+                      <button class="sw" data-v="gray"><span class="chip"><span>✓</span></span><span class="lbl">Gray</span></button>
+                    </div>
+                  </div>
+                  <div class="f span2"><label>Title</label><input type="text" value="Latest news"></div>
+                  <div class="f span2">
+                    <div class="fieldhead"><label>Content</label><span class="spacer"></span><span class="meta">61 / 220</span><button class="linkbtn">Full editor</button></div>
+                    <div class="mini">
+                      <div class="mini-tb"><button title="Bold"><b>B</b></button><button title="Italic"><i>I</i></button><button title="Link">⚯</button><button title="List">≡</button></div>
+                      <div class="mini-body">Check out the latest Marshall news and information.</div>
+                    </div>
+                  </div>
+                  <div class="f span2">
+                    <label>Call to action</label>
+                    <div class="linkf">
+                      <span class="g">⚯</span>
+                      <span class="m"><b>Marshall news</b><span>/news</span></span>
+                      <button class="btn">Edit</button>
+                      <button class="tool" aria-label="Clear link">✕</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">2</span>
+                <span class="cthumb">▤</span>
+                <div class="cmain">
+                  <div class="cname">Upcoming events</div>
+                  <div class="csum">White · Find out what's going on and what's coming up at Marshall.</div>
+                </div>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody"></div>
+            </div>
+
+            <div class="card" data-card>
+              <div class="crow" data-cardtoggle>
+                <span class="grip" aria-hidden="true">⣿</span>
+                <span class="cnum">3</span>
+                <span class="cthumb">▤</span>
+                <div class="cmain">
+                  <div class="cname">Academic calendar</div>
+                  <div class="csum">White · Stay current on academic dates, deadlines, and holidays.</div>
+                </div>
+                <span class="ctools">
+                  <button class="tool" title="Duplicate" aria-label="Duplicate card">⧉</button>
+                  <button class="tool del" title="Remove" aria-label="Remove card">✕</button>
+                </span>
+                <span class="chev" aria-hidden="true">▼</span>
+              </div>
+              <div class="cbody"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="block" data-block>
+        <div class="brow" data-toggle>
+          <span class="grip" aria-hidden="true">⣿</span>
+          <span class="btype" aria-hidden="true">◫</span>
+          <div class="brow-main">
+            <div class="bname">Call to action</div>
+            <div class="bsum">Ready to become a member of the Herd? · Green</div>
+          </div>
+          <div class="brow-tools">
+            <button class="tool" data-hide title="Hide on front end" aria-label="Hide block">◎</button>
+            <button class="tool" title="Duplicate" aria-label="Duplicate block">⧉</button>
+            <button class="tool del" title="Remove" aria-label="Remove block">✕</button>
+          </div>
+          <span class="chev" aria-hidden="true">▼</span>
+        </div>
+        <div class="bbody">
+          <div class="fgrid">
+            <div class="f span2"><label>Heading</label><input type="text" value="Ready to become a member of the Herd?"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <aside class="rail">
+      <div class="rail-h">Page</div>
+      <div class="rail-b">
+        <div class="f"><label>Parent</label><select><option>(no parent)</option></select></div>
+        <div class="f"><label>Template</label><select><option>Default template</option></select></div>
+        <div class="kv"><span class="k">Status</span><span>Published</span></div>
+        <div class="kv"><span class="k">Visibility</span><span>Public</span></div>
+        <div class="kv"><span class="k">Published</span><span>19 Aug 2019</span></div>
+        <div class="kv"><span class="k">Revisions</span><a href="#">13</a></div>
+        <div class="kv"><span class="k">Author</span><span>admin</span></div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('[data-toggle]').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('.brow-tools')) return;
+      row.closest('[data-block]').classList.toggle('open');
+    });
+  });
+
+  document.querySelectorAll('[data-cardtoggle]').forEach(function(row){
+    row.addEventListener('click', function(e){
+      if(e.target.closest('.ctools')) return;
+      row.closest('[data-card]').classList.toggle('open');
+    });
+  });
+
+  document.getElementById('collapseAll').addEventListener('click', function(){
+    var any = document.querySelector('[data-block].open');
+    document.querySelectorAll('[data-block]').forEach(function(b){ b.classList.toggle('open', !any); });
+    this.textContent = any ? 'Expand all' : 'Collapse all';
+  });
+
+  document.querySelectorAll('[data-collapsecards]').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var scope = btn.closest('[class*=cards]');
+      scope.querySelectorAll('[data-card]').forEach(function(c){ c.classList.remove('open'); });
+    });
+  });
+
+  document.querySelectorAll('[data-swatches]').forEach(function(set){
+    set.querySelectorAll('.sw').forEach(function(sw){
+      sw.addEventListener('click', function(){
+        set.querySelectorAll('.sw').forEach(function(s){ s.classList.remove('on'); });
+        sw.classList.add('on');
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-seg]').forEach(function(set){
+    set.querySelectorAll('button').forEach(function(b){
+      b.addEventListener('click', function(){
+        set.querySelectorAll('button').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-iconpick]').forEach(function(set){
+    set.querySelectorAll('.ipk').forEach(function(b){
+      b.addEventListener('click', function(){
+        if(b.classList.contains('more')) return;
+        set.querySelectorAll('.ipk').forEach(function(x){ x.classList.remove('on'); });
+        b.classList.add('on');
+        var card = b.closest('[data-card]');
+        if(card) card.querySelector('.cthumb').textContent = b.textContent;
+      });
+    });
+  });
+
+  document.querySelectorAll('[data-pillset]').forEach(function(set){
+    var out = set.parentElement.querySelector('[data-optcount], #heroCount');
+    function refresh(){
+      if(!out) return;
+      var on = set.querySelectorAll('[aria-pressed=true]').length;
+      out.textContent = on + ' of ' + set.querySelectorAll('.pill').length + ' on';
+    }
+    set.querySelectorAll('.pill').forEach(function(p){
+      p.addEventListener('click', function(){
+        var on = p.getAttribute('aria-pressed') === 'true';
+        p.setAttribute('aria-pressed', on ? 'false' : 'true');
+        if(p.classList.contains('warn')){
+          p.closest('[data-block]').classList.toggle('off', !on);
+        }
+        refresh();
+      });
+    });
+    refresh();
+  });
+
+  document.querySelectorAll('[data-hide]').forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var off = btn.classList.toggle('on');
+      btn.closest('[data-block]').classList.toggle('off', off);
+      btn.title = off ? 'Show on front end' : 'Hide on front end';
+    });
+  });
+
+  document.querySelectorAll('[data-styles]').forEach(function(set){
+    var notice = set.parentElement.querySelector('[data-notice]');
+    var text = notice.querySelector('[data-notice-text]');
+    var pending = null;
+    var loss = {
+      minimal: 'Keeps title, content, and link. Clears the icon and color on 4 cards.',
+      icon: 'Keeps title, content, and link. Clears the image on 4 cards.',
+      feature: 'Keeps title and image. Clears the blurb and subtitle on 4 cards.'
+    };
+    function apply(btn){
+      set.querySelectorAll('.style').forEach(function(s){ s.classList.remove('on'); });
+      btn.classList.add('on');
+      notice.classList.remove('show');
+      pending = null;
+    }
+    set.querySelectorAll('.style').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        if(btn.classList.contains('on')) return;
+        pending = btn;
+        text.textContent = loss[btn.dataset.style];
+        notice.classList.add('show');
+      });
+    });
+    notice.querySelector('[data-confirm]').addEventListener('click', function(){ if(pending) apply(pending); });
+    notice.querySelector('[data-cancel]').addEventListener('click', function(){ notice.classList.remove('show'); pending = null; });
+  });
+</script>
+</body>
+</html>

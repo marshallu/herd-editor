@@ -1,0 +1,148 @@
+/* Right rail: tabs plus native meta boxes relocated into the panels. */
+
+.herd-rail {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	min-width: 0;
+	overflow: hidden;
+	position: sticky;
+	top: calc(var(--herd-bar-top) + 96px);
+}
+
+.herd-rail__tabs {
+	background: var(--herd-canvas);
+	border-bottom: 1px solid var(--herd-line);
+	display: flex;
+}
+
+.herd-rail__tab {
+	background: transparent;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	flex: 1;
+	font: inherit;
+	font-size: 12px;
+	font-weight: 600;
+	padding: 10px 4px;
+}
+
+.herd-rail__tab:hover {
+	color: var(--herd-ink);
+}
+
+.herd-rail__tab[aria-selected="true"] {
+	background: var(--herd-surface);
+	border-bottom-color: var(--herd-green);
+	color: var(--herd-ink);
+}
+
+.herd-rail__tab[hidden] {
+	display: none;
+}
+
+.herd-rail__panel {
+	padding: 6px 14px 14px;
+}
+
+.herd-rail__panel[hidden] {
+	display: none;
+}
+
+.herd-rail__empty {
+	color: var(--herd-ink-3);
+	font-size: 12px;
+	margin: 8px 0;
+}
+
+/* Flatten core postbox chrome inside the rail. */
+.herd-editor-screen .herd-rail__panel .postbox {
+	background: transparent;
+	border: 0;
+	border-top: 1px solid var(--herd-line-soft);
+	box-shadow: none;
+	margin: 0;
+	min-width: 0;
+}
+
+.herd-editor-screen .herd-rail__panel .postbox:first-child {
+	border-top: 0;
+}
+
+.herd-editor-screen .herd-rail__panel .postbox-header {
+	border: 0;
+	padding: 0;
+}
+
+.herd-editor-screen .herd-rail__panel .postbox .hndle {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	padding: 14px 0 6px;
+	text-transform: uppercase;
+}
+
+.herd-editor-screen .herd-rail__panel .handle-actions,
+.herd-editor-screen .herd-rail__panel .handlediv,
+.herd-editor-screen .herd-rail__panel .handle-order-higher,
+.herd-editor-screen .herd-rail__panel .handle-order-lower {
+	display: none;
+}
+
+.herd-editor-screen .herd-rail__panel .postbox .inside {
+	margin: 0;
+	padding: 0 0 12px;
+}
+
+/* Publish box remnants: the Update and Preview actions live in the command bar. */
+.herd-editor-screen .herd-rail__panel #minor-publishing-actions,
+.herd-editor-screen .herd-rail__panel #major-publishing-actions,
+.herd-editor-screen .herd-rail__panel #misc-publishing-actions {
+	background: transparent;
+	border: 0;
+	padding: 0;
+}
+
+.herd-editor-screen .herd-rail__panel #minor-publishing {
+	border-bottom: 0;
+	box-shadow: none;
+}
+
+.herd-editor-screen .herd-rail__panel .misc-pub-section {
+	border-bottom: 0;
+	padding: 4px 0;
+}
+
+.herd-editor-screen .herd-rail__panel #major-publishing-actions {
+	display: flex;
+	justify-content: flex-start;
+	padding-top: 8px;
+}
+
+.herd-editor-screen .herd-rail__panel #delete-action {
+	line-height: 1;
+}
+
+.herd-editor-screen .herd-rail__panel .submitbox .submitdelete {
+	color: var(--herd-danger);
+}
+
+/* Meta boxes sent back to the main column by the herd_editor_rail_tabs filter. */
+.herd-main__boxes {
+	margin-top: 20px;
+}
+
+.herd-editor-screen .herd-main__boxes .postbox {
+	border-color: var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+}
+
+@media (max-width: 1100px) {
+	.herd-rail {
+		position: static;
+	}
+}

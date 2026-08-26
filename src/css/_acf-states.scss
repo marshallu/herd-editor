@@ -1,0 +1,209 @@
+/*
+ * Field states and chrome shared by every ACF surface on the Herd screen.
+ *
+ * Block forms and postboxes are laid out differently, but a validation error, a
+ * required marker and a tab strip should read identically in both. Everything
+ * here is state or chrome that carries no layout assumption, so it applies to
+ * all three scopes at once.
+ *
+ * Layout lives in _acf.scss (block forms) and _acf-boxes.scss (postboxes).
+ *
+ * Portaled widgets — the select2 dropdown and the jQuery UI datepicker calendar
+ * — attach to <body> and escape these scopes entirely. They carry their own
+ * namespace class instead; see _acf-portals.scss.
+ */
+
+$surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail__panel";
+
+@mixin on-fields($sel) {
+	@each $scope in $surfaces {
+		/*
+		 * Nested rather than interpolated as `#{$scope} #{$sel}`: when $sel is a
+		 * comma list, interpolation scopes only the first selector in it and
+		 * leaves the rest global.
+		 */
+		#{$scope} {
+			#{$sel} {
+				@content;
+			}
+		}
+	}
+}
+
+/* ---------- required and validation ---------- */
+
+/*
+ * 161 block fields and a further handful in the postboxes are marked required.
+ * ACF paints the asterisk in its own red; the danger token is the same family
+ * but is the one this editor uses everywhere else.
+ */
+@include on-fields(".acf-required") {
+	color: var(--herd-danger);
+	text-decoration: none;
+}
+
+@include on-fields(".acf-notice") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-left: 3px solid var(--herd-ink-3);
+	border-radius: 0 var(--herd-r) var(--herd-r) 0;
+	color: var(--herd-ink);
+	font-size: 12px;
+	line-height: 1.5;
+	margin: 0 0 8px;
+	padding: 7px 10px;
+	text-shadow: none;
+}
+
+@include on-fields(".acf-notice.-error, .acf-notice.-dismiss") {
+	border-left-color: var(--herd-danger);
+}
+
+@include on-fields(".acf-notice.-success") {
+	border-left-color: var(--herd-green);
+}
+
+@include on-fields(".acf-notice p") {
+	margin: 0;
+}
+
+/* ACF's own dismiss control is a sprite anchor; it is the only icon in the
+   notice, so it takes the same treatment as the other reclaimed acf-icons. */
+@include on-fields(".acf-notice .acf-notice-dismiss") {
+	color: var(--herd-ink-3);
+}
+
+@include on-fields(".acf-notice .acf-notice-dismiss:hover") {
+	color: var(--herd-danger);
+}
+
+@include on-fields(".acf-error-message") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-left: 3px solid var(--herd-danger);
+	border-radius: 0 var(--herd-r) var(--herd-r) 0;
+	color: var(--herd-ink);
+	font-size: 11px;
+	line-height: 1.45;
+	margin: 5px 0 0;
+	padding: 5px 9px;
+	text-shadow: none;
+}
+
+@include on-fields(".acf-error-message p") {
+	margin: 0;
+}
+
+/*
+ * ACF flags the field itself, not just the message. A red hairline is enough to
+ * find the field; the message underneath says what is wrong.
+ */
+@include on-fields(".acf-field.acf-error input[type='text'], .acf-field.acf-error input[type='number'], .acf-field.acf-error input[type='url'], .acf-field.acf-error input[type='email'], .acf-field.acf-error select, .acf-field.acf-error textarea") {
+	border-color: var(--herd-danger);
+}
+
+@include on-fields(".acf-field.acf-error input:focus, .acf-field.acf-error select:focus, .acf-field.acf-error textarea:focus") {
+	border-color: var(--herd-danger);
+	box-shadow: 0 0 0 3px rgba(179, 45, 46, .12);
+}
+
+/* ---------- message field ---------- */
+
+@include on-fields(".acf-field-message > .acf-input .acf-notice, .acf-field-message > .acf-input > p") {
+	background: var(--herd-canvas);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-2);
+	font-size: 12px;
+	line-height: 1.5;
+	margin: 0;
+	padding: 8px 10px;
+}
+
+/* ---------- checkbox and radio lists ---------- */
+
+@include on-fields(".acf-checkbox-list, .acf-radio-list") {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	margin: 0;
+	padding: 0;
+}
+
+@include on-fields(".acf-checkbox-list li, .acf-radio-list li") {
+	line-height: 1.4;
+	margin: 0;
+}
+
+@include on-fields(".acf-checkbox-list label, .acf-radio-list label") {
+	align-items: center;
+	color: var(--herd-ink);
+	display: flex;
+	font-size: 13px;
+	gap: 6px;
+}
+
+@include on-fields(".acf-checkbox-list input[type='checkbox'], .acf-radio-list input[type='radio']") {
+	margin: 0;
+}
+
+/* ---------- tab strip ---------- */
+
+/*
+ * Only the SEO group uses tabs, and only on the postbox surface. The strip is
+ * rebuilt as a hairline rail with a green underline on the active tab, so it
+ * reads as navigation rather than as the core admin tab chrome it ships with.
+ */
+@include on-fields(".acf-tab-wrap") {
+	background: transparent;
+	border-bottom: 1px solid var(--herd-line);
+	margin: 0 0 12px;
+}
+
+@include on-fields(".acf-tab-wrap.-left") {
+	border-bottom: 0;
+	border-right: 1px solid var(--herd-line);
+}
+
+@include on-fields(".acf-tab-group") {
+	border: 0;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 2px;
+	margin: 0;
+	padding: 0;
+}
+
+@include on-fields(".acf-tab-group li") {
+	border: 0;
+	margin: 0;
+	padding: 0;
+}
+
+@include on-fields(".acf-tab-group li a") {
+	background: transparent;
+	border: 0;
+	border-bottom: 2px solid transparent;
+	border-radius: 0;
+	color: var(--herd-ink-2);
+	display: block;
+	font-size: 12px;
+	margin: 0;
+	padding: 6px 10px;
+	text-decoration: none;
+}
+
+@include on-fields(".acf-tab-group li a:hover") {
+	color: var(--herd-ink);
+}
+
+@include on-fields(".acf-tab-group li.active a") {
+	background: transparent;
+	border-bottom-color: var(--herd-green);
+	color: var(--herd-green-ink);
+}
+
+@include on-fields(".acf-tab-group li a:focus-visible") {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}

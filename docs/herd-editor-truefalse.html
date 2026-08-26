@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herd Editor — true/false control</title>
+<style>
+:root{
+  --herd-green:#00b140; --herd-green-ink:#04742d; --herd-green-tint:#e9f7ee; --herd-green-line:#a9ddbd;
+  --herd-ink:#1d2327; --herd-ink-2:#50575e; --herd-ink-3:#7d838a;
+  --herd-line:#dcdcde; --herd-line-soft:#eceded; --herd-surface:#fff; --herd-canvas:#f0f0f1;
+  --herd-line-hover:#c3c4c7; --herd-r:6px; --herd-control-h:31px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; padding:32px 24px 80px;
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  color:var(--herd-ink); background:var(--herd-canvas);
+}
+.wrap{max-width:980px;margin:0 auto}
+h1{font-size:20px;font-weight:500;margin:0 0 6px}
+.sub{color:var(--herd-ink-2);margin:0 0 28px;max-width:70ch}
+h2{font-size:14px;font-weight:500;margin:0 0 4px}
+.note{color:var(--herd-ink-3);font-size:12px;margin:0 0 14px;max-width:74ch}
+.note b{color:var(--herd-ink-2);font-weight:500}
+.card{background:var(--herd-surface);border:1px solid var(--herd-line);border-radius:var(--herd-r);padding:18px 20px;margin:0 0 14px}
+.card--bad{border-color:#e6c9c9}
+.tag{display:inline-block;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:99px;vertical-align:middle;margin-left:8px;font-weight:600}
+.tag--bad{background:#fbeaea;color:#8a2424}
+.tag--good{background:var(--herd-green-tint);color:var(--herd-green-ink)}
+.opts{border-top:1px solid var(--herd-line-soft);margin-top:16px;padding-top:14px}
+.opts__head{display:flex;gap:10px;align-items:baseline;margin-bottom:10px}
+.opts__title{font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--herd-ink-3)}
+.opts__count{font-size:12px;color:var(--herd-ink-3)}
+.fieldlabel{font-size:11px;color:var(--herd-ink-2);display:block;margin-bottom:4px}
+.fakeinput{height:var(--herd-control-h);border:1px solid var(--herd-line);border-radius:var(--herd-r);background:var(--herd-surface);display:flex;align-items:center;padding:0 9px;color:var(--herd-ink-3)}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 16px}
+hr.sep{border:0;border-top:1px solid var(--herd-line-soft);margin:26px 0}
+
+/* ---------------- CURRENT: pill ---------------- */
+.pill{display:inline-flex;align-items:center;background:var(--herd-surface);border:1px solid var(--herd-line);border-radius:999px;padding:9px 18px;cursor:pointer;margin:0 6px 6px 0;font-size:13px;color:var(--herd-ink)}
+.pill.on{background:var(--herd-green-tint);border-color:var(--herd-green-line);color:var(--herd-green-ink);font-weight:600}
+.pill.on::before{content:"✓";font-size:12px;font-weight:700;margin-right:6px}
+.pillrow{display:flex;flex-wrap:wrap;gap:10px}
+.btnlike{display:inline-flex;align-items:center;border:1px solid var(--herd-line);border-radius:var(--herd-r);background:var(--herd-surface);color:var(--herd-ink-2);padding:5px 11px;font-size:12px}
+
+/* ---------------- A: checkbox row ---------------- */
+.cb{display:flex;align-items:flex-start;gap:9px;cursor:pointer;padding:3px 0;min-height:24px}
+.cb input{
+  appearance:none;-webkit-appearance:none;margin:0;flex:0 0 auto;
+  width:16px;height:16px;border:1px solid var(--herd-line-hover);border-radius:3px;
+  background:var(--herd-surface);cursor:pointer;position:relative;top:1px;transition:background .08s,border-color .08s;
+}
+.cb:hover input{border-color:var(--herd-ink-3)}
+.cb input:checked{background:var(--herd-green);border-color:var(--herd-green)}
+.cb input:checked::after{
+  content:"";position:absolute;left:4.5px;top:1.5px;width:4px;height:8px;
+  border:solid #fff;border-width:0 2px 2px 0;transform:rotate(42deg);
+}
+.cb input:focus-visible{outline:2px solid var(--herd-green-ink);outline-offset:1px}
+.cb__label{color:var(--herd-ink);line-height:1.35}
+.cb__hint{display:block;color:var(--herd-ink-3);font-size:11px;margin-top:1px}
+/* neutral variant: a hidden block is a state, not an enabled feature */
+.cb input.neutral:checked{background:var(--herd-ink-3);border-color:var(--herd-ink-3)}
+.cbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 20px}
+
+/* ---------------- B: small switch ---------------- */
+.sw{display:flex;align-items:center;gap:10px;cursor:pointer;padding:4px 0;min-height:26px}
+.sw input{appearance:none;-webkit-appearance:none;margin:0;flex:0 0 auto;width:30px;height:18px;border-radius:99px;background:#c3c4c7;position:relative;cursor:pointer;transition:background .12s}
+.sw input::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .12s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.sw input:checked{background:var(--herd-green)}
+.sw input:checked::after{transform:translateX(12px)}
+.sw input:focus-visible{outline:2px solid var(--herd-green-ink);outline-offset:2px}
+.swgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:2px 20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>The true/false control</h1>
+  <p class="sub">Every boolean in the Herd Editor renders through one treatment. <b>Option B shipped</b>; this page is kept as the record of what was compared and why. Real tokens, real metrics — 13px base, 6px radius, <code>#dcdcde</code> hairlines.</p>
+
+  <!-- ============ PROBLEM ============ -->
+  <h2>What ships today<span class="tag tag--bad">the problem</span></h2>
+  <p class="note">The <b>off state is indistinguishable from a button</b>. White fill, 1px border, label inside — that is exactly a <code>.btn</code>. You have to click it to find out it was a state and not an action. Compare the real button on the right:</p>
+
+  <div class="card card--bad">
+    <div style="display:flex;gap:26px;align-items:center;flex-wrap:wrap">
+      <div><span class="pill">Animate</span><div style="font-size:11px;color:var(--herd-ink-3);margin-top:4px">a toggle that is off</div></div>
+      <div style="font-size:18px;color:var(--herd-ink-3)">vs</div>
+      <div><span class="btnlike">Replace</span><div style="font-size:11px;color:var(--herd-ink-3);margin-top:4px">a button that does something</div></div>
+    </div>
+  </div>
+
+  <p class="note">Three further failures. <b>Green is overloaded</b> — the style guide reserves it for selection <em>and</em> the primary action, so a green filled chip reads as "press me". <b>The chip hugs its label</b>, so in a column of full-width fields sharing a left edge it belongs to a different UI. And <b>the label bolds when checked</b>, so the text reflows as you toggle.</p>
+
+  <div class="card card--bad">
+    <div class="grid2">
+      <div><span class="fieldlabel">Heading</span><div class="fakeinput">Discover the Marshall Brand</div></div>
+      <div><span class="fieldlabel">Subheading</span><div class="fakeinput">Empty</div></div>
+    </div>
+    <div style="margin-top:14px">
+      <span class="pill on">Use Background Image</span><br>
+      <span class="pill on">Modern</span>
+    </div>
+    <div class="opts">
+      <div class="opts__head"><span class="opts__title">Display options</span><span class="opts__count">1 of 4 on</span></div>
+      <div class="pillrow">
+        <span class="pill">Animate</span><span class="pill on">Hide heading</span><span class="pill">Center heading</span><span class="pill">Hide block</span>
+      </div>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <!-- ============ A ============ -->
+  <h2>Option A — checkbox row<span class="tag" style="background:var(--herd-canvas);color:var(--herd-ink-2)">considered</span></h2>
+  <p class="note">A native checkbox, visible in both states. Off is unmistakably an empty box; on is a green box with a tick. Nothing about either state suggests a button. The box sits on the same left edge as every field label, so the control belongs to the form. Label weight never changes.</p>
+
+  <div class="card">
+    <div class="grid2">
+      <div><span class="fieldlabel">Heading</span><div class="fakeinput">Discover the Marshall Brand</div></div>
+      <div><span class="fieldlabel">Subheading</span><div class="fakeinput">Empty</div></div>
+    </div>
+    <div style="margin-top:14px">
+      <label class="cb"><input type="checkbox" checked><span class="cb__label">Use background image<span class="cb__hint">Shows the Background Image and Modern fields.</span></span></label>
+      <label class="cb"><input type="checkbox" checked><span class="cb__label">Modern</span></label>
+    </div>
+    <div class="opts">
+      <div class="opts__head"><span class="opts__title">Display options</span><span class="opts__count">1 of 4 on</span></div>
+      <div class="cbgrid">
+        <label class="cb"><input type="checkbox"><span class="cb__label">Animate</span></label>
+        <label class="cb"><input type="checkbox" checked><span class="cb__label">Hide heading</span></label>
+        <label class="cb"><input type="checkbox"><span class="cb__label">Center heading</span></label>
+        <label class="cb"><input type="checkbox" class="neutral"><span class="cb__label">Hide block</span></label>
+      </div>
+    </div>
+  </div>
+
+  <p class="note">The grid is <code>auto-fill minmax(210px, 1fr)</code>, so a set of eleven still packs into three columns and stays scannable — denser than the pills were, because a row is 24px against the pill's 40px. <b>Hide block keeps its grey exception</b>: it fills <code>--herd-ink-3</code> rather than green, because a hidden block is a state, not an enabled feature. Try tabbing through — the focus ring lands on the box.</p>
+
+  <hr class="sep">
+
+  <!-- ============ B ============ -->
+  <h2>Option B — small switch<span class="tag tag--good">shipped</span></h2>
+  <p class="note">Reads as a state from further away, and the on/off distinction is the strongest of the three. Costs more vertical room and more pixels of colour per row, and switches usually imply an action takes effect immediately — which is untrue here, since nothing saves until Update.</p>
+
+  <div class="card">
+    <div class="grid2">
+      <div><span class="fieldlabel">Heading</span><div class="fakeinput">Discover the Marshall Brand</div></div>
+      <div><span class="fieldlabel">Subheading</span><div class="fakeinput">Empty</div></div>
+    </div>
+    <div style="margin-top:14px">
+      <label class="sw"><input type="checkbox" checked><span class="cb__label">Use background image</span></label>
+      <label class="sw"><input type="checkbox" checked><span class="cb__label">Modern</span></label>
+    </div>
+    <div class="opts">
+      <div class="opts__head"><span class="opts__title">Display options</span><span class="opts__count">1 of 4 on</span></div>
+      <div class="swgrid">
+        <label class="sw"><input type="checkbox"><span class="cb__label">Animate</span></label>
+        <label class="sw"><input type="checkbox" checked><span class="cb__label">Hide heading</span></label>
+        <label class="sw"><input type="checkbox"><span class="cb__label">Center heading</span></label>
+        <label class="sw"><input type="checkbox"><span class="cb__label">Hide block</span></label>
+      </div>
+    </div>
+  </div>
+
+  <hr class="sep">
+
+  <h2>Side by side, off state only</h2>
+  <p class="note">The test that matters: at a glance, which of these is obviously <em>not</em> a button?</p>
+  <div class="card">
+    <div style="display:flex;gap:40px;flex-wrap:wrap;align-items:center">
+      <div><span class="pill">Animate</span><div style="font-size:11px;color:var(--herd-ink-3);margin-top:6px">current</div></div>
+      <div><label class="cb"><input type="checkbox"><span class="cb__label">Animate</span></label><div style="font-size:11px;color:var(--herd-ink-3);margin-top:6px">A — checkbox</div></div>
+      <div><label class="sw"><input type="checkbox"><span class="cb__label">Animate</span></label><div style="font-size:11px;color:var(--herd-ink-3);margin-top:6px">B — switch</div></div>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

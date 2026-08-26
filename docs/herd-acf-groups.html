@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herd Editor — collapsible ACF group, all states</title>
+<style>
+:root{
+  --wp-bg:#f0f0f1;
+  --ink:#1d2327;
+  --ink-2:#3c434a;
+  --muted:#646970;
+  --line:#dcdcde;
+  --head-bg:#f6f7f7;
+  --sub-bg:#fafafa;
+  --green:#00B140;
+  --green-tint:#E9F7EE;
+  --green-line:#A9DDBD;
+  --green-ink:#00702A;
+  --red:#b32d2e;
+  --red-tint:#fcf0f1;
+  --red-line:#f0b8b8;
+  --r:6px;
+  --h:31px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--wp-bg);color:var(--ink);
+  font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+}
+.wrap{max-width:1120px;margin:0 auto;padding:32px 20px 72px}
+.pagehead{border-bottom:1px solid var(--line);padding-bottom:20px}
+.pagehead h1{font-size:20px;font-weight:600;margin:0 0 6px;letter-spacing:-.01em}
+.pagehead p{margin:0;color:var(--muted);max-width:66ch}
+
+.sec{margin-top:36px}
+.sec__head{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.sec__idx{font-size:11px;font-weight:600;letter-spacing:.08em;color:var(--muted);
+  border:1px solid var(--line);background:#fff;border-radius:4px;padding:1px 6px;line-height:1.6}
+.sec__head h2{font-size:15px;font-weight:600;margin:0;letter-spacing:-.01em}
+.sec__note{margin:0 0 14px;color:var(--muted);max-width:74ch}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 232px;gap:20px;align-items:start}
+@media (max-width:880px){.grid{grid-template-columns:minmax(0,1fr)}}
+.tradeoff{border-left:2px solid var(--line);padding:2px 0 2px 12px;margin-top:4px}
+.tradeoff dt{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.tradeoff dd{margin:0 0 12px;color:var(--ink-2)}
+.tradeoff dd:last-child{margin-bottom:0}
+
+.screen{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:16px}
+.screen + .screen{margin-top:12px}
+.statelabel{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 6px}
+.statelabel--sp{margin-top:14px}
+
+/* fields */
+.f{margin-bottom:14px}
+.f:last-child{margin-bottom:0}
+.f__label{display:block;font-weight:600;color:var(--ink-2);margin-bottom:5px}
+.req{color:var(--red);font-weight:400}
+.f__input{width:100%;height:var(--h);border:1px solid #8c8f94;border-radius:var(--r);
+  background:#fff;padding:0 9px;font:inherit;color:var(--ink)}
+.f__input:focus{outline:none;border-color:var(--green);box-shadow:0 0 0 1px var(--green)}
+.f__input--err{border-color:var(--red);box-shadow:0 0 0 1px var(--red)}
+.f__help{margin:5px 0 0;color:var(--muted);font-size:12px}
+.f__err{margin:5px 0 0;color:var(--red);font-size:12px}
+.imgrow{display:flex;gap:8px;align-items:flex-start}
+.thumb{width:88px;height:66px;border:1px solid var(--line);border-radius:var(--r);
+  background:var(--head-bg);display:flex;align-items:center;justify-content:center;color:#a7aaad}
+.thumb svg{width:20px;height:20px}
+.imgacts{display:flex;flex-direction:column;gap:4px;padding-top:2px}
+.linkbtn{background:none;border:0;padding:0;font:inherit;color:var(--ink-2);
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer;text-align:left}
+.linkbtn:hover{color:var(--green-ink)}
+.linkbtn--danger:hover{color:var(--red)}
+.rule{height:1px;background:var(--line);margin:14px 0}
+.sib{padding:10px 0;color:var(--muted)}
+.sib strong{display:block;color:var(--ink-2);font-weight:600;font-size:11px;
+  letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px}
+.pillrow{display:flex;gap:8px}
+.pill{border:1px solid var(--line);border-radius:999px;padding:5px 14px;background:#fff;color:var(--ink-2)}
+.cb{display:flex;align-items:center;gap:8px;cursor:pointer}
+.cb input{appearance:none;width:16px;height:16px;border:1px solid #8c8f94;border-radius:3px;
+  background:#fff;display:grid;place-content:center;margin:0;cursor:pointer;flex:none}
+.cb input:checked{background:var(--green);border-color:var(--green)}
+.cb input:checked::after{content:"";width:9px;height:5px;border-left:2px solid #fff;
+  border-bottom:2px solid #fff;transform:rotate(-45deg) translate(1px,-1px)}
+.cb input:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+.cb span{color:var(--ink-2)}
+
+/* ---------- THE COMPONENT ---------- */
+.g{border:1px solid var(--line);border-radius:var(--r);background:#fff;overflow:hidden}
+.g__row{width:100%;background:#fff;border:0;font:inherit;text-align:left;cursor:pointer;
+  padding:10px 12px;display:flex;align-items:center;gap:10px;min-height:41px}
+.g__row:hover{background:var(--head-bg)}
+.g__row:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+.g__chev{width:12px;height:12px;flex:none;color:var(--muted);transition:transform .15s ease}
+.g.is-open .g__chev{transform:rotate(90deg)}
+.g__title{font-weight:600;color:var(--ink);flex:none}
+.g__summary{color:var(--muted);flex:1;min-width:0;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.g__body{border-top:1px solid var(--line);padding:14px 12px;background:var(--sub-bg)}
+.g__body[hidden]{display:none}
+
+.badge{flex:none;font-size:11px;color:var(--muted);border:1px solid var(--line);
+  border-radius:999px;padding:1px 8px;background:var(--head-bg);white-space:nowrap}
+.badge--needs{color:var(--red);border-color:var(--red-line);background:var(--red-tint)}
+
+/* incomplete */
+.g--needs{border-color:var(--red-line)}
+.g--needs .g__row{background:var(--red-tint)}
+.g--needs .g__row:hover{background:#f8e6e7}
+.g--needs .g__title{color:var(--red)}
+
+/* off (gated by a toggle) */
+.g--off .g__title,.g--off .g__summary{color:var(--muted)}
+.g--off .g__title{font-weight:600}
+.g__sw{position:relative;display:inline-flex;align-items:center;flex:none;margin-right:2px}
+.g__sw input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
+.g__track{width:34px;height:19px;border-radius:999px;background:#dcdcde;border:1px solid #b6b8bb;
+  position:relative;transition:background .15s ease,border-color .15s ease}
+.g__track::after{content:"";position:absolute;top:1px;left:1px;width:15px;height:15px;
+  border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s ease}
+.g__sw input:checked + .g__track{background:var(--green);border-color:var(--green)}
+.g__sw input:checked + .g__track::after{transform:translateX(15px)}
+.g__sw input:focus-visible + .g__track{outline:2px solid var(--green);outline-offset:2px}
+.g__head{display:flex;align-items:center;gap:10px;padding:10px 12px}
+.g__head .g__row{padding:0;min-height:0;background:none;flex:1;min-width:0}
+.g__head .g__row:hover{background:none}
+.g__head .g__row:hover .g__title{color:var(--green-ink)}
+
+/* nested in a repeater row */
+.rep{border:1px solid var(--line);border-radius:var(--r);background:#fff;overflow:hidden}
+.rep__row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.rep__grip{color:#a7aaad;letter-spacing:1px;font-size:11px;flex:none}
+.rep__n{color:var(--muted);flex:none;width:12px}
+.rep__t{font-weight:600;flex:1}
+.rep__body{padding:14px 12px;background:var(--sub-bg)}
+.rep__body .g{background:#fff}
+.rep__body .g__row{background:#fff}
+.rep__body .g__body{background:var(--head-bg)}
+
+/* rules table */
+.rules{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);
+  border-radius:var(--r);overflow:hidden}
+.rules th,.rules td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.rules tr:last-child td{border-bottom:0}
+.rules th{background:var(--head-bg);font-size:11px;font-weight:600;letter-spacing:.06em;
+  text-transform:uppercase;color:var(--muted)}
+.rules td:first-child{font-weight:600;color:var(--ink-2);white-space:nowrap}
+.rules code{background:var(--head-bg);border:1px solid var(--line);border-radius:3px;
+  padding:1px 4px;font-size:12px}
+
+.flag{margin-top:36px;border:1px solid var(--red-line);background:var(--red-tint);
+  border-radius:var(--r);padding:14px 16px;max-width:74ch}
+.flag h2{font-size:14px;font-weight:600;margin:0 0 6px;color:var(--red)}
+.flag p{margin:0 0 8px;color:var(--ink-2)}
+.flag p:last-child{margin-bottom:0}
+
+@media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="pagehead">
+    <h1>ACF Group — collapsible section</h1>
+    <p>Option C worked out across every state a group can be in. The row is the whole component: a disclosure control that also reports what's inside. Click any row to open it.</p>
+  </header>
+
+  <!-- 1 -->
+  <section class="sec">
+    <div class="sec__head"><span class="sec__idx">1</span><h2>Resting states</h2></div>
+    <p class="sec__note">Complete, empty, and incomplete. The summary line carries the content; the badge carries the status. Empty says what to do rather than sitting blank.</p>
+    <div class="grid">
+      <div>
+        <p class="statelabel">Complete</p>
+        <div class="screen">
+          <div class="g" data-g>
+            <button class="g__row" type="button" data-g-toggle aria-expanded="false" aria-controls="b1">
+              <svg class="g__chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>
+              <span class="g__title">Video</span>
+              <span class="g__summary">Campus Tour · Tsf5MphHSWA</span>
+              <span class="badge">4 of 4 set</span>
+            </button>
+            <div class="g__body" id="b1" hidden>
+              <div class="f"><label class="f__label" for="i1">Video Title <span class="req">*</span></label>
+                <input class="f__input" id="i1" value="Campus Tour"></div>
+              <div class="f"><label class="f__label" for="i2">YouTube ID <span class="req">*</span></label>
+                <input class="f__input" id="i2" value="Tsf5MphHSWA"></div>
+              <div class="f"><span class="f__label">Poster image</span>
+                <div class="imgrow">
+                  <div class="thumb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5-6 6"/></svg></div>
+                  <div class="imgacts"><button class="linkbtn" type="button">Replace</button><button class="linkbtn linkbtn--danger" type="button">Remove</button></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="statelabel statelabel--sp">Empty</p>
+        <div class="screen">
+          <div class="g" data-g>
+            <button class="g__row" type="button" data-g-toggle aria-expanded="false" aria-controls="b2">
+              <svg class="g__chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>
+              <span class="g__title">Video</span>
+              <span class="g__summary">Add a title and YouTube ID to show a video</span>
+              <span class="badge">Empty</span>
+            </button>
+            <div class="g__body" id="b2" hidden>
+              <div class="f"><label class="f__label" for="i3">Video Title <span class="req">*</span></label>
+                <input class="f__input" id="i3" placeholder="e.g. Campus Tour"></div>
+              <div class="f"><label class="f__label" for="i4">YouTube ID <span class="req">*</span></label>
+                <input class="f__input" id="i4" placeholder="Tsf5MphHSWA">
+                <p class="f__help">The part after <code>v=</code> in the YouTube address.</p></div>
+            </div>
+          </div>
+        </div>
+
+        <p class="statelabel statelabel--sp">Incomplete — a required field is empty</p>
+        <div class="screen">
+          <div class="g g--needs is-open" data-g>
+            <button class="g__row" type="button" data-g-toggle aria-expanded="true" aria-controls="b3">
+              <svg class="g__chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>
+              <span class="g__title">Video</span>
+              <span class="g__summary">Campus Tour</span>
+              <span class="badge badge--needs">Needs YouTube ID</span>
+            </button>
+            <div class="g__body" id="b3">
+              <div class="f"><label class="f__label" for="i5">Video Title <span class="req">*</span></label>
+                <input class="f__input" id="i5" value="Campus Tour"></div>
+              <div class="f"><label class="f__label" for="i6">YouTube ID <span class="req">*</span></label>
+                <input class="f__input f__input--err" id="i6" placeholder="Tsf5MphHSWA">
+                <p class="f__err">Add the YouTube ID or the video won't appear on the page.</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <dl class="tradeoff">
+        <dt>Why it opens itself</dt>
+        <dd>An incomplete group forces itself open and stays open. A required field that hides behind a closed row is the one real failure mode of this pattern, so it isn't allowed to happen.</dd>
+        <dt>Summary line</dt>
+        <dd>First two filled text-ish fields, joined by a middot, truncated at the row. Never image filenames or IDs when a human-readable field exists.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="sec">
+    <div class="sec__head"><span class="sec__idx">2</span><h2>Gated by a toggle</h2></div>
+    <p class="sec__note">The Video case. The switch sits in the row and the group is its payload — off is one quiet line, and the row stops being a disclosure control because there's nothing to disclose. Flip the switches.</p>
+    <div class="grid">
+      <div>
+        <p class="statelabel">Off</p>
+        <div class="screen">
+          <div class="g g--off" data-gate>
+            <div class="g__head">
+              <label class="g__sw"><input type="checkbox" data-gate-input aria-label="Include video"><span class="g__track"></span></label>
+              <button class="g__row" type="button" data-g-toggle aria-expanded="false" aria-controls="b4" disabled data-gate-row>
+                <span class="g__title">Video</span>
+                <span class="g__summary">Turn on to embed a YouTube video below the links</span>
+              </button>
+            </div>
+            <div class="g__body" id="b4" hidden>
+              <div class="f"><label class="f__label">Video Title <span class="req">*</span></label>
+                <input class="f__input" placeholder="e.g. Campus Tour"></div>
+              <div class="f"><label class="f__label">YouTube ID <span class="req">*</span></label>
+                <input class="f__input" placeholder="Tsf5MphHSWA"></div>
+            </div>
+          </div>
+        </div>
+
+        <p class="statelabel statelabel--sp">On, collapsed — in context</p>
+        <div class="screen">
+          <div class="sib" style="padding-top:0">
+            <strong>Links · 2 items</strong>
+            <div class="pillrow"><span class="pill">Schedule a Visit</span><span class="pill">Take Virtual Tour</span></div>
+          </div>
+          <div class="rule"></div>
+          <div class="g" data-gate>
+            <div class="g__head">
+              <label class="g__sw"><input type="checkbox" checked data-gate-input aria-label="Include video"><span class="g__track"></span></label>
+              <button class="g__row" type="button" data-g-toggle aria-expanded="false" aria-controls="b5" data-gate-row>
+                <svg class="g__chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>
+                <span class="g__title">Video</span>
+                <span class="g__summary">Campus Tour · Tsf5MphHSWA</span>
+                <span class="badge">4 of 4 set</span>
+              </button>
+            </div>
+            <div class="g__body" id="b5" hidden>
+              <div class="f"><label class="f__label" for="i7">Video Title <span class="req">*</span></label>
+                <input class="f__input" id="i7" value="Campus Tour"></div>
+              <div class="f"><label class="f__label" for="i8">YouTube ID <span class="req">*</span></label>
+                <input class="f__input" id="i8" value="Tsf5MphHSWA"></div>
+              <div class="f"><span class="f__label">Poster image</span>
+                <div class="imgrow">
+                  <div class="thumb" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5-6 6"/></svg></div>
+                  <div class="imgacts"><button class="linkbtn" type="button">Replace</button><button class="linkbtn linkbtn--danger" type="button">Remove</button></div>
+                </div>
+              </div>
+              <div class="f"><label class="cb"><input type="checkbox"><span>Show title over the video</span></label></div>
+            </div>
+          </div>
+          <div class="rule"></div>
+          <div class="sib">
+            <strong>Display options</strong>
+            <div class="pillrow"><span class="pill">Animate</span><span class="pill">Hide block</span></div>
+          </div>
+        </div>
+      </div>
+      <dl class="tradeoff">
+        <dt>What changed</dt>
+        <dd>The standalone "Include Video" pill is gone. The switch and the fields it governs are one object, so there's no way to read them as unrelated neighbors.</dd>
+        <dt>Off behavior</dt>
+        <dd>Values are kept, not cleared — turning it back on restores what was there. Off never shows a validation state, since nothing is required for a group that isn't shipping.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="sec">
+    <div class="sec__head"><span class="sec__idx">3</span><h2>Nested inside a repeater row</h2></div>
+    <p class="sec__note">The depth test. Row border, group border, and field borders are three nested boxes, so the group drops its own fill and takes the row's tint one step darker instead of stacking another white card.</p>
+    <div class="grid">
+      <div>
+        <div class="screen">
+          <div class="rep">
+            <div class="rep__row">
+              <span class="rep__grip" aria-hidden="true">⋮⋮</span>
+              <span class="rep__n">1</span>
+              <span class="rep__t">Schedule a Visit</span>
+              <span class="badge">Web Link</span>
+            </div>
+            <div class="rep__body">
+              <div class="f"><label class="f__label" for="i9">Label</label>
+                <input class="f__input" id="i9" value="Schedule a Visit"></div>
+              <div class="g" data-g>
+                <button class="g__row" type="button" data-g-toggle aria-expanded="false" aria-controls="b6">
+                  <svg class="g__chev" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 2l4 4-4 4"/></svg>
+                  <span class="g__title">Tracking</span>
+                  <span class="g__summary">visit-cta · admissions</span>
+                  <span class="badge">2 of 3 set</span>
+                </button>
+                <div class="g__body" id="b6" hidden>
+                  <div class="f"><label class="f__label" for="i10">Campaign name</label>
+                    <input class="f__input" id="i10" value="visit-cta"></div>
+                  <div class="f"><label class="f__label" for="i11">Source</label>
+                    <input class="f__input" id="i11" value="admissions"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <dl class="tradeoff">
+        <dt>Depth cap</dt>
+        <dd>Two levels of collapsible, maximum. A group inside a group renders as option B's left rail instead — a third fold is a place for content to get lost.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="sec">
+    <div class="sec__head"><span class="sec__idx">4</span><h2>Rules</h2></div>
+    <p class="sec__note">What the component decides on its own, so the same group behaves the same way in every block.</p>
+    <table class="rules">
+      <tr><th>Rule</th><th>Behavior</th></tr>
+      <tr><td>Default state</td><td>Collapsed when every required field is filled. Open when the group is incomplete, or when it's the only group on the screen.</td></tr>
+      <tr><td>Summary line</td><td>First two non-empty text, textarea, select, or link-label fields, joined by <code>·</code>. Falls back to the empty-state invitation. Never shows a filename, post ID, or raw URL when a labeled field exists.</td></tr>
+      <tr><td>Badge</td><td><code>n of n set</code> when complete or partial · <code>Empty</code> when nothing is filled · <code>Needs [field]</code> when a required field is missing. Counts only fields the editor can see — conditionally hidden fields don't count against the total.</td></tr>
+      <tr><td>Forced open</td><td>An incomplete group opens on load and can't be collapsed until the required field is filled. Save with one still open scrolls to it.</td></tr>
+      <tr><td>Gated groups</td><td>Switch lives in the row, left of the title. Off collapses and disables the disclosure, keeps stored values, and suppresses validation.</td></tr>
+      <tr><td>Depth</td><td>Two collapsible levels maximum. Deeper nesting falls back to a left rail.</td></tr>
+      <tr><td>Keyboard</td><td>Row is a real <code>&lt;button&gt;</code> with <code>aria-expanded</code> and <code>aria-controls</code>. The switch is a separate tab stop that doesn't trigger the disclosure.</td></tr>
+    </table>
+  </section>
+
+  <div class="flag">
+    <h2>One thing the style guide doesn't cover</h2>
+    <p>The guide reserves <code>#b32d2e</code> for destructive hover only, but this component needs a validation color — the "Needs YouTube ID" badge and the errored input above are both using it. That's a conflict, not an omission, so it needs a decision rather than a quiet override.</p>
+    <p>My recommendation: name <code>#b32d2e</code> as the error color outright, with <code>#fcf0f1</code> tint and <code>#f0b8b8</code> line, and keep destructive hover as a second use of the same value. Two meanings for one red is fine when both mean "this needs your attention."</p>
+  </div>
+
+</div>
+
+<script>
+document.querySelectorAll('[data-g-toggle]').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    if (btn.disabled) return;
+    var g = btn.closest('.g');
+    var body = document.getElementById(btn.getAttribute('aria-controls'));
+    var open = btn.getAttribute('aria-expanded') === 'true';
+    btn.setAttribute('aria-expanded', String(!open));
+    g.classList.toggle('is-open', !open);
+    if (body) body.hidden = open;
+  });
+});
+
+document.querySelectorAll('[data-gate-input]').forEach(function(input){
+  input.addEventListener('change', function(){
+    var g = input.closest('[data-gate]');
+    var row = g.querySelector('[data-gate-row]');
+    var body = g.querySelector('.g__body');
+    var summary = g.querySelector('.g__summary');
+    var on = input.checked;
+    g.classList.toggle('g--off', !on);
+    row.disabled = !on;
+    if (!on){
+      g.classList.remove('is-open');
+      row.setAttribute('aria-expanded','false');
+      if (body) body.hidden = true;
+      summary.textContent = 'Turn on to embed a YouTube video below the links';
+    } else {
+      summary.textContent = 'Campus Tour · Tsf5MphHSWA';
+    }
+  });
+});
+</script>
+</body>
+</html>

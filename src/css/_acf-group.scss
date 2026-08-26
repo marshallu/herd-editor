@@ -1,0 +1,251 @@
+/*
+ * ACF group fields as collapsible sections.
+ *
+ * Built by src/ui/acf/group.js, which inserts the header button between the
+ * group's own label and its `.acf-input`. The vocabulary is the repeater's —
+ * same card, same header strip metrics, same chevron — because the two are the
+ * same bargain: a row that carries enough summary that you do not have to open
+ * it to know what is inside.
+ *
+ * DOM shape:
+ *   .acf-field-group.herd-group
+ *     > .acf-label                     (hidden)
+ *     > .herd-grouprow                 (button)
+ *     > .acf-input > .acf-fields > .acf-field...
+ */
+
+@use './widths';
+
+$host: ".herd-editor__field-host";
+
+/*
+ * `.acf-fields >` is not decoration: the block-form reset in _acf.scss is
+ *
+ *   #{$host} > div > .acf-block-fields > .acf-field { border-top: 0 }
+ *
+ * which is three classes and a type, and so outranks a plain `#{$host}
+ * .herd-group`. The card came out with a left, right and bottom edge and no top
+ * one. Every surface that holds a group — the block form, a repeater row's
+ * `td.acf-fields`, a flexible layout — puts it inside an `.acf-fields`.
+ */
+#{$host} .acf-fields > .acf-field.herd-group {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	overflow: hidden;
+}
+
+/* The header carries the label now; two of them is one too many. */
+#{$host} .herd-group > .acf-label {
+	display: none;
+}
+
+/* ---------- the header row ---------- */
+
+/*
+ * A real `<button>`, so `aria-expanded` means something and the row is a tab
+ * stop for free. That inherits none of the form's typography, hence the reset.
+ */
+/* The repeater header's metrics exactly; the two are the same object. */
+#{$host} .herd-grouprow {
+	align-items: center;
+	background: #fbfbfc;
+	border: 0;
+	box-sizing: border-box;
+	color: inherit;
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	gap: 9px;
+	margin: 0;
+	min-height: var(--herd-header-h);
+	padding: 7px 10px;
+	text-align: left;
+	width: 100%;
+}
+
+#{$host} .herd-grouprow:hover {
+	background: var(--herd-canvas);
+}
+
+#{$host} .herd-grouprow:focus-visible {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+.herd-grouprow__title {
+	color: var(--herd-ink);
+	flex: none;
+	font-size: 13px;
+	font-weight: 500;
+}
+
+/* The summary takes what is left and gives it back at the ellipsis. */
+.herd-grouprow__summary {
+	color: var(--herd-ink-3);
+	flex: 1;
+	font-size: 11px;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-grouprow__chev {
+	color: var(--herd-ink-3);
+	flex: none;
+	font-size: 16px;
+	height: 16px;
+	line-height: 1;
+	transition: transform .15s ease;
+	width: 16px;
+}
+
+#{$host} .herd-group.is-open .herd-grouprow__chev {
+	transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.herd-grouprow__chev {
+		transition: none;
+	}
+}
+
+/* ---------- the badge ---------- */
+
+.herd-badge[hidden] {
+	display: none;
+}
+
+.herd-badge {
+	background: var(--herd-canvas);
+	border: 1px solid var(--herd-line);
+	border-radius: 999px;
+	color: var(--herd-ink-3);
+	flex: none;
+	font-size: 11px;
+	line-height: 1.6;
+	padding: 0 8px;
+	white-space: nowrap;
+}
+
+.herd-badge--needs {
+	background: var(--herd-danger-tint);
+	border-color: var(--herd-danger-line);
+	color: var(--herd-danger);
+}
+
+/* ---------- open and closed ---------- */
+
+#{$host} .herd-group:not(.is-open) > .acf-input {
+	display: none;
+}
+
+#{$host} .herd-group > .acf-input {
+	border-top: 1px solid var(--herd-line);
+	padding: 14px 12px;
+}
+
+/*
+ * ACF gives the sub-fields 16px of padding and a hairline each — the metrics of
+ * a metabox, inside a card that already has its own. The body owns the padding
+ * and the gap owns the rhythm.
+ */
+/*
+ * The same twelve column grid the block form uses, so a width authored on a
+ * sub-field means here what it means at the top level. Sub-fields default to the
+ * whole row — a group body is narrow already, and pairing by type the way the
+ * block form does would be Herd guessing inside somebody else's container.
+ */
+#{$host} .herd-group > .acf-input > .acf-fields {
+	@include widths.grid(14px, 16px);
+	border: 0;
+}
+
+#{$host} .herd-group > .acf-input > .acf-fields > .acf-field {
+	border-top: 0;
+	grid-column: 1 / -1;
+	margin: 0;
+	padding: 0;
+}
+
+@include widths.spans("#{$host} .herd-group > .acf-input > .acf-fields");
+
+#{$host} .herd-group > .acf-input > .acf-fields > .acf-field::before {
+	display: none;
+}
+
+/* ---------- incomplete ---------- */
+
+/*
+ * A required field behind a closed row is the one real failure mode of this
+ * pattern, so an incomplete group opens itself and refuses to close. The colour
+ * is the danger token in its validation sense.
+ */
+/* Scoped like the base card rule above, and for the same reason: anything less
+   specific loses its top edge back to the block-form reset. */
+#{$host} .acf-fields > .acf-field.herd-group.is-incomplete {
+	border-color: var(--herd-danger-line);
+}
+
+#{$host} .herd-group.is-incomplete .herd-grouprow,
+#{$host} .herd-group.is-incomplete .herd-grouprow:hover {
+	background: var(--herd-danger-tint);
+	/* Forced open: the row is a status line, not a control. */
+	cursor: default;
+}
+
+#{$host} .herd-group.is-incomplete .herd-grouprow__title {
+	color: var(--herd-danger);
+}
+
+#{$host} .herd-group.is-incomplete > .acf-input {
+	border-top-color: var(--herd-danger-line);
+}
+
+#{$host} .herd-group.is-incomplete .herd-grouprow__chev {
+	visibility: hidden;
+}
+
+/* ---------- nested in a repeater row ---------- */
+
+/*
+ * Row border, group border, field borders: three nested boxes is one more than
+ * this reads at. Inside a row the fills invert — the header takes the surface
+ * and the body takes the row's tint — so the group still separates without
+ * stacking another white card on a white card.
+ */
+#{$host} .herd-repeater .herd-grouprow {
+	background: var(--herd-surface);
+}
+
+#{$host} .herd-repeater .herd-grouprow:hover {
+	background: #fbfbfc;
+}
+
+#{$host} .herd-repeater .herd-group > .acf-input {
+	background: #fbfbfc;
+}
+
+/* ---------- past the depth cap ---------- */
+
+/*
+ * Two collapsible levels, maximum. A group inside a group keeps its label and
+ * takes a left rail instead of a third fold. Nothing in the block field groups
+ * reaches this today; it is what holds if one starts.
+ */
+#{$host} .herd-group--flat > .acf-input > .acf-fields {
+	@include widths.grid(14px, 16px);
+	border: 0;
+	border-left: 2px solid var(--herd-line);
+	padding-left: 12px;
+}
+
+#{$host} .herd-group--flat > .acf-input > .acf-fields > .acf-field {
+	border-top: 0;
+	grid-column: 1 / -1;
+	margin: 0;
+	padding: 0;
+}
+
+@include widths.spans("#{$host} .herd-group--flat > .acf-input > .acf-fields");

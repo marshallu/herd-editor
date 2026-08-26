@@ -1,0 +1,326 @@
+/*
+ * Flexible content and taxonomy fields.
+ *
+ * Only two flexible-content fields exist on this site, both on `page-with-sidebar`
+ * — 18 layouts in the main column and 7 in the sidebar. That block is the
+ * heaviest thing an editor opens, and before this it had a single border rule.
+ *
+ * ACF already provides collapse, a title and expand/collapse-all controls, so
+ * none of that is rebuilt here; the layout row is dressed to match the block row
+ * and the repeater card row above it. Same anatomy at a third level: grip, name,
+ * tools, chevron.
+ */
+
+@use './widths';
+
+$surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail__panel";
+
+@mixin on-fields($sel) {
+	@each $scope in $surfaces {
+		/*
+		 * Nested rather than interpolated as `#{$scope} #{$sel}`: when $sel is a
+		 * comma list, interpolation scopes only the first selector in it and
+		 * leaves the rest global.
+		 */
+		#{$scope} {
+			#{$sel} {
+				@content;
+			}
+		}
+	}
+}
+
+/* ---------- container ---------- */
+
+@include on-fields(".acf-flexible-content") {
+	position: relative;
+}
+
+@include on-fields(".acf-flexible-content > .values") {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	margin: 0;
+}
+
+@include on-fields(".acf-flexible-content > .values > .layout") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	margin: 0;
+}
+
+/* An open layout lifts its border the way an open block row does. */
+@include on-fields(".acf-flexible-content > .values > .layout:not(.-collapsed)") {
+	border-color: var(--herd-line-hover);
+}
+
+/* ---------- layout handle ---------- */
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-handle") {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var(--herd-line-soft);
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	font-size: 13px;
+	gap: 8px;
+	line-height: 1.4;
+	padding: 8px 10px;
+}
+
+@include on-fields(".acf-flexible-content .layout.-collapsed .acf-fc-layout-handle") {
+	border-bottom-color: transparent;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-handle:hover") {
+	background: var(--herd-canvas);
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-handle:focus-visible") {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+/*
+ * ACF numbers its layouts. The handle already names each one, and the repeater
+ * rows above dropped their ordinals for the same reason: a position you can read
+ * off the list is not worth a badge. ACF renumbers this node on every re-render,
+ * so it is hidden rather than removed and its bookkeeping is left alone.
+ */
+@include on-fields(".acf-flexible-content .acf-fc-layout-order") {
+	display: none;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-title") {
+	flex: 1 1 auto;
+	font-weight: 400;
+	min-width: 0;
+	overflow: hidden;
+	padding: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-original-title, .acf-flexible-content .acf-fc-layout-custom-label") {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-draggable-icon") {
+	color: var(--herd-line-hover);
+	cursor: grab;
+	flex: 0 0 auto;
+}
+
+/* ---------- layout controls ---------- */
+
+/*
+ * Tools stay out of the way until the row is hovered or open, the same rule the
+ * block row and the repeater card row follow.
+ */
+@include on-fields(".acf-flexible-content .acf-fc-layout-controls") {
+	display: flex;
+	gap: 2px;
+	opacity: 0;
+	position: static;
+	transition: opacity .12s;
+}
+
+@include on-fields(".acf-flexible-content .layout:hover .acf-fc-layout-controls, .acf-flexible-content .layout:focus-within .acf-fc-layout-controls, .acf-flexible-content .layout:not(.-collapsed) .acf-fc-layout-controls") {
+	opacity: 1;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-controls .acf-icon") {
+	background: transparent;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	height: 24px;
+	width: 24px;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-controls .acf-icon:hover") {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+/* Destructive is grey at rest and only turns on hover. */
+@include on-fields(".acf-flexible-content .acf-fc-layout-controls .acf-icon.-trash-alt:hover") {
+	background: var(--herd-canvas);
+	color: var(--herd-danger);
+}
+
+/* ---------- layout body ---------- */
+
+@include on-fields(".acf-flexible-content .layout > .acf-fields, .acf-flexible-content .layout > .acf-table") {
+	background: transparent;
+	border: 0;
+	padding: 12px 10px;
+}
+
+@include on-fields(".acf-flexible-content .layout.-collapsed > .acf-fields, .acf-flexible-content .layout.-collapsed > .acf-table") {
+	display: none;
+}
+
+/*
+ * The body owns the padding and the gap owns the rhythm — the same reset a group
+ * body does in _acf-group.scss. Without it ACF's `.acf-fields > .acf-field
+ * { padding: 16px; border-top: 1px }` still applies inside a layout that has
+ * already been given its own, and the fields come out 44px apart with a hairline
+ * between each.
+ *
+ * `.acf-table` is left out of both: a table-layout flexible layout is still a
+ * table, and its cells are not `.acf-field` children of an `.acf-fields`.
+ */
+@include on-fields(".acf-flexible-content .layout > .acf-fields") {
+	@include widths.grid(14px, 16px);
+}
+
+@include on-fields(".acf-flexible-content .layout > .acf-fields > .acf-field") {
+	border-top: 0;
+	grid-column: 1 / -1;
+	margin: 0;
+	padding: 0;
+}
+
+/*
+ * Widths inside a flexible-content layout. `on-fields` fans the selector across
+ * all three surfaces, so the spans are emitted per surface too rather than once
+ * against a single host.
+ */
+@each $scope in $surfaces {
+	@include widths.spans("#{$scope} .acf-flexible-content .layout > .acf-fields");
+}
+
+/* ---------- toolbars ---------- */
+
+@include on-fields(".acf-flexible-content > .acf-actions, .acf-flexible-content .acf-fc-top-actions") {
+	display: flex;
+	gap: 6px;
+	justify-content: flex-start;
+	padding: 8px 0 0;
+	text-align: left;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-top-actions") {
+	justify-content: flex-end;
+	padding: 0 0 6px;
+}
+
+/*
+ * ACF ships the add button as `acf-btn-primary`. Update is the only filled
+ * button on this screen, so it is demoted to the outlined accent the repeater's
+ * Add row already uses.
+ */
+@include on-fields(".acf-flexible-content .acf-btn, .acf-flexible-content .button, .acf-flexible-content .acf-button") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-green-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	color: var(--herd-green-ink);
+	cursor: pointer;
+	font-size: 12px;
+	font-weight: 400;
+	line-height: 1.5;
+	padding: 5px 11px;
+	text-decoration: none;
+	text-shadow: none;
+}
+
+@include on-fields(".acf-flexible-content .acf-btn:hover, .acf-flexible-content .button:hover, .acf-flexible-content .acf-button:hover") {
+	background: var(--herd-green-tint);
+	border-color: var(--herd-green);
+	color: var(--herd-green-ink);
+}
+
+@include on-fields(".acf-flexible-content .acf-btn-clear") {
+	border-color: transparent;
+	color: var(--herd-ink-2);
+}
+
+@include on-fields(".acf-flexible-content .acf-btn-clear:hover") {
+	background: var(--herd-canvas);
+	border-color: transparent;
+	color: var(--herd-ink);
+}
+
+/* ---------- layout picker popup ---------- */
+
+@include on-fields(".acf-fc-popup") {
+	background: var(--herd-ink);
+	border-radius: var(--herd-r);
+	padding: 4px;
+}
+
+@include on-fields(".acf-fc-popup ul") {
+	margin: 0;
+	padding: 0;
+}
+
+@include on-fields(".acf-fc-popup a") {
+	border-radius: var(--herd-r-sm);
+	color: #fff;
+	font-size: 12px;
+	padding: 5px 9px;
+	text-decoration: none;
+}
+
+@include on-fields(".acf-fc-popup a:hover") {
+	background: var(--herd-green-ink);
+	color: #fff;
+}
+
+/* ---------- empty state ---------- */
+
+/*
+ * "Empty is information." ACF's own message is a bare sentence; this gives it
+ * the same dashed slot the empty media tile and empty link field use.
+ */
+@include on-fields(".acf-flexible-content > .no-value-message") {
+	background: var(--herd-surface);
+	border: 1px dashed var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-3);
+	font-size: 12px;
+	padding: 14px 10px;
+	text-align: center;
+}
+
+/* ---------- taxonomy ---------- */
+
+/*
+ * Five taxonomy fields, four of them select2 — the closed control is styled
+ * here and the dropdown in _acf-portals.scss. The add-term form ACF can append
+ * below is left native apart from its button.
+ */
+@include on-fields(".acf-taxonomy-field .acf-actions") {
+	padding: 4px 0 0;
+	text-align: left;
+}
+
+@include on-fields(".acf-taxonomy-field .acf-actions .acf-icon") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-2);
+	height: 24px;
+	width: 24px;
+}
+
+@include on-fields(".acf-taxonomy-field .acf-actions .acf-icon:hover") {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+@include on-fields(".acf-taxonomy-field .categorychecklist-holder") {
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	max-height: 180px;
+}
+
+@include on-fields(".acf-taxonomy-field .acf-checkbox-list, .acf-taxonomy-field .acf-radio-list") {
+	padding: 6px 8px;
+}

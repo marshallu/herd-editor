@@ -1,0 +1,103 @@
+/*
+ * Per-field widths, as column spans.
+ *
+ * Herd lays fields out in four different containers — the block form, an open
+ * repeater row, a group body and a flexible-content layout body — and a width
+ * authored on a field has to mean the same thing in all four. This file is the
+ * one place that decides what it means, so the four do not drift apart the first
+ * time somebody adds a preset.
+ *
+ * TWELVE COLUMNS, and the number is not arbitrary. Every preset divides it
+ * exactly: 12, 9, 8, 6, 4 and 3 tracks for 100, 75, 66, 50, 33 and 25 per cent.
+ * The alternative — flex items with a percentage `flex-basis` — has to subtract
+ * each item's share of the gap with `calc(33% - 10.72px)`, and three of those
+ * plus two gaps lands within a rounding error of the container. That error is
+ * how "the third field drops to its own line at 110% zoom, on one editor's
+ * laptop, on one site" happens. Grid tracks are the browser's arithmetic, not
+ * ours, so three 33% fields fill a row at every zoom and every container width.
+ *
+ * The percentages are labels an editor understands. The spans are what the
+ * browser does. 66% is eight twelfths, which is 66.67%, and 33% is four twelfths.
+ * Nobody is measuring.
+ */
+
+/*
+ * Value of `data-herd-width` to column span.
+ *
+ * 100 is deliberately absent. `applyWidths()` in src/ui/acf/widths.js removes the
+ * attribute entirely for a full-width field rather than writing 100, so that a
+ * field with no authored width keeps the width its *role* implies — half a row
+ * for a compact control. A `100` entry here would never match anything, and its
+ * presence would suggest the opposite.
+ *
+ * Keep in step with `herd_editor_width_presets()` in includes/herd-editor-width.php
+ * and `WIDTH_PRESETS` in src/ui/acf/widths.js. All three name the same set; PHP
+ * offers it, JS snaps onto it, this turns it into layout.
+ */
+$spans: (
+	"75": 9,
+	"66": 8,
+	"50": 6,
+	"33": 4,
+	"25": 3,
+);
+
+/* Below this, every field owns its line and the width presets stop applying. */
+$breakpoint: 782px;
+
+/**
+ * Turn a container into the twelve-column grid the spans are measured against.
+ *
+ * `minmax(0, 1fr)` rather than `1fr` throughout: a bare `1fr` floors at the
+ * item's min-content size, so one long select option blows the track out and
+ * takes the row's arithmetic with it.
+ */
+@mixin grid($row-gap: 14px, $column-gap: 16px) {
+	align-items: start;
+	display: grid;
+	gap: $row-gap $column-gap;
+	/*
+	 * `grid-auto-flow` stays at its default `row`. `dense` would backfill the dead
+	 * space a wrapped field leaves behind, which reorders what is on screen away
+	 * from both the authored order and the tab order — and the dead space is the
+	 * thing the Spacer field exists to let a field group fill on purpose.
+	 */
+	grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+/**
+ * Emit the width rules for one container.
+ *
+ * Call this AFTER the container's own `> .acf-field` rules. These selectors add
+ * an attribute to whatever the container already weighs, so they outrank a role
+ * or a type rule on specificity — but two rules of equal weight are decided by
+ * source order, and the role rules are equal weight in some containers.
+ *
+ * @param {String} $container Selector for the element holding the fields.
+ */
+@mixin spans($container) {
+	@each $width, $span in $spans {
+		#{$container} > .acf-field[data-herd-width="#{$width}"] {
+			grid-column: span #{$span};
+		}
+	}
+
+	/*
+	 * Below the breakpoint every field takes the whole row.
+	 *
+	 * Stated as an override on the children rather than by dropping the container
+	 * to a single column: `grid-column: span 6` against a one-column grid does not
+	 * clamp to that column, it generates five implicit ones and the form grows a
+	 * horizontal scrollbar.
+	 *
+	 * Both selectors are listed so this matches the widths above on specificity
+	 * and wins on source order, and so it also reaches a field whose span came
+	 * from its role rather than from an authored width.
+	 */
+	@media (max-width: $breakpoint) {
+		#{$container} > .acf-field,
+		#{$container} > .acf-field[data-herd-width] {
+			grid-column: 1 / -1;
+		}
+	}
+}

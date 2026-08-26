@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herd Editor — Video field</title>
+<style>
+  :root{
+    --green:#00B140;
+    --green-dark:#008f34;
+    --border:#dcdcde;
+    --border-strong:#c3c4c7;
+    --text:#1d2327;
+    --text-2:#50575e;
+    --text-3:#787c82;
+    --bg:#f0f0f1;
+    --panel-head:#fbfbfc;
+    --radius:6px;
+    --radius-sm:4px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;
+    padding:32px 24px 64px;
+    background:var(--bg);
+    color:var(--text);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:900px;margin:0 auto}
+
+  /* ---------- page framing ---------- */
+  .page-head{margin-bottom:20px}
+  .page-head h1{font-size:18px;font-weight:600;margin:0 0 4px}
+  .page-head p{margin:0;color:var(--text-2);max-width:62ch}
+
+  .switch{
+    display:inline-flex;border:1px solid var(--border);border-radius:var(--radius);
+    background:#fff;overflow:hidden;margin:16px 0 20px;
+  }
+  .switch button{
+    appearance:none;border:0;background:#fff;font:inherit;color:var(--text-2);
+    padding:7px 14px;cursor:pointer;border-right:1px solid var(--border);
+  }
+  .switch button:last-child{border-right:0}
+  .switch button[aria-pressed="true"]{background:var(--green);color:#fff}
+  .switch button:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+
+  /* ---------- accordion panel ---------- */
+  .panel{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .panel-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;background:var(--panel-head);border-bottom:1px solid var(--border);
+    font-weight:600;font-size:14px;
+  }
+  .panel-head .chev{color:var(--text-3)}
+  .panel-body{padding:18px 14px}
+
+  .field{margin-bottom:24px}
+  .field:last-child{margin-bottom:0}
+  .field > label,.field-label{display:block;font-weight:600;margin-bottom:8px}
+  .help{color:var(--text-3);margin-top:6px}
+
+  /* ---------- CURRENT (before) ---------- */
+  .old-file{display:flex;background:var(--bg);border-radius:2px;min-height:190px;margin-bottom:0}
+  .old-icon{width:52px;background:#fff;flex:0 0 52px;display:flex;align-items:flex-start;justify-content:center;padding-top:6px}
+  .old-icon svg{width:40px;height:40px}
+  .old-meta{padding:56px 0 0 24px}
+  .old-meta strong{display:block;font-size:15px;font-weight:600;margin-bottom:6px}
+  .old-meta div{color:var(--text-3);font-size:13px}
+  .old-thumb{width:180px;border-radius:2px;display:block}
+  .old-actions{display:flex;gap:22px;align-items:center;padding:8px 0 0 24px;color:var(--text-2)}
+  .old-drop{
+    border:1px dashed var(--border-strong);border-radius:2px;padding:16px;text-align:center;color:var(--text-3);
+  }
+
+  /* ---------- IMPROVED media row ---------- */
+  .media{
+    display:flex;align-items:stretch;gap:0;
+    border:1px solid var(--border);border-radius:var(--radius);background:#fff;
+    overflow:hidden;
+  }
+  .media:hover{border-color:var(--border-strong)}
+
+  .poster{
+    position:relative;flex:0 0 160px;width:160px;
+    border:0;padding:0;margin:0;background:#1d2327;cursor:pointer;
+    display:block;align-self:stretch;
+  }
+  .poster img,.poster svg.art{width:100%;height:100%;object-fit:cover;display:block}
+  .poster .play{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    background:rgba(29,35,39,.25);transition:background .12s ease;
+  }
+  .poster:hover .play{background:rgba(29,35,39,.45)}
+  .poster .play span{
+    width:30px;height:30px;border-radius:50%;background:rgba(255,255,255,.94);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .poster .play span::after{
+    content:"";width:0;height:0;margin-left:2px;
+    border-left:9px solid var(--text);border-top:6px solid transparent;border-bottom:6px solid transparent;
+  }
+  .poster:focus-visible{outline:2px solid var(--green);outline-offset:-2px}
+  .poster .dur{
+    position:absolute;right:5px;bottom:5px;background:rgba(29,35,39,.85);color:#fff;
+    font-size:11px;line-height:1;padding:3px 5px;border-radius:3px;font-variant-numeric:tabular-nums;
+  }
+
+  .media-body{flex:1;min-width:0;padding:12px 14px;display:flex;flex-direction:column;justify-content:center}
+  .media-name{
+    font-weight:600;font-size:13px;margin:0 0 3px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .media-meta{
+    color:var(--text-3);display:flex;flex-wrap:wrap;gap:0 8px;font-variant-numeric:tabular-nums;
+  }
+  .media-meta span{position:relative}
+  .media-meta span+span::before{
+    content:"";position:absolute;left:-5px;top:50%;width:2px;height:2px;border-radius:50%;
+    background:var(--border-strong);transform:translateY(-50%);
+  }
+  .media-actions{
+    display:flex;align-items:center;gap:2px;padding:10px 10px 10px 0;flex:0 0 auto;
+  }
+  .linkbtn{
+    appearance:none;border:1px solid transparent;background:none;font:inherit;color:var(--text-2);
+    padding:5px 9px;border-radius:var(--radius-sm);cursor:pointer;white-space:nowrap;
+  }
+  .linkbtn:hover{background:var(--bg);color:var(--text)}
+  .linkbtn:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+  .linkbtn.danger:hover{color:#b32d2e}
+
+  /* status strip under the row */
+  .status{
+    display:flex;align-items:center;gap:6px;margin-top:8px;color:var(--text-3);
+  }
+  .status.warn{color:#8a6116}
+  .status .dot{width:6px;height:6px;border-radius:50%;background:var(--green);flex:0 0 6px}
+  .status.warn .dot{background:#dba617}
+  .status a{color:var(--text-2)}
+
+  /* uploading */
+  .bar{height:4px;background:var(--bg);border-radius:2px;overflow:hidden;margin-top:8px}
+  .bar i{display:block;height:100%;width:64%;background:var(--green);border-radius:2px}
+
+  /* error */
+  .media.is-error{border-color:#d63638}
+  .status.error{color:#b32d2e}
+  .status.error .dot{background:#d63638}
+
+  /* empty dropzone */
+  .drop{
+    border:1px dashed var(--border-strong);border-radius:var(--radius);background:#fdfdfd;
+    padding:20px 16px;text-align:center;cursor:pointer;
+  }
+  .drop:hover{border-color:var(--green);background:#f7fdf9}
+  .drop:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+  .drop svg{color:var(--text-3);margin-bottom:6px}
+  .drop b{display:block;font-weight:600;margin-bottom:2px}
+  .drop u{text-decoration:underline;text-underline-offset:2px}
+  .drop small{color:var(--text-3);font-size:12px}
+
+  /* thumbnail field, tightened */
+  .thumbrow{display:flex;align-items:center;gap:12px}
+  .thumbrow .tp{
+    width:160px;height:90px;border:1px solid var(--border);border-radius:var(--radius-sm);
+    overflow:hidden;flex:0 0 160px;background:#1d2327;
+  }
+  .thumbrow .tp svg{width:100%;height:100%;display:block}
+
+  /* states section */
+  .states{margin-top:28px}
+  .states h2{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);margin:0 0 10px}
+  .state-card{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+  .state-card .cap{color:var(--text-3);margin-bottom:8px}
+
+  .notes{margin-top:28px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
+  .notes h2{font-size:14px;margin:0 0 10px}
+  .notes ul{margin:0;padding-left:18px;color:var(--text-2)}
+  .notes li{margin-bottom:7px}
+  .notes li:last-child{margin-bottom:0}
+  .notes b{color:var(--text)}
+
+  /* lightbox */
+  dialog{border:0;padding:0;border-radius:var(--radius);max-width:min(720px,92vw);background:#fff}
+  dialog::backdrop{background:rgba(29,35,39,.7)}
+  .lb-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}
+  .lb-head strong{font-size:13px}
+  .lb-body{background:#1d2327}
+  .lb-body svg{width:100%;height:auto;display:block}
+
+  @media (max-width:600px){
+    body{padding:20px 12px 48px}
+    .media{flex-wrap:wrap}
+    .poster{flex:0 0 100%;width:100%;height:150px}
+    .media-actions{padding:0 10px 10px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page-head">
+    <h1>Video field — improved file display</h1>
+    <p>The uploaded video currently renders as a tall grey slab with a generic document icon. It takes ~190px of vertical space to communicate three lines of text, gives no way to check the file, and looks nothing like the thumbnail field directly above it.</p>
+  </div>
+
+  <div class="switch" role="group" aria-label="Compare versions">
+    <button id="btn-new" aria-pressed="true">Improved</button>
+    <button id="btn-old" aria-pressed="false">Current</button>
+  </div>
+
+  <!-- ============ IMPROVED ============ -->
+  <section id="view-new">
+    <div class="panel">
+      <div class="panel-head"><span>Video</span><span class="chev">⌃</span></div>
+      <div class="panel-body">
+
+        <div class="field">
+          <span class="field-label">Video thumbnail image</span>
+          <div class="thumbrow">
+            <div class="tp" id="tp-a"></div>
+            <div>
+              <button class="linkbtn">Edit</button>
+              <button class="linkbtn danger">Remove</button>
+              <div class="help">Shown before the video plays. 1280×720 or larger.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Video</span>
+
+          <div class="media">
+            <button class="poster" id="poster-a" aria-label="Preview v2.1.mp4">
+              <span class="play"><span></span></span>
+              <span class="dur">1:47</span>
+            </button>
+            <div class="media-body">
+              <p class="media-name">v2.1.mp4</p>
+              <div class="media-meta">
+                <span>MP4</span><span>1920×1080</span><span>22 MB</span><span>Uploaded Aug 24</span>
+              </div>
+            </div>
+            <div class="media-actions">
+              <button class="linkbtn">Edit</button>
+              <button class="linkbtn danger">Remove</button>
+            </div>
+          </div>
+
+          <div class="status"><span class="dot"></span> Ready to play. Poster taken from the thumbnail above.</div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Backup video</span>
+          <div class="drop" tabindex="0" role="button">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+            <b>Drag a video here, or <u>choose a file</u></b>
+            <small>MP4 or WebM, up to 500 MB. Plays only if the main video fails.</small>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="states">
+      <h2>Other states</h2>
+
+      <div class="state-card">
+        <div class="cap">Uploading</div>
+        <div class="media">
+          <div class="poster" style="cursor:default;background:var(--bg)"></div>
+          <div class="media-body">
+            <p class="media-name">v2.2-final.mp4</p>
+            <div class="media-meta"><span>14 MB of 22 MB</span><span>About 20 seconds left</span></div>
+            <div class="bar"><i></i></div>
+          </div>
+          <div class="media-actions"><button class="linkbtn">Cancel</button></div>
+        </div>
+      </div>
+
+      <div class="state-card">
+        <div class="cap">Uploaded, but no thumbnail set</div>
+        <div class="media">
+          <div class="poster" style="cursor:default;display:flex;align-items:center;justify-content:center;background:#2c3338">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#a7aaad" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m22 8-6 4 6 4V8Z"/><rect x="2" y="6" width="14" height="12" rx="2"/></svg>
+          </div>
+          <div class="media-body">
+            <p class="media-name">homecoming-recap.mp4</p>
+            <div class="media-meta"><span>MP4</span><span>1920×1080</span><span>48 MB</span><span>Uploaded today</span></div>
+          </div>
+          <div class="media-actions">
+            <button class="linkbtn">Edit</button>
+            <button class="linkbtn danger">Remove</button>
+          </div>
+        </div>
+        <div class="status warn"><span class="dot"></span> No thumbnail set. Viewers see a black frame until the video loads — <a href="#">add one above</a>.</div>
+      </div>
+
+      <div class="state-card">
+        <div class="cap">File rejected</div>
+        <div class="media is-error">
+          <div class="poster" style="cursor:default;display:flex;align-items:center;justify-content:center;background:#2c3338">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f0b7b8" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><circle cx="12" cy="12" r="9"/></svg>
+          </div>
+          <div class="media-body">
+            <p class="media-name">band-4k-master.mov</p>
+            <div class="media-meta"><span>MOV</span><span>1.2 GB</span></div>
+          </div>
+          <div class="media-actions">
+            <button class="linkbtn">Choose another</button>
+            <button class="linkbtn danger">Remove</button>
+          </div>
+        </div>
+        <div class="status error"><span class="dot"></span> This file is 1.2 GB and the limit is 500 MB. Export it as MP4 at 1080p and upload again.</div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <h2>What changed</h2>
+      <ul>
+        <li><b>The poster does the work the icon was doing.</b> A 160px frame from the thumbnail field identifies the video at a glance, and clicking it plays the file in place — editors can confirm they attached the right cut without leaving the screen.</li>
+        <li><b>190px of empty grey becomes a 92px row.</b> Video, backup video, and thumbnail now read as three variations on one component instead of three unrelated widgets.</li>
+        <li><b>Metadata that answers real questions.</b> Format, dimensions, size, and upload date, on one line with dot separators. Duration sits on the poster where video players put it.</li>
+        <li><b>Edit and Remove are labelled buttons.</b> The bare × next to the thumbnail is replaced everywhere by text, so nothing destructive is a guess.</li>
+        <li><b>The empty state asks for something.</b> Accepted formats, size cap, and a plain sentence explaining what a backup video is for — the current "Choose a file" says none of it.</li>
+        <li><b>States are designed, not left to chance.</b> Uploading, missing-poster, and rejected-file all reuse the same row, so nothing jumps around as the field changes.</li>
+      </ul>
+
+      <h2 style="margin-top:18px">What shipped</h2>
+      <ul>
+        <li><b>Uploading and rejected-file were not built.</b> ACF hands every upload to the WordPress media modal, so there is no in-field upload to show progress for, and ACF already rejects an oversized or wrong-typed file inside that modal. Building an in-field uploader would mean a second upload path beside ACF's own. The dropzone therefore says <b>Choose a video</b> rather than offering a drag it does not accept.</li>
+        <li><b>The green "Ready to play" strip was dropped.</b> The style guide reserves green for selection and the primary action; a green dot on every filled field is decoration. The missing-poster line stayed, and is grey — amber is not in the palette.</li>
+        <li><b>The poster fallback is <code>--canvas</code> with a glyph</b>, not the near-black frame above, so colour never stands in for a photo.</li>
+        <li><b>The size cap is not stated.</b> ACF puts <code>data-mime_types</code> in the DOM but never <code>max_size</code>, and only the Portraits block sets one. The small print lists accepted formats only.</li>
+        <li><b>The image field moved to the same row</b>, so the thumbnail above genuinely matches the two video fields below it.</li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ CURRENT ============ -->
+  <section id="view-old" hidden>
+    <div class="panel">
+      <div class="panel-head"><span>Video</span><span class="chev">⌃</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <span class="field-label">Video Thumbnail Image</span>
+          <div class="tp" id="tp-b" style="width:180px;height:102px;border:0;border-radius:2px;overflow:hidden"></div>
+          <div class="old-actions"><span>Edit</span><span>✕</span></div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Video</span>
+          <div class="old-file">
+            <div class="old-icon">
+              <svg viewBox="0 0 40 40" fill="none"><path d="M6 2h20l8 8v28H6z" fill="#a7aaad"/><path d="M26 2l8 8h-8z" fill="#fff" opacity=".5"/><rect x="10" y="16" width="12" height="9" rx="1.5" fill="#fff"/><path d="M23 18.5l4-2.5v9l-4-2.5z" fill="#fff"/></svg>
+            </div>
+            <div class="old-meta">
+              <strong>v2.1</strong>
+              <div>File name: <code>v2.1.mp4</code></div>
+              <div>File size: 22 MB</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="field">
+          <span class="field-label">Backup Video</span>
+          <div class="old-drop">Choose a file</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+
+<dialog id="lb">
+  <div class="lb-head"><strong>v2.1.mp4</strong><button class="linkbtn" id="lb-close">Close</button></div>
+  <div class="lb-body" id="lb-body"></div>
+</dialog>
+
+<script>
+  // Stand-in poster art (the real field pulls the uploaded thumbnail).
+  const art = (w,h) => `
+  <svg class="art" viewBox="0 0 320 180" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Marching band on a football field">
+    <rect width="320" height="180" fill="#3f7d3f"/>
+    <rect y="34" width="320" height="112" fill="#4b8f4b"/>
+    <g stroke="#e9f2e9" stroke-width="1.4" opacity=".65">
+      <path d="M30 34V146M70 34V146M110 34V146M150 34V146M190 34V146M230 34V146M270 34V146"/>
+    </g>
+    <rect y="0" width="320" height="34" fill="#6b7075"/>
+    <rect y="146" width="320" height="34" fill="#3c4145"/>
+    <g fill="#20262b">
+      <rect x="112" y="62" width="14" height="60" rx="2"/>
+      <rect x="180" y="62" width="14" height="60" rx="2"/>
+      <path d="M126 62l16 30-8 6-14-26z"/>
+      <path d="M180 62l-16 30 8 6 14-26z"/>
+    </g>
+  </svg>`;
+
+  document.getElementById('tp-a').innerHTML = art();
+  document.getElementById('tp-b').innerHTML = art();
+  const posterA = document.getElementById('poster-a');
+  posterA.insertAdjacentHTML('afterbegin', art());
+
+  const lb = document.getElementById('lb');
+  document.getElementById('lb-body').innerHTML = art();
+  posterA.addEventListener('click', () => lb.showModal());
+  document.getElementById('lb-close').addEventListener('click', () => lb.close());
+
+  const bn = document.getElementById('btn-new'), bo = document.getElementById('btn-old');
+  const vn = document.getElementById('view-new'), vo = document.getElementById('view-old');
+  function show(isNew){
+    bn.setAttribute('aria-pressed', isNew);
+    bo.setAttribute('aria-pressed', !isNew);
+    vn.hidden = !isNew;
+    vo.hidden = isNew;
+  }
+  bn.addEventListener('click', () => show(true));
+  bo.addEventListener('click', () => show(false));
+</script>
+</body>
+</html>

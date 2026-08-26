@@ -1,0 +1,86 @@
+/*
+ * Herd's styling for ACF fields inside native WordPress postboxes.
+ *
+ * Herd renders six page-level field groups (More Info, On This Page Navigation,
+ * SEO, News/Blog Details, Blog CTA, Blog Settings) as ordinary metaboxes rather
+ * than through the block form host — 77 field instances in all. Everything in
+ * _acf.scss is scoped to .herd-editor__field-host, which wraps block forms only,
+ * so without this file those fields render as stock ACF inside the Herd shell.
+ *
+ * The block form is laid out by src/ui/acf/layout.js; a postbox is not. Only the
+ * chrome the two surfaces genuinely share is repeated here — labels, controls,
+ * help text and validation. Nothing in this file assumes the block DOM shape.
+ */
+
+$boxes: ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail__panel";
+
+@mixin in-boxes($sel) {
+	@each $scope in $boxes {
+		/*
+		 * Nested rather than interpolated as `#{$scope} #{$sel}`: when $sel is a
+		 * comma list, interpolation scopes only the first selector in it and
+		 * leaves the rest global.
+		 */
+		#{$scope} {
+			#{$sel} {
+				@content;
+			}
+		}
+	}
+}
+
+/* ---------- labels and help text ---------- */
+
+/*
+ * Post field groups render with instruction placement `label`, so help text sits
+ * under the label rather than after the control as it does in a block form.
+ * Both positions are covered so a group that sets either one reads the same.
+ */
+@include in-boxes(".acf-field > .acf-label label") {
+	color: var(--herd-ink-2);
+	font-size: 12px;
+	font-weight: 600;
+	margin: 0;
+}
+
+@include in-boxes(".acf-field > .acf-label .description") {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	line-height: 1.45;
+	margin: 3px 0 0;
+}
+
+@include in-boxes(".acf-field > .acf-input > .description") {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	line-height: 1.45;
+	margin: 5px 0 0;
+}
+
+/* ---------- controls ---------- */
+
+@include in-boxes(".acf-input input[type='text'], .acf-input input[type='number'], .acf-input input[type='url'], .acf-input input[type='email'], .acf-input input[type='password'], .acf-input select, .acf-input textarea") {
+	border-color: var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	font-size: 13px;
+	max-width: none;
+	padding: 7px 9px;
+	width: 100%;
+}
+
+/* Undoes core's fixed select height so a select matches the inputs beside it. */
+@include in-boxes(".acf-input select") {
+	height: auto;
+	line-height: 1.5;
+}
+
+@include in-boxes(".acf-input input:focus, .acf-input select:focus, .acf-input textarea:focus") {
+	border-color: var(--herd-green);
+	box-shadow: 0 0 0 3px var(--herd-green-tint);
+	outline: none;
+}
+
+@include in-boxes(".acf-button, .acf-actions .button") {
+	border-radius: var(--herd-r);
+}

@@ -1,0 +1,559 @@
+/* Block accordion: list head, cards, rows, tools, panels, inserter. */
+
+.herd-editor {
+	isolation: isolate;
+}
+
+.herd-listhead {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+	margin-bottom: 10px;
+}
+
+.herd-listhead__count {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	text-transform: uppercase;
+}
+
+.herd-listhead__acts {
+	display: flex;
+	gap: 6px;
+	margin-left: auto;
+}
+
+.herd-list {
+	list-style: none;
+	margin: 0;
+	padding: 0;
+}
+
+/* ---------- card ---------- */
+
+.herd-block {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	/* Separation between top-level cards is the .herd-gap between them; only the
+	   depth indent lives here. Nested rows, which get no gap, space themselves. */
+	margin: 0 0 0 calc(var(--herd-depth, 0) * 28px);
+	position: relative;
+}
+
+.herd-block + .herd-block {
+	margin-top: 8px;
+}
+
+.herd-block.is-open {
+	border-color: var(--herd-line-hover);
+}
+
+.herd-block.is-dragging {
+	opacity: .4;
+}
+
+.herd-block.is-lifted {
+	border-color: var(--herd-green);
+	box-shadow: 0 0 0 1px var(--herd-green), 0 3px 10px rgba(0, 0, 0, .12);
+}
+
+.herd-block.is-droptarget-before::before,
+.herd-block.is-droptarget-after::after {
+	background: var(--herd-green);
+	border-radius: 2px;
+	content: "";
+	height: 3px;
+	left: 0;
+	position: absolute;
+	right: 0;
+}
+
+.herd-block.is-droptarget-before::before {
+	top: -6px;
+}
+
+.herd-block.is-droptarget-after::after {
+	bottom: -6px;
+}
+
+.herd-block__row {
+	align-items: center;
+	display: flex;
+	gap: 10px;
+	padding: 10px 12px;
+}
+
+.herd-block__grip {
+	background: transparent;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-line-hover);
+	cursor: grab;
+	flex: none;
+	line-height: 0;
+	padding: 4px 2px;
+}
+
+.herd-block__grip svg {
+	display: block;
+	height: 16px;
+	width: 16px;
+}
+
+.herd-block__grip:hover {
+	color: var(--herd-ink-2);
+}
+
+.herd-block__grip[aria-pressed="true"] {
+	background: var(--herd-green-tint);
+	color: var(--herd-green-ink);
+	cursor: grabbing;
+}
+
+.herd-block__grip-spacer {
+	display: block;
+	flex: none;
+	width: 20px;
+}
+
+.herd-block__disclosure {
+	background: transparent;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	flex: none;
+	line-height: 1;
+	padding: 4px;
+}
+
+.herd-block__disclosure:hover {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-block__disclosure-spacer {
+	display: block;
+	flex: none;
+	width: 24px;
+}
+
+.herd-block__open {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	color: inherit;
+	cursor: pointer;
+	display: flex;
+	flex: 1;
+	font: inherit;
+	gap: 10px;
+	min-width: 0;
+	padding: 0;
+	text-align: left;
+}
+
+.herd-block__icon {
+	align-items: center;
+	background: var(--herd-canvas);
+	border-radius: 5px;
+	color: var(--herd-ink-2);
+	display: flex;
+	flex: none;
+	height: 26px;
+	justify-content: center;
+	width: 26px;
+}
+
+.herd-block__icon .dashicons {
+	font-size: 16px;
+	height: 16px;
+	width: 16px;
+}
+
+.herd-block.is-open .herd-block__icon {
+	background: var(--herd-green-tint);
+	color: var(--herd-green-ink);
+}
+
+.herd-block__main {
+	flex: 1;
+	min-width: 0;
+}
+
+.herd-block__name {
+	align-items: center;
+	display: flex;
+	font-size: 13px;
+	font-weight: 600;
+	gap: 8px;
+	line-height: 1.35;
+}
+
+.herd-block__summary {
+	color: var(--herd-ink-3);
+	font-size: 12px;
+	line-height: 1.35;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-block__chev {
+	color: var(--herd-ink-3);
+	flex: none;
+	/* Dashicons draw into a 20px box by default; sizing all three keeps the glyph
+	   and its box the same, and matches the repeater row's chevron one level in. */
+	font-size: 16px;
+	height: 16px;
+	line-height: 1;
+	transition: transform .15s;
+	width: 16px;
+}
+
+.herd-block.is-open .herd-block__chev {
+	transform: rotate(180deg);
+}
+
+.herd-block__tools {
+	display: flex;
+	flex: none;
+	gap: 2px;
+	opacity: 0;
+	transition: opacity .12s;
+}
+
+.herd-block:hover > .herd-block__row .herd-block__tools,
+.herd-block.is-open > .herd-block__row .herd-block__tools,
+.herd-block__row:focus-within .herd-block__tools {
+	opacity: 1;
+}
+
+.herd-block__tool {
+	background: transparent;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	line-height: 1;
+	padding: 5px 6px;
+}
+
+.herd-block__tool:hover:not(:disabled) {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-block__tool:disabled {
+	cursor: default;
+	opacity: var(--herd-disabled);
+}
+
+.herd-block__tool.is-destructive:hover:not(:disabled) {
+	color: var(--herd-danger);
+}
+
+.herd-block__tool .dashicons {
+	font-size: 16px;
+	height: 16px;
+	width: 16px;
+}
+
+/* ---------- panel ---------- */
+
+.herd-block__body {
+	border-top: 1px solid var(--herd-line-soft);
+	padding: 16px;
+}
+
+.herd-core-fields {
+	display: grid;
+	gap: 14px;
+}
+
+.herd-core-fields__level {
+	max-width: 160px;
+}
+
+.herd-richtext {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	min-height: 80px;
+	padding: 10px 12px;
+}
+
+.herd-richtext:focus {
+	border-color: var(--herd-green);
+	box-shadow: 0 0 0 3px var(--herd-green-tint);
+	outline: none;
+}
+
+.herd-code-field textarea {
+	font-family: ui-monospace, SFMono-Regular, Consolas, Monaco, monospace;
+	font-size: 12px;
+}
+
+.herd-loading {
+	align-items: center;
+	color: var(--herd-ink-2);
+	display: flex;
+	font-size: 13px;
+	gap: 8px;
+	margin: 0;
+}
+
+/* ---------- insertion point ---------- */
+
+/*
+ * The gap between two blocks. At rest it is 14px of empty space; hover or focus
+ * draws a hairline across it and fades the button in. Nothing here reserves
+ * space on hover, so revealing an insertion point never nudges the list.
+ */
+.herd-gap {
+	align-items: center;
+	display: flex;
+	height: 14px;
+	justify-content: center;
+	position: relative;
+}
+
+.herd-gap::before {
+	background: var(--herd-green);
+	content: "";
+	height: 1px;
+	left: 0;
+	opacity: 0;
+	position: absolute;
+	right: 0;
+	transition: opacity .12s;
+}
+
+.herd-gap__btn {
+	align-items: center;
+	background: var(--herd-green);
+	border: 0;
+	border-radius: 50%;
+	color: #fff;
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	font-size: 14px;
+	height: 20px;
+	justify-content: center;
+	line-height: 0;
+	opacity: 0;
+	padding: 0;
+	position: relative;
+	transition: opacity .12s;
+	width: 20px;
+	z-index: 2;
+}
+
+.herd-gap:hover::before,
+.herd-gap:focus-within::before,
+.herd-gap.is-open::before {
+	opacity: 1;
+}
+
+.herd-gap:hover .herd-gap__btn,
+.herd-gap:focus-within .herd-gap__btn,
+.herd-gap.is-open .herd-gap__btn {
+	opacity: 1;
+}
+
+/* ---------- inserter ---------- */
+
+/*
+ * The panel is positioned by the gap it belongs to, and flips above it when
+ * there is not enough room below. .herd-main sets no overflow, so it is free to
+ * overlap the rows underneath.
+ */
+.herd-gap__panel {
+	left: 0;
+	position: absolute;
+	width: min(344px, 100%);
+	z-index: 20;
+}
+
+.herd-gap__panel.is-below {
+	top: calc(100% + 4px);
+}
+
+.herd-gap__panel.is-above {
+	bottom: calc(100% + 4px);
+}
+
+.herd-inserter {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, .13);
+	display: flex;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.herd-inserter__search {
+	border-bottom: 1px solid var(--herd-line-soft);
+	padding: 8px;
+}
+
+.herd-inserter__search input {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink);
+	font: inherit;
+	font-size: 13px;
+	height: var(--herd-control-h);
+	padding: 0 9px;
+	width: 100%;
+}
+
+.herd-inserter__search input:focus {
+	border-color: var(--herd-green);
+	box-shadow: 0 0 0 1px var(--herd-green);
+	outline: none;
+}
+
+.herd-inserter__body {
+	max-height: 296px;
+	overflow-y: auto;
+	padding: 4px 0;
+}
+
+.herd-inserter__grouplabel {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	padding: 8px 12px 4px;
+	text-transform: uppercase;
+}
+
+.herd-inserter__choice {
+	align-items: center;
+	background: none;
+	border: 0;
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	font-size: 13px;
+	gap: 8px;
+	min-height: 30px;
+	padding: 4px 12px;
+	text-align: left;
+	width: 100%;
+}
+
+.herd-inserter__choice.is-selected {
+	background: var(--herd-green-tint);
+	box-shadow: inset 2px 0 0 var(--herd-green);
+}
+
+.herd-inserter__choice:disabled {
+	color: var(--herd-ink-3);
+	cursor: default;
+}
+
+.herd-inserter__choice .dashicons {
+	color: var(--herd-ink-3);
+	flex: none;
+	font-size: 16px;
+	height: 16px;
+	width: 16px;
+}
+
+.herd-inserter__title {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-inserter__mark {
+	background: var(--herd-green-line);
+	border-radius: 2px;
+}
+
+.herd-inserter__choice .herd-badge {
+	margin-left: auto;
+}
+
+.herd-empty {
+	color: var(--herd-ink-3);
+	margin: 12px 0 4px;
+	padding: 0 12px;
+}
+
+/*
+ * The last resort when there is nothing to hover between — and the only visible
+ * way in on an empty document.
+ */
+.herd-inserter__tail {
+	background: transparent;
+	border: 1px dashed var(--herd-line-hover);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink-2);
+	cursor: pointer;
+	font: inherit;
+	font-size: 13px;
+	margin-top: 4px;
+	padding: 11px;
+	width: 100%;
+}
+
+.herd-inserter__tail:hover {
+	background: var(--herd-green-tint);
+	border-color: var(--herd-green);
+	color: var(--herd-green-ink);
+}
+
+
+@media (max-width: 782px) {
+	.herd-block {
+		margin-left: calc(var(--herd-depth, 0) * 14px);
+	}
+
+	.herd-block__body {
+		padding: 12px 8px;
+	}
+
+	.herd-block__tools {
+		opacity: 1;
+	}
+
+	.herd-gap__btn {
+		opacity: 1;
+	}
+
+	.herd-block__summary {
+		white-space: normal;
+	}
+}
+
+/*
+ * A block hidden on the front end. Only the name and summary dim — the grip,
+ * tools and chevron stay legible, because a hidden block is the one you are most
+ * likely to have opened in order to unhide it. The "Hidden" pill in the row
+ * carries the same fact in text, so the state never rests on opacity alone.
+ */
+.herd-block.is-hidden .herd-block__main {
+	opacity: .5;
+}
+
+.herd-badge--muted {
+	background: var(--herd-line-soft);
+	color: var(--herd-ink-2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.herd-gap::before,
+	.herd-gap__btn {
+		transition: none;
+	}
+}
