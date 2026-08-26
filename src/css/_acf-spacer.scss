@@ -1,0 +1,132 @@
+/*
+ * The Spacer field.
+ *
+ * A spacer holds no data and renders no input; ACF emits the wrapper and nothing
+ * inside it. Everything here is about making that wrapper occupy the space it
+ * was given and otherwise disappear — its width comes from _widths.scss like any
+ * other field's.
+ *
+ * Scoped under the field host like the rest of _acf.scss, because wp-admin is
+ * full of other people's CSS and `.herd-spacer` is a class an editor can type
+ * into ACF's wrapper class input by hand.
+ */
+
+$host: ".herd-editor__field-host";
+
+/*
+ * Blank means blank: no border, no background, no label, and no height of its
+ * own beyond what the row already has. `min-height: 0` answers ACF's own
+ * `.acf-field { min-height }` on some surfaces, so an empty spacer cannot make a
+ * row taller than the fields in it.
+ *
+ * Not focusable and not in the tab order. There is nothing here to focus — no
+ * input is rendered — but `-webkit-user-modify` and stray `tabindex` from a
+ * copied wrapper have both put an empty box in the tab order before, and a
+ * screen reader user arriving at a nameless empty field has no way to work out
+ * what it wants. `aria-hidden="true"` on an unlabelled spacer is set in PHP by
+ * `herd_editor_spacer_wrapper()`; this is the pointer half of the same idea.
+ */
+#{$host} .acf-field-spacer {
+	background: none;
+	border: 0;
+	min-height: 0;
+	padding: 0;
+	pointer-events: none;
+	user-select: none;
+}
+
+/* An empty label is still a line box and 4px of margin. */
+#{$host} .acf-field-spacer > .acf-label:empty,
+#{$host} .acf-field-spacer > .acf-input:empty {
+	display: none;
+	margin: 0;
+}
+
+/*
+ * A labelled spacer is a section heading and reads as one — the same 11px
+ * uppercase the Display options header uses, so the two do not compete. It keeps
+ * its pointer events off; the label is text, not a control.
+ */
+#{$host} .acf-field-spacer > .acf-label label {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	text-transform: uppercase;
+}
+
+/*
+ * Style: Line. A hairline across the spacer, vertically centred, in the same
+ * `--line` every other border on the screen uses.
+ *
+ * Drawn on the input rather than as a border on the wrapper so it spans the
+ * spacer's own width and stops there — a border-bottom on the wrapper would sit
+ * under the label as well and read as an underline.
+ */
+#{$host} .acf-field-spacer[data-herd-spacer="line"] > .acf-input {
+	align-self: center;
+	border-top: 1px solid var(--herd-line);
+	display: block;
+	margin: 0;
+	width: 100%;
+}
+
+#{$host} .acf-field-spacer[data-herd-spacer="line"] {
+	align-items: center;
+	display: flex;
+}
+
+/*
+ * A spacer with no authored width is a full-width one, and a full-width spacer
+ * is a separator: it ends the row before it and starts the row after it, and at
+ * `Style: Line` it draws a rule across the form. It is deliberately NOT hidden.
+ *
+ * This was the other way round at first, on the reasoning that a width-less
+ * spacer is a misconfiguration. It is not: somebody who adds a Spacer and saves
+ * without touching Width has asked for a row break, and answering that with a
+ * field that renders as nothing at all is the worst of the available answers —
+ * they cannot tell the field from a bug. `isSeparator()` in src/ui/acf/rows.js
+ * is the same decision on the JS side.
+ *
+ * A blank separator still has no height of its own; what it contributes is the
+ * row break and the grid's row gap.
+ */
+
+/*
+ * A spacer whose row has nothing left in it to space. src/ui/acf/rows.js sets
+ * this when conditional logic hides every content field sharing the row, and
+ * clears it when they come back — otherwise the spacer is left alone in a
+ * visibly empty band.
+ *
+ * `!important` because ACF's own conditional logic writes `display` inline on
+ * the elements it shows, and a spacer can carry conditional logic of its own.
+ */
+#{$host} .acf-field-spacer.is-herd-orphan {
+	display: none !important;
+}
+
+/*
+ * Below the breakpoint every field is full width, so a spacer would be a blank
+ * row rather than a gap — a hole in the middle of the form. _widths.scss sends
+ * the fields to full width; this removes the spacers entirely.
+ *
+ * Same `!important`, same reason.
+ */
+@media (max-width: 782px) {
+	#{$host} .acf-field-spacer {
+		display: none !important;
+	}
+}
+
+/*
+ * This feature adds no motion, and must not acquire any: a spacer appearing and
+ * disappearing as conditional logic toggles is layout, not an effect, and
+ * animating it would move every field below it. The empty block is deliberate —
+ * it is here so that anyone adding a transition above sees that the decision was
+ * made rather than overlooked.
+ */
+@media (prefers-reduced-motion: reduce) {
+	#{$host} .acf-field-spacer {
+		transition: none;
+	}
+}

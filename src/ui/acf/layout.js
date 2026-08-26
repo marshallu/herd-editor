@@ -32,6 +32,7 @@ import { normalizeTableRepeaters } from './table-repeater.js';
 import { applyWidths } from './widths.js';
 import { decorateRepeaters } from './repeater.js';
 import { profileFor } from './profiles.js';
+import { watchSpacers } from './rows.js';
 
 /** Field types compact enough to share a row. */
 const CONTROL_TYPES = [
@@ -193,5 +194,16 @@ export function enhanceBlockForm( form, blockName ) {
 
 	decorate( form );
 	// Last: row summaries read the fields the decorators above have just settled.
-	return decorateRepeaters( form, decorate );
+	const stopRepeaters = decorateRepeaters( form, decorate );
+	/*
+	 * After the decorators, because a spacer's row is worked out from what is on
+	 * screen and `normalizeTableRepeaters` has by then given every repeater row
+	 * the shape the packing assumes.
+	 */
+	const stopSpacers = watchSpacers( form );
+
+	return () => {
+		stopSpacers();
+		if ( stopRepeaters ) stopRepeaters();
+	};
 }
