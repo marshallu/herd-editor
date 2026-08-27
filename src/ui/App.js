@@ -386,5 +386,5 @@ export function HerdEditorApp( { config } ) {
 			type: 'button',
 			className: 'herd-inserter__tail',
 			onClick: () => setOpenGap( named.length ),
-		}, '+ Add block at the end' ) );
+		}, '+ Add block' ) );
 }
