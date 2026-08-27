@@ -71,13 +71,16 @@
 	box-shadow: none;
 	box-sizing: border-box;
 	display: block;
-	font-size: 24px;
+	font-size: 20px;
 	font-weight: 600;
 	height: auto;
+	letter-spacing: -.01em;
 	line-height: 1.3;
 	margin: 0 0 0 -6px;
 	max-width: 560px;
 	padding: 2px 6px;
+	/* A long title gives way rather than pushing the actions off the bar. */
+	text-overflow: ellipsis;
 	width: 100%;
 }
 
@@ -86,34 +89,55 @@
 	margin: 0;
 	color: var(--herd-ink-3);
 	display: flex;
-	font-size: 11px;
+	font-size: 13px;
 	gap: 2px;
 	min-width: 0;
 }
 
+.herd-bar__slug-home {
+	white-space: nowrap;
+}
+
+/*
+ * The slug is its own Edit link. At rest it is text; the border is drawn in
+ * transparent so hovering adds a hint rather than a pixel of layout.
+ */
 .herd-bar__slug-text {
-	color: var(--herd-ink-2);
+	background: none;
+	border: 1px dashed transparent;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	font: inherit;
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	max-width: 240px;
+	font-size: 13px;
+	max-width: 300px;
 	overflow: hidden;
+	padding: 0 3px;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
-.herd-bar__slug-text[hidden],
-.herd-editor-screen #post_name[hidden] {
-	display: none;
+.herd-bar__slug-text:hover {
+	border-color: var(--herd-line);
+	color: var(--herd-ink-2);
 }
 
+/*
+ * A button that reads as a link, because that is the thing it behaves like: it
+ * is underlined at rest rather than on hover, so the line looks editable before
+ * anyone has pointed at it.
+ */
 .herd-bar__slug-edit {
 	background: none;
 	border: 0;
 	color: var(--herd-green-ink);
 	cursor: pointer;
 	font: inherit;
-	font-size: 11px;
+	font-size: 13px;
 	/* The slug and its prefix sit 2px apart; the action needs to read as separate. */
 	padding: 0 2px 0 6px;
+	text-decoration: underline;
 }
 
 .herd-bar__slug-edit[hidden] {
@@ -122,7 +146,11 @@
 
 .herd-bar__slug-edit:hover {
 	color: var(--herd-green-ink-hover);
-	text-decoration: underline;
+}
+
+.herd-bar__slug-text[hidden],
+.herd-editor-screen #post_name[hidden] {
+	display: none;
 }
 
 .herd-editor-screen #post_name {
@@ -132,13 +160,13 @@
 	box-shadow: none;
 	color: var(--herd-ink-2);
 	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 11px;
+	font-size: 13px;
 	height: auto;
 	line-height: 1.5;
 	margin: 0;
 	min-height: 0;
 	padding: 1px 4px;
-	width: 160px;
+	width: 210px;
 }
 
 .herd-editor-screen #titlediv #title:hover,
@@ -164,81 +192,206 @@
 .herd-bar__tools {
 	align-items: center;
 	display: flex;
-	gap: 8px;
+	gap: 10px;
 }
 
+/*
+ * What the post is and when it was last saved, in that order and on one line.
+ * The state carries the weight; the timestamp is the part that changes while
+ * the page is open, and reads as the aside it is.
+ */
 .herd-bar__savestate {
 	align-items: center;
-	color: var(--herd-ink-3);
 	display: flex;
 	font-size: 12px;
-	gap: 5px;
+	gap: 6px;
 	white-space: nowrap;
+}
+
+.herd-bar__state {
+	color: var(--herd-ink);
+	font-weight: 600;
+}
+
+.herd-bar__saved {
+	color: var(--herd-ink-2);
 }
 
 .herd-bar__dot {
 	background: var(--herd-green);
 	border-radius: 50%;
+	flex: none;
 	height: 6px;
 	width: 6px;
+}
+
+/* Anything not published: a state, not a warning, so it is simply grey. */
+.herd-bar__dot.is-draft {
+	background: var(--herd-ink-3);
 }
 
 .herd-bar__savestate.is-dirty .herd-bar__dot {
 	background: var(--herd-warning);
 }
 
-.herd-bar__status {
-	background: var(--herd-green-tint);
-	border: 1px solid var(--herd-green-line);
-	border-radius: 20px;
-	color: var(--herd-green-ink);
-	font-size: 11px;
-	font-weight: 600;
-	letter-spacing: .02em;
-	padding: 3px 9px;
-	white-space: nowrap;
-}
-
-.herd-bar__status.is-muted {
-	background: var(--herd-canvas);
-	border-color: var(--herd-line);
-	color: var(--herd-ink-2);
+.herd-bar__divider {
+	background: var(--herd-line);
+	flex: none;
+	height: 20px;
+	width: 1px;
 }
 
 /*
- * Where the page actually lives. Only rendered for a post that has somewhere to
- * live -- for a draft the native Preview button beside it is the whole answer.
+ * Undo and redo are one control with two ends. They share a border -- the second
+ * pulled back over the first -- and only the outer corners are rounded, so the
+ * pair reads as a pair rather than as two buttons that happen to be adjacent.
  */
-.herd-bar__view {
+.herd-bar__history {
 	align-items: center;
-	color: var(--herd-green-ink);
 	display: flex;
-	font-size: 12px;
-	gap: 2px;
+}
+
+.herd-iconbtn--start {
+	border-radius: var(--herd-r) 0 0 var(--herd-r);
+}
+
+.herd-iconbtn--end {
+	border-radius: 0 var(--herd-r) var(--herd-r) 0;
+	margin-left: -1px;
+}
+
+/* A focus ring drawn under the neighbour's border is a focus ring nobody sees. */
+.herd-iconbtn--start:focus-visible,
+.herd-iconbtn--end:focus-visible,
+.herd-iconbtn--start:hover:not(:disabled),
+.herd-iconbtn--end:hover:not(:disabled) {
+	position: relative;
+	z-index: 1;
+}
+
+/* ---------- view menu ---------- */
+
+.herd-viewmenu {
+	display: flex;
+	position: relative;
+}
+
+.herd-viewmenu__trigger {
+	align-items: center;
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	font-size: 13px;
+	gap: 4px;
+	padding: 5px 8px 5px 12px;
+}
+
+.herd-viewmenu__trigger:hover {
+	background: var(--herd-canvas);
+	border-color: var(--herd-line-hover);
+}
+
+.herd-viewmenu__chevron {
+	height: 14px;
+	transition: transform .15s ease;
+	width: 14px;
+}
+
+.herd-viewmenu__trigger.is-open .herd-viewmenu__chevron {
+	transform: rotate(180deg);
+}
+
+/* .herd-bar is z-index 40; a panel that opens under it is a panel nobody reads. */
+.herd-viewmenu__panel {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+	display: flex;
+	flex-direction: column;
+	min-width: 220px;
+	padding: 4px;
+	position: absolute;
+	right: 0;
+	top: calc(100% + 6px);
+	z-index: 50;
+}
+
+.herd-viewmenu__item {
+	align-items: center;
+	background: none;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	font-size: 13px;
+	gap: 4px;
+	padding: 6px 10px;
+	text-align: left;
 	text-decoration: none;
 	white-space: nowrap;
 }
 
-.herd-bar__view:hover,
-.herd-bar__view:focus {
-	color: var(--herd-green-ink-hover);
-	text-decoration: underline;
+.herd-viewmenu__item:hover {
+	background: var(--herd-green-tint);
+	color: var(--herd-ink);
 }
 
-.herd-bar__view .dashicons {
+/* Inside the panel, so the ring is drawn on the item and not over its edge. */
+.herd-viewmenu__item:focus-visible {
+	outline: 2px solid var(--herd-green);
+	outline-offset: -2px;
+}
+
+.herd-viewmenu__ext {
 	font-size: 14px;
 	height: 14px;
 	width: 14px;
 }
 
-/* Native #preview-action / #publishing-action relocated into the bar. */
+/*
+ * The bar's own controls take the brief's focus treatment: full green at 2px
+ * out. The screen-wide rule above is left alone -- the rail and every ACF panel
+ * are drawn against tinted surfaces where the darker ink reads better.
+ */
+.herd-bar__back:focus-visible,
+.herd-bar__slug-text:focus-visible,
+.herd-bar__slug-edit:focus-visible,
+.herd-bar__history .herd-iconbtn:focus-visible,
+.herd-viewmenu__trigger:focus-visible,
+.herd-bar__native .button:focus-visible {
+	outline: 2px solid var(--herd-green);
+	outline-offset: 2px;
+}
+
+/*
+ * #preview-action, parked rather than shown: the View menu presses the button
+ * inside it. Clipped rather than display:none, so it is a control out of sight
+ * rather than a control that is not there.
+ */
+.herd-bar__preview-host {
+	clip: rect(1px, 1px, 1px, 1px);
+	clip-path: inset(50%);
+	height: 1px;
+	overflow: hidden;
+	position: absolute;
+	white-space: nowrap;
+	width: 1px;
+}
+
+/* Native #publishing-action relocated into the bar. */
 .herd-bar__native {
 	align-items: center;
 	display: flex;
 	gap: 8px;
 }
 
-.herd-bar__native #preview-action,
 .herd-bar__native #publishing-action {
 	float: none;
 	margin: 0;
@@ -548,28 +701,36 @@
 	}
 }
 
-@media (max-width: 782px) {
+/*
+ * Below this the two clusters stop fitting side by side, so the actions take a
+ * row of their own -- still right-aligned, since that is where the hand already
+ * is -- and the title stops giving way to make room it no longer has to.
+ */
+@media (max-width: 800px) {
 	.herd-bar {
 		flex-wrap: wrap;
 		padding: 9px 12px;
 	}
 
 	.herd-bar__actions {
+		justify-content: flex-end;
 		margin-left: 0;
 		width: 100%;
 	}
 
+	.herd-editor-screen #titlediv #title {
+		max-width: none;
+		text-overflow: clip;
+	}
+}
+
+@media (max-width: 782px) {
 	.herd-cols {
 		padding: 12px;
 	}
 
 	.herd-saved {
 		margin: 12px 12px 0;
-	}
-
-	.herd-editor-screen #title {
-		font-size: 20px;
-		max-width: none;
 	}
 }
 

@@ -247,3 +247,37 @@ function herd_editor_width_styles() {
 	);
 }
 add_action( 'admin_enqueue_scripts', 'herd_editor_width_styles' );
+
+/**
+ * Keep ACF's field-group drag helper the width of the field list.
+ *
+ * jQuery UI takes the field object out of normal flow while it is being sorted.
+ * An absolutely positioned helper with an automatic width shrinks to its
+ * contents, which pulls ACF's right-aligned duplicate, delete, and disclosure
+ * controls alongside the label. It also leaves the underlying field visible
+ * through the helper, making it difficult to tell which row is moving.
+ *
+ * This deliberately lives beside the other field-group-editor-only CSS. Herd
+ * does not load its compiled editor stylesheet on this screen, and the rule is
+ * scoped to ACF's field list so it cannot affect a sortable anywhere else in
+ * wp-admin.
+ *
+ * @return void
+ */
+function herd_editor_field_group_drag_styles() {
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || 'acf-field-group' !== $screen->post_type || 'post' !== $screen->base ) {
+		return;
+	}
+
+	$helper = '#acf-field-group-fields .acf-field-object.ui-sortable-helper';
+
+	wp_register_style( 'herd-editor-field-group-drag', false, array(), HERD_EDITOR_VERSION );
+	wp_enqueue_style( 'herd-editor-field-group-drag' );
+	wp_add_inline_style(
+		'herd-editor-field-group-drag',
+		"{$helper} { box-sizing: border-box; width: 100% !important; z-index: 2; background: #fff; border-radius: 4px; box-shadow: 0 6px 16px rgba( 0, 0, 0, .14 ); }\n" .
+		"{$helper} .acf-field-object { background: #fff; }\n"
+	);
+}
+add_action( 'admin_enqueue_scripts', 'herd_editor_field_group_drag_styles' );

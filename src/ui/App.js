@@ -28,6 +28,8 @@ export function HerdEditorApp( { config } ) {
 	const [ nativeDirty, setNativeDirty ] = useState( false );
 	const [ announcement, setAnnouncement ] = useState( '' );
 	const [ openGap, setOpenGap ] = useState( null );
+	// The bar's View menu, held here so it and an inserter cannot both be open.
+	const [ menuOpen, setMenuOpen ] = useState( false );
 	const [ validationErrors, setValidationErrors ] = useState( [] );
 
 	const rowRefs = useRef( new Map() );
@@ -158,7 +160,10 @@ export function HerdEditorApp( { config } ) {
 		key: `gap-${ slot }`,
 		label: afterTitle ? `Insert a block after ${ afterTitle }` : 'Insert a block at the start',
 		isOpen: openGap === slot,
-		onOpen: () => setOpenGap( slot ),
+		onOpen: () => {
+			setOpenGap( slot );
+			setMenuOpen( false );
+		},
 		onClose: () => setOpenGap( null ),
 		catalog: config.blockTypes,
 		counts,
@@ -260,11 +265,21 @@ export function HerdEditorApp( { config } ) {
 	const barTarget = document.getElementById( 'herd-bar-react' );
 	const barTools = el( BarTools, {
 		dirty,
-		savedLabel: config.modifiedHuman || 'Saved',
+		savedLabel: config.modifiedHuman || 'saved',
+		statusLabel: config.statusLabel || 'Draft',
+		isPublished: !! config.isPublished,
+		viewUrl: config.viewUrl || '',
+		singular: config.singular || '',
 		canUndo: controller.canUndo,
 		canRedo: controller.canRedo,
 		onUndo: () => mutate( 'Change undone.', () => controller.undo() ),
 		onRedo: () => mutate( 'Change redone.', () => controller.redo() ),
+		menuOpen,
+		onMenuOpen: () => {
+			setMenuOpen( true );
+			setOpenGap( null );
+		},
+		onMenuClose: () => setMenuOpen( false ),
 	} );
 
 	return el( 'main', { className: 'herd-editor', 'aria-label': 'Herd block editor' },
@@ -385,6 +400,9 @@ export function HerdEditorApp( { config } ) {
 		el( 'button', {
 			type: 'button',
 			className: 'herd-inserter__tail',
-			onClick: () => setOpenGap( named.length ),
+			onClick: () => {
+				setOpenGap( named.length );
+				setMenuOpen( false );
+			},
 		}, '+ Add block' ) );
 }

@@ -13,7 +13,7 @@
  */
 
 import { awakenEditors } from './editor.js';
-import { iconSvg } from './icons.js';
+import { iconSvg, isIconSelect } from './icons.js';
 import { GRIP_ICON } from './grip.js';
 import { resetMedia } from './media.js';
 import { resetLinks } from './link.js';
@@ -56,6 +56,7 @@ function paintThumb( cell, thumb ) {
 	}
 
 	const icon = Array.from( cell.querySelectorAll( 'select' ) )
+		.filter( isIconSelect )
 		.map( ( select ) => iconSvg( select.value ) )
 		.find( Boolean );
 	thumb.className = 'herd-cardrow__thumb';

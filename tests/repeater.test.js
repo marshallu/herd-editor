@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { describeRow, fieldText } from '../src/ui/acf/repeater.js';
+import { JSDOM } from 'jsdom';
+import { decorateRepeaters, describeRow, fieldText } from '../src/ui/acf/repeater.js';
 
 /**
  * A stand-in for one `.acf-field` wrapper.
@@ -128,4 +129,60 @@ test( 'a row of one field and one spacer still names itself', () => {
 	] ) );
 	assert.equal( name, 'Housing' );
 	assert.equal( summary, '' );
+} );
+
+/* ---------- row thumbnails ---------- */
+
+function repeaterThumbForm( fields ) {
+	const dom = new JSDOM( `
+		<div class="acf-block-fields acf-fields">
+			<div class="acf-field acf-field-repeater" data-name="contacts" data-type="repeater">
+				<div class="acf-label"><label>Contacts</label></div>
+				<div class="acf-input"><div class="acf-repeater -block" data-min="0" data-max="0">
+					<table><tbody><tr class="acf-row">
+						<td class="acf-row-handle order"><span class="acf-row-number">1</span></td>
+						<td class="acf-fields">${ fields }</td>
+					</tr></tbody></table>
+					<div class="acf-actions"><a class="acf-repeater-add-row" data-event="add-row"></a></div>
+				</div></div>
+			</div>
+		</div>` );
+	global.document = dom.window.document;
+	global.window = dom.window;
+	global.MutationObserver = dom.window.MutationObserver;
+	window.HerdEditor = {
+		icons: {
+			email: '<svg data-icon="email"></svg>',
+			phone: '<svg data-icon="phone"></svg>',
+			web: '<svg data-icon="web"></svg>',
+		},
+	};
+	return dom.window.document.querySelector( '.acf-block-fields' );
+}
+
+const select = ( name, choices ) => `
+	<div class="acf-field acf-field-select" data-name="${ name }" data-type="select">
+		<div class="acf-label"><label>${ name }</label></div>
+		<div class="acf-input"><select>${ choices.map( ( value, index ) => `<option value="${ value }"${ index === 0 ? ' selected' : '' }>${ value }</option>` ).join( '' ) }</select></div>
+	</div>`;
+
+test( 'only paints a repeater icon thumbnail for an icon-choice select', () => {
+	const form = repeaterThumbForm(
+		select( 'email', [ 'email', 'text', 'none' ] )
+		+ select( 'mobile', [ 'phone', 'text', 'none' ] ),
+	);
+
+	decorateRepeaters( form );
+
+	const thumb = form.querySelector( '.herd-cardrow__thumb' );
+	assert.equal( thumb.innerHTML, '' );
+	assert.equal( thumb.matches( ':empty' ), true );
+} );
+
+test( 'paints a repeater thumbnail for a recognised icon picker', () => {
+	const form = repeaterThumbForm( select( 'link_icon', [ 'phone', 'web' ] ) );
+
+	decorateRepeaters( form );
+
+	assert.equal( form.querySelector( '.herd-cardrow__thumb svg' ).dataset.icon, 'phone' );
 } );

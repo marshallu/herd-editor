@@ -116,8 +116,27 @@
 	padding: 0;
 }
 
+/*
+ * `width` because ACF freezes one on every cell of a row the moment a drag
+ * starts, and never takes it off again:
+ *
+ *   e.addClass( "acf-sortable-tr-helper" );
+ *   e.children().each( function(){ $( this ).width( $( this ).width() ) } );
+ *   e.removeClass( "acf-sortable-tr-helper" );
+ *
+ * The class it measures under is `display: table-row !important`, which beats
+ * the row's `display: grid` below. A table row inside a `display: block` tbody
+ * gets an anonymous table wrapped around it, and an anonymous table shrinks to
+ * fit — so the number ACF reads is this cell's max-content width rather than
+ * its track's, and it is that number that gets written inline. A grid item with
+ * a definite width does not stretch, so the cell stays narrow at the start of
+ * the `1fr` track and the row's tools stop sitting at its right edge. jQuery UI
+ * restores only the `tr`'s own stored CSS on drop, so without this the row is
+ * left that way for good.
+ */
 @include boxes.in-surfaces(".herd-repeater tr.acf-row > td.acf-fields") {
 	display: block;
+	width: auto !important;
 }
 
 /* ACF's fields inside a row keep their own top rules; the row header is the only
@@ -153,7 +172,9 @@
 	box-sizing: border-box;
 	cursor: grab;
 	padding: 0 4px 0 8px;
-	width: var(--herd-row-inset);
+	/* `!important` for the reason the fields cell above gives: a drag writes a
+	   measured width onto every cell in the row and leaves it there. */
+	width: var(--herd-row-inset) !important;
 }
 
 @include boxes.in-surfaces(".herd-repeater td.acf-row-handle.order:active") {
@@ -234,17 +255,43 @@
  * and leaving a placeholder in the gap. The placeholder is built by copying the
  * dragged row's class list onto a fresh `tr` full of `&nbsp;` cells, so every
  * rule above applies to it too — it needs to be told to look like a slot.
+ *
+ * Both selectors name `table.acf-table` to clear the wipe at the top of this
+ * file, which carries `!important` on `background`, `border` and `box-shadow`
+ * and is more specific than either of these would otherwise be. Without that
+ * the dragged row is drawn as nothing at all: no surface, no shadow, and the
+ * row it is passing over reads straight through it.
  */
-@include boxes.in-surfaces(".herd-repeater tr.acf-row.ui-sortable-helper") {
-	background: var(--herd-surface);
+@include boxes.in-surfaces(".herd-repeater table.acf-table tr.acf-row.ui-sortable-helper") {
+	background: var(--herd-surface) !important;
 	border-radius: var(--herd-r);
-	box-shadow: 0 6px 16px rgba(0, 0, 0, .14);
+	/*
+	 * The hairline is the shadow's first layer rather than a `border`: jQuery UI
+	 * sizes the helper by writing the row's measured content width inline, and a
+	 * real border would take two of those pixels back off the row.
+	 */
+	box-shadow: 0 0 0 1px var(--herd-line), 0 6px 16px rgba(0, 0, 0, .14) !important;
 }
 
-@include boxes.in-surfaces(".herd-repeater tr.ui-sortable-placeholder") {
+@include boxes.in-surfaces(".herd-repeater table.acf-table tr.ui-sortable-placeholder") {
 	background: var(--herd-green-tint) !important;
 	border-top: 0 !important;
+	box-shadow: inset 0 0 0 1px var(--herd-green-line) !important;
 	visibility: visible !important;
+}
+
+/*
+ * ACF sizes the placeholder from the same bad measurement the fields cell gets
+ * — `i.height( e.height() + "px" )`, taken while the row is an anonymous table —
+ * so the gap it leaves is several rows tall. Every row is collapsed before a
+ * drag begins (src/ui/acf/repeater.js), so the height a slot should hold is the
+ * header's, said here rather than measured.
+ *
+ * Not the slot grid: that variant wants `forcePlaceholderSize`'s inline box,
+ * for the reason its own rule below gives.
+ */
+@include boxes.in-surfaces(".herd-repeater:not(.herd-slots) table.acf-table tr.ui-sortable-placeholder") {
+	height: var(--herd-header-h) !important;
 }
 
 @include boxes.in-surfaces(".herd-repeater tr.ui-sortable-placeholder > td") {
@@ -627,7 +674,9 @@
 	padding: 2px 6px 2px 3px;
 	position: absolute;
 	top: 6px;
-	width: auto;
+	/* `!important` for the reason the card row's cells give above: a drag writes
+	   a measured width onto every cell in the row and leaves it there. */
+	width: auto !important;
 	z-index: 2;
 }
 
@@ -653,8 +702,10 @@
 	width: auto !important;
 }
 
-@include boxes.in-surfaces(".herd-slots tr.acf-row.ui-sortable-helper") {
-	box-shadow: 0 6px 16px rgba(0, 0, 0, .14);
+/* Named through `table.acf-table` to clear the wipe at the top of this file,
+   which carries `!important` on `box-shadow`. */
+@include boxes.in-surfaces(".herd-slots table.acf-table tr.acf-row.ui-sortable-helper") {
+	box-shadow: 0 6px 16px rgba(0, 0, 0, .14) !important;
 }
 
 /*

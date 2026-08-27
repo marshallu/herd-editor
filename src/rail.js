@@ -23,13 +23,22 @@ function readMap() {
 	}
 }
 
-/** The Update and Preview buttons belong in the command bar, not the rail. */
+/**
+ * The Update and Preview buttons belong in the command bar, not the rail.
+ *
+ * Update goes where it is read. Preview goes to a clipped host beside it and is
+ * never looked at: the View menu's "Preview your changes" presses core's own
+ * button, so core's handler is what runs and there is no second preview URL to
+ * keep in step with the first. Moving the node rather than reading its href also
+ * carries the #wp-preview input inside it, which a preview submission needs.
+ */
 function liftPublishActions() {
 	const target = document.getElementById( 'herd-bar-native' );
 	if ( ! target ) return;
-	[ 'preview-action', 'publishing-action' ].forEach( ( id ) => {
+	const host = document.getElementById( 'herd-bar-preview-host' ) || target;
+	[ [ 'preview-action', host ], [ 'publishing-action', target ] ].forEach( ( [ id, into ] ) => {
 		const node = document.getElementById( id );
-		if ( node ) target.appendChild( node );
+		if ( node ) into.appendChild( node );
 	} );
 }
 
@@ -119,32 +128,43 @@ function buildTabs() {
 }
 
 /**
- * The slug reads as text until asked for.
+ * The slug reads as text until asked for, and there are two ways to ask.
  *
- * The markup ships in its no-JS state -- the input visible, the text and the
- * Edit button hidden -- so a bundle that never runs leaves an editable slug
- * rather than an unreachable one. This inverts that once, then toggles.
+ * The slug itself is a button, and the Edit link after it is another. The link
+ * is what makes the line look editable at a glance; the slug's own hover border
+ * is a hint you have to go looking for. Leaving is the reverse: focus goes back
+ * to whichever of the two opened the field, not always to the same one.
+ *
+ * The visible value lives in a span of its own so rewriting it on every collapse
+ * cannot take the slug button's name with it.
+ *
+ * The markup ships in its no-JS state -- the input visible, the slug and the link
+ * hidden -- so a bundle that never runs leaves an editable slug rather than an
+ * unreachable one. This inverts that once, then toggles.
  */
-function wireSlugEditor() {
+export function wireSlugEditor() {
 	const wrap = document.getElementById( 'herd-slug' );
-	const text = document.getElementById( 'herd-slug-text' );
+	const slug = document.getElementById( 'herd-slug-text' );
+	const value = document.getElementById( 'herd-slug-value' );
+	const edit = document.getElementById( 'herd-slug-edit' );
 	const input = document.getElementById( 'post_name' );
-	const button = document.getElementById( 'herd-slug-edit' );
-	if ( ! wrap || ! text || ! input || ! button ) return;
+	if ( ! wrap || ! slug || ! value || ! edit || ! input ) return;
 
 	const placeholder = input.getAttribute( 'placeholder' ) || '';
+	let opener = edit;
 
 	const collapse = () => {
-		text.textContent = input.value || placeholder;
-		text.hidden = false;
-		button.hidden = false;
+		value.textContent = input.value || placeholder;
+		slug.hidden = false;
+		edit.hidden = false;
 		input.hidden = true;
 		wrap.classList.remove( 'is-editing' );
 	};
 
-	const expand = () => {
-		text.hidden = true;
-		button.hidden = true;
+	const expand = ( event ) => {
+		opener = event?.currentTarget || edit;
+		slug.hidden = true;
+		edit.hidden = true;
 		input.hidden = false;
 		wrap.classList.add( 'is-editing' );
 		input.focus();
@@ -153,14 +173,15 @@ function wireSlugEditor() {
 
 	collapse();
 
-	button.addEventListener( 'click', expand );
+	slug.addEventListener( 'click', expand );
+	edit.addEventListener( 'click', expand );
 	input.addEventListener( 'blur', collapse );
 	input.addEventListener( 'keydown', ( event ) => {
 		if ( event.key !== 'Enter' && event.key !== 'Escape' ) return;
 		// Enter inside form#post would submit the post; this field is done instead.
 		event.preventDefault();
 		collapse();
-		button.focus();
+		opener.focus();
 	} );
 }
 

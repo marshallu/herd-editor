@@ -96,6 +96,25 @@ function herd_editor_view_url( $post ) {
 }
 
 /**
+ * What the command bar calls this post's state.
+ *
+ * `auto-draft` has no human label -- get_post_status_object() hands back the
+ * slug -- and it is not a state anybody chose. A post that has never been saved
+ * is a draft, which is what core's own publish box calls it.
+ *
+ * Every other status answers for itself, so Scheduled, Pending Review and
+ * Private all reach the bar under their own names rather than collapsing into
+ * one muted "not published".
+ *
+ * @param WP_Post $post Post being edited.
+ * @return string
+ */
+function herd_editor_status_label( $post ) {
+	$status = get_post_status_object( 'auto-draft' === $post->post_status ? 'draft' : $post->post_status );
+	return $status ? $status->label : $post->post_status;
+}
+
+/**
  * A post type's singular name, mid-sentence.
  *
  * "View Page" is title case in the middle of a sentence, which the style guide
@@ -240,28 +259,32 @@ function herd_editor_saved_notice( $post ) {
 /**
  * How the command bar reports the last save.
  *
+ * This is the tail of a sentence the status label begins -- "Published, saved
+ * seven months ago" -- so it is lower case and never stands on its own.
+ *
  * `human_time_diff()` measures in minutes at its finest, so the moment after a
- * save -- the one moment the label is read most closely -- it says "Saved 1 min
+ * save -- the one moment the label is read most closely -- it says "saved 1 min
  * ago" about something that happened two seconds ago. Under a minute the honest
  * answer is that it just happened.
  *
  * An auto-draft is the other end of the same problem: its modified time is when
- * core created the row, which is not a save anybody made.
+ * core created the row, which is not a save anybody made, and a post nobody has
+ * saved has certainly never been published.
  *
  * @param WP_Post $post Post being edited.
  * @return string
  */
 function herd_editor_saved_label( $post ) {
 	if ( 'auto-draft' === $post->post_status ) {
-		return __( 'Not saved yet', 'herd-editor' );
+		return __( 'never published', 'herd-editor' );
 	}
 	$modified = (int) get_post_modified_time( 'U', true, $post );
 	if ( time() - $modified < MINUTE_IN_SECONDS ) {
-		return __( 'Saved just now', 'herd-editor' );
+		return __( 'saved just now', 'herd-editor' );
 	}
 	return sprintf(
 		/* translators: %s: human readable time difference. */
-		__( 'Saved %s ago', 'herd-editor' ),
+		__( 'saved %s ago', 'herd-editor' ),
 		human_time_diff( $modified )
 	);
 }

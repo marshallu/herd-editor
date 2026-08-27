@@ -736,6 +736,14 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				'blockTypes' => herd_editor_block_metadata( $post->post_content, $post ),
 				'blockGroupOrder' => herd_editor_block_group_order(),
 				'modifiedHuman' => herd_editor_saved_label( $post ),
+				'statusLabel' => herd_editor_status_label( $post ),
+				'isPublished' => 'publish' === $post->post_status,
+				/*
+				 * A draft has nowhere to send anyone, so View is absent rather than
+				 * broken; herd_editor_view_url() is the one place that decides.
+				 */
+				'viewUrl' => herd_editor_view_url( $post ),
+				'singular' => herd_editor_singular_lower( $post ),
 				/** Filter how many ACF blocks Expand all mounts before asking for confirmation. */
 				'expandWarnAt' => (int) apply_filters( 'herd_editor_expand_warn_at', 8 ),
 				'validationNonce' => wp_create_nonce( 'herd_editor_validate_document' ),

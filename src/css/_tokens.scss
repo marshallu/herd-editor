@@ -82,8 +82,8 @@
 	/*
 	 * How tall the command bar stands. The rail sticks below it and cannot ask
 	 * CSS for a sibling's height, so the number is named here rather than buried
-	 * in a calc(). It follows the title: a caption, a 24px input and the slug.
+	 * in a calc(). It follows the title: a caption, a 20px input and the slug.
 	 */
-	--herd-bar-h: 90px;
+	--herd-bar-h: 88px;
 	--herd-rail-w: clamp(300px, 24vw, 340px);
 }

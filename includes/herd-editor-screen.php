@@ -14,12 +14,6 @@
 defined( 'ABSPATH' ) || exit;
 
 $herd_screen_id   = get_current_screen()->id;
-/*
- * `auto-draft` has no human label -- get_post_status_object() hands back the
- * slug -- and it is not a state anybody chose. A post that has never been saved
- * is a draft, which is what core's own publish box calls it.
- */
-$herd_status      = get_post_status_object( 'auto-draft' === $post->post_status ? 'draft' : $post->post_status );
 $herd_home        = preg_replace( '#^https?://#', '', untrailingslashit( home_url( '/' ) ) );
 $herd_list_url    = 'post' === $post->post_type
 	? admin_url( 'edit.php' )
@@ -31,12 +25,6 @@ $herd_title_label = sprintf( __( '%s Title', 'herd-editor' ), $herd_singular );
 $herd_tabs        = herd_editor_rail_tab_labels();
 $herd_assignments = herd_editor_rail_assignments( $herd_screen_id, $post );
 $herd_saved       = herd_editor_saved_notice( $post );
-/*
- * A draft has nowhere to send anyone, and the native Preview button relocated
- * into the bar already covers that case, so View appears only when there is a
- * published page at the other end of it.
- */
-$herd_view_url    = herd_editor_view_url( $post );
 ?>
 <div class="wrap herd-editor-screen">
 	<h1 class="screen-reader-text"><?php esc_html_e( 'Herd Editor', 'herd-editor' ); ?></h1>
@@ -77,14 +65,25 @@ $herd_view_url    = herd_editor_view_url( $post );
 				</div>
 				<?php
 				/*
-				 * The slug reads as text until asked for. src/rail.js swaps in the
-				 * input on Edit; without the bundle the input is simply visible,
-				 * which is the same field posting under the same name either way.
+				 * The slug reads as text until asked for, and there are two ways to ask:
+				 * the slug itself, and the Edit link after it. src/rail.js swaps in the
+				 * input for either. The link is what makes the line look editable at a
+				 * glance -- the slug's own hover border is a hint you have to go looking
+				 * for -- so both are kept.
+				 *
+				 * The markup ships in its no-JS state -- input visible, slug and link
+				 * hidden -- so a bundle that never runs leaves an editable slug rather
+				 * than a dead one. It is the same field posting under the same name
+				 * either way.
 				 */
 				?>
 				<p class="herd-bar__slug" id="herd-slug">
-					<span><?php echo esc_html( $herd_home ); ?>/</span>
-					<span class="herd-bar__slug-text" id="herd-slug-text" hidden><?php echo esc_html( $post->post_name ? $post->post_name : __( 'slug', 'herd-editor' ) ); ?></span>
+					<span class="herd-bar__slug-home"><?php echo esc_html( $herd_home ); ?>/</span>
+					<button type="button" class="herd-bar__slug-text" id="herd-slug-text" hidden>
+						<?php /* rail.js rewrites the value span; the name beside it has to survive that. */ ?>
+						<span id="herd-slug-value"><?php echo esc_html( $post->post_name ? $post->post_name : __( 'slug', 'herd-editor' ) ); ?></span>
+						<span class="screen-reader-text"><?php esc_html_e( 'Edit the slug', 'herd-editor' ); ?></span>
+					</button>
 					<label class="screen-reader-text" for="post_name"><?php esc_html_e( 'Slug', 'herd-editor' ); ?></label>
 					<input type="text" name="post_name" value="<?php echo esc_attr( $post->post_name ); ?>" id="post_name" placeholder="<?php esc_attr_e( 'slug', 'herd-editor' ); ?>" />
 					<button type="button" class="herd-bar__slug-edit" id="herd-slug-edit" hidden><?php esc_html_e( 'Edit', 'herd-editor' ); ?></button>
@@ -92,23 +91,19 @@ $herd_view_url    = herd_editor_view_url( $post );
 			</div>
 
 			<div class="herd-bar__actions">
-				<?php /* Herd's save state, undo and redo are portalled in here by the editor app. */ ?>
+				<?php /* Herd's status line, undo, redo and the View menu are portalled in here by the editor app. */ ?>
 				<span id="herd-bar-react"></span>
-				<span class="herd-bar__status<?php echo 'publish' === $post->post_status ? '' : ' is-muted'; ?>"><?php echo esc_html( $herd_status ? $herd_status->label : $post->post_status ); ?></span>
-				<?php if ( $herd_view_url ) : ?>
-					<a class="herd-bar__view" href="<?php echo esc_url( $herd_view_url ); ?>" target="_blank" rel="noopener">
-						<?php esc_html_e( 'View', 'herd-editor' ); ?>
-						<span class="dashicons dashicons-external" aria-hidden="true"></span>
-						<span class="screen-reader-text">
-							<?php
-							/* translators: %s: post type singular name, e.g. page. */
-							echo esc_html( sprintf( __( '%s, opens in a new tab', 'herd-editor' ), herd_editor_singular_lower( $post ) ) );
-							?>
-						</span>
-					</a>
-				<?php endif; ?>
-				<?php /* src/rail.js moves #preview-action and #publishing-action here. */ ?>
+				<?php /* src/rail.js moves #publishing-action here. */ ?>
 				<span class="herd-bar__native" id="herd-bar-native"></span>
+				<?php
+				/*
+				 * #preview-action is parked here rather than shown. The View menu's
+				 * "Preview your changes" presses core's own button, so whatever core has
+				 * wired to it is what runs -- and the #wp-preview input it carries stays
+				 * inside form#post where a preview submission expects to find it.
+				 */
+				?>
+				<span class="herd-bar__preview-host" id="herd-bar-preview-host"></span>
 			</div>
 		</header>
 
