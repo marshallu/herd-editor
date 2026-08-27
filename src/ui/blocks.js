@@ -12,6 +12,19 @@ export function titleFor( block, blockTypes = {} ) {
 		.join( ' ' );
 }
 
+/**
+ * The icon a block should draw, as either markup or a dashicon slug.
+ *
+ * PHP hands us one or the other (herd_editor_block_icon). A plain string is still
+ * honoured so a stale payload degrades to the old behaviour rather than to nothing.
+ */
+export function iconOf( metadata ) {
+	const icon = metadata?.icon;
+	if ( typeof icon === 'string' ) return { slug: icon || 'block-default' };
+	if ( typeof icon?.svg === 'string' && icon.svg ) return { svg: icon.svg };
+	return { slug: icon?.dashicon || 'block-default' };
+}
+
 /** Saved markup for a block, with the inner-block placeholders removed. */
 export function bodyFor( block ) {
 	return ( block.innerContent || [] ).filter( ( fragment ) => fragment !== null ).join( '' );

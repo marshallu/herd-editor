@@ -4,7 +4,10 @@
  * ACF renders a repeater one of three ways. In `block` and `row` layout every
  * sub-field of a row lives inside a single `<td class="acf-fields">`. In `table`
  * layout there is no such cell: each sub-field is its own `<td class="acf-field">`,
- * and the labels are hoisted out of the rows into a `<thead>` of `<th class="acf-th">`.
+ * and the labels are hoisted out of the rows into a `<thead>` of `<th class="acf-th">` —
+ * which is also the only place a sub-field's authored width appears, because
+ * `acf_render_field_wrap()` emits `data-width` for every wrapper element except `tr`
+ * and `td`.
  *
  * Herd's repeater work assumes the first shape everywhere. `decorateRepeater`
  * looks for `td.acf-fields` and returns early without it, so a table repeater
@@ -28,7 +31,8 @@
  *     layout modifier; it works on `tr.acf-row`, the order handle's span, and
  *     `.acf-field[data-key]`. All three are preserved.
  *   - Every attribute of the original cell is carried onto the replacement, so
- *     `data-key`, `data-name`, `data-required` and the field classes survive.
+ *     `data-key`, `data-name`, `data-required` and the field classes survive, and
+ *     the `data-width` only the header cell had is carried across with them.
  *   - Inputs are moved, never recreated, so `name` attributes and therefore
  *     serialisation are untouched.
  *   - The `.acf-clone` template row is normalised too, so rows added later come
@@ -77,8 +81,23 @@ function toFieldDiv( cell, th ) {
 	const field = document.createElement( 'div' );
 	Array.from( cell.attributes ).forEach( ( attribute ) => field.setAttribute( attribute.name, attribute.value ) );
 	while ( cell.firstChild ) field.appendChild( cell.firstChild );
-	// After the move, so the label can find the control it names.
-	if ( th ) field.insertBefore( buildLabel( field, th ), field.firstChild );
+	if ( th ) {
+		/*
+		 * ACF drops a sub-field's authored width for a `td` wrapper — the
+		 * `$element !== 'td'` test in `acf_render_field_wrap()` — and writes it on the
+		 * header cell instead. The `<thead>` is removed a few lines below, so the width
+		 * has to move now or it is lost, and every sized sub-field in a table-layout
+		 * repeater comes out full width.
+		 *
+		 * Only `data-width` moves. ACF's companion `style="width:50%"` is for its own
+		 * sidebar layout, which Herd throws away wherever it lays fields out itself, so
+		 * copying it would only be something else to override.
+		 */
+		const width = th.getAttribute( 'data-width' );
+		if ( width && ! field.hasAttribute( 'data-width' ) ) field.setAttribute( 'data-width', width );
+		// After the move, so the label can find the control it names.
+		field.insertBefore( buildLabel( field, th ), field.firstChild );
+	}
 	return field;
 }
 

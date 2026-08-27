@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloneBlock, createBlock, findBlockByClientId, insertBlock, moveBlock, parseDocument, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeDocument } from '../src/document.js';
+import { cloneBlock, createBlock, findBlockByClientId, insertBlock, moveBlock, parseDocument, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeBlockAttributes, serializeDocument } from '../src/document.js';
 import { DocumentController } from '../src/controller.js';
 
 const source = 'before\n<!-- wp:group {  "className":"wide"  } -->\n<p>A</p>\n<!-- wp:acf/hero {"name":"acf/hero","data":{"title":"A \\"quote\\""}} /-->\n<!-- wp:paragraph --> <p>Child</p> <!-- /wp:paragraph -->\n<!-- /wp:group -->\nafter';
@@ -17,6 +17,28 @@ test( 'regenerates only an edited attribute comment', () => {
 	assert.ok( output.includes( '<!-- wp:group {  "className":"wide"  } -->' ) );
 	assert.ok( output.includes( '<!-- wp:acf/hero {"name":"acf/hero","data":{"title":"Changed"}} /-->' ) );
 	assert.equal( output.replace( /<!-- wp:acf\/hero .*?\/-->/, '<hero>' ), source.replace( /<!-- wp:acf\/hero .*?\/-->/, '<hero>' ) );
+} );
+
+test( 'serializes changed attributes with WordPress comment-safe escaping', () => {
+	const attributes = {
+		comment: 'a -- b', html: '<em>Hi</em>', ampersand: 'one & two', quote: 'a "quote"',
+		backslash: 'C:\\sites\\herd', unicode: 'café 🐑',
+		data: { repeater_0_title: '<Card> & "one"', repeater_0_link: { url: 'https://example.test/a/b?c=1&d=2' } },
+	};
+	const expected = '{"comment":"a \\u002d\\u002d b","html":"\\u003cem\\u003eHi\\u003c/em\\u003e","ampersand":"one \\u0026 two","quote":"a \\u0022quote\\u0022","backslash":"C:\\u005csites\\u005cherd","unicode":"café 🐑","data":{"repeater_0_title":"\\u003cCard\\u003e \\u0026 \\u0022one\\u0022","repeater_0_link":{"url":"https://example.test/a/b?c=1\\u0026d=2"}}}';
+	assert.equal( serializeBlockAttributes( attributes ), expected );
+	assert.deepEqual( JSON.parse( serializeBlockAttributes( attributes ) ), attributes );
+	const output = serializeDocument( [ createBlock( 'acf/card', attributes ) ] );
+	assert.ok( output.includes( expected ) );
+	assert.deepEqual( parseDocument( output )[ 0 ].attributes, attributes );
+} );
+
+test( 'keeps untouched comments byte-for-byte while canonicalizing changed ones', () => {
+	const original = '<!-- wp:acf/card { "data" : { "title" : "<old> & \\"quote\\"" } } /--><!-- wp:acf/other {  "x":1  } /-->';
+	const blocks = parseDocument( original );
+	const output = serializeDocument( replaceAttributes( blocks, blocks[ 0 ].clientId, { data: { title: '<new> & "quote"' } } ) );
+	assert.match( output, /^<!-- wp:acf\/card \{"data":\{"title":"\\u003cnew\\u003e \\u0026 \\u0022quote\\u0022"\}\} \/-->/ );
+	assert.ok( output.endsWith( '<!-- wp:acf/other {  "x":1  } /-->' ) );
 } );
 
 test( 'preserves malformed and freeform-only documents', () => {

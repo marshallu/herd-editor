@@ -17,6 +17,34 @@
 
 $host: ".herd-editor__field-host";
 
+/*
+ * The bridge reports `mounted` only after ACF has attached its field behaviour
+ * and Herd has finished enhancing the rendered form. Animate that completed
+ * form rather than the accordion panel or its loading indicator.
+ */
+#{$host}--ready > .herd-editor__form {
+	animation: herd-acf-form-arrive 180ms cubic-bezier( 0.2, 0.8, 0.2, 1 ) both;
+	transform-origin: top center;
+}
+
+@keyframes herd-acf-form-arrive {
+	from {
+		opacity: 0;
+		transform: translateY( -4px ) scale( 0.985 );
+	}
+
+	to {
+		opacity: 1;
+		transform: translateY( 0 ) scale( 1 );
+	}
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	#{$host}--ready > .herd-editor__form {
+		animation: none;
+	}
+}
+
 #{$host} .acf-fields {
 	background: transparent;
 }
@@ -97,16 +125,17 @@ $host: ".herd-editor__field-host";
  * that dead space with whatever fits, which reorders what is on screen away from
  * both the authored order and the tab order.
  *
- * Role decides width, never position. Field groups put a field that reveals
- * others directly above what it reveals, and hoisting every select to a row at
- * the top would strand `hero_cta_type` far from the CTA groups it controls.
+ * Nothing here moves a field. Field groups put a field that reveals others
+ * directly above what it reveals, and hoisting every select to a row at the top
+ * would strand `hero_cta_type` far from the CTA groups it controls. The one
+ * exception is the Display options list, which `layoutBlockForm()` builds.
  *
  * Forms carrying ACF tabs or accordions never get the .herd-fields class, and so
  * keep ACF's own sequential layout.
  *
  * WHAT RESETS A ROW, because the next person will assume something else:
- *   - any full-width field, which is every `herd-field--content` and anything
- *     authored at 100%; it takes all twelve tracks, so nothing can sit beside it
+ *   - any full-width field, which is every field the group did not narrow; it
+ *     takes all twelve tracks, so nothing can sit beside it
  *   - a Tab or an Accordion, both of which are full width — though in practice a
  *     form holding either never reaches this grid at all (see `layoutBlockForm`)
  *   - the start of a repeater row and the start of a group body, which are
@@ -115,7 +144,7 @@ $host: ".herd-editor__field-host";
  * removes the field from the flow and everything after it slides up.
  */
 #{$host} .acf-block-fields.herd-fields {
-	@include widths.grid(14px, 16px);
+	@include widths.grid();
 }
 
 /*
@@ -143,16 +172,17 @@ $host: ".herd-editor__field-host";
 	border-right: 0;
 }
 
-/* Media, editors, repeaters and groups need the whole width. */
-#{$host} .herd-fields > .herd-field--content,
+/*
+ * A field takes the whole row unless the field group narrows it. Herd infers no
+ * width from a field's type — the same rule the group body, the repeater row and
+ * the flexible-content layout already state — so this is the only default and
+ * the width rules below are the only thing that overrides it. They carry an
+ * attribute selector, so they win on specificity rather than on source order.
+ */
+#{$host} .herd-fields > .acf-field,
 #{$host} .herd-fields > .herd-fieldopts,
 #{$host} .herd-fieldopts {
 	grid-column: 1 / -1;
-}
-
-/* Half a row each; the grid pairs them in the order the field group authored. */
-#{$host} .herd-fields > .herd-field--controls {
-	grid-column: span 6;
 }
 
 /*
@@ -163,12 +193,11 @@ $host: ".herd-editor__field-host";
  * Qualified with `.acf-field-true-false` because the switch rules further down
  * share this selector's specificity and would otherwise win on source order.
  *
- * Above the width rules, not below them: this is Herd inferring a row from the
- * field's conditional logic, and an authored width is the field group saying so
- * outright. The two selectors weigh the same, so source order is what decides
- * which of them a structural toggle with a width on it obeys. `justify-self`
- * survives either way, and should — a 50% toggle is a toggle in half a row, not
- * a switch stretched across one.
+ * This is the one row Herd still infers, from the field's conditional logic
+ * rather than from its type, and an authored width is the field group saying so
+ * outright — so the width rules, which carry an attribute selector, outrank it.
+ * `justify-self` survives that, and should: a 50% toggle is a toggle in half a
+ * row, not a switch stretched across one.
  */
 #{$host} .acf-field-true-false.herd-switchrow {
 	grid-column: 1 / -1;
@@ -176,10 +205,10 @@ $host: ".herd-editor__field-host";
 }
 
 /*
- * An authored width outranks the role, and outranks `.herd-switchrow` above:
- * those are Herd inferring a row from the field's type and its conditional
- * logic, and this is the field group saying so outright. Last in the section, so
- * it also wins the ties.
+ * An authored width outranks the full row above, and outranks `.herd-switchrow`:
+ * those are the default and Herd inferring a row from conditional logic, and
+ * this is the field group saying so outright. Last in the section, so it also
+ * wins the ties.
  */
 @include widths.spans("#{$host} .herd-fields");
 
@@ -225,200 +254,15 @@ $host: ".herd-editor__field-host";
 /* ---------- true/false as a switch ---------- */
 
 /*
- * A switch reads as a state in both positions. The pill this replaces did not:
- * its off state was a white chip with a 1px border and a label inside, which is
- * exactly `.btn` — you had to click it to learn it was a setting rather than an
- * action. Green made that worse, since green is also the primary action here.
+ * The switch itself now lives in _switch.scss, which emits it for the block
+ * form and both postbox surfaces alike — the rail's 77 fields were rendering
+ * core checkboxes for the same settings this drew as switches.
  *
- * ACF renders `.acf-label` before `.acf-input`, so the row is a flex container
- * and the two are reordered with `order` rather than the markup being touched.
- * The label keeps its `for`, so the text stays a hit area for free.
+ * What is left in this file is the two rules that are about a block rather
+ * than about a switch: `.herd-switchrow` above, which spans a gating toggle
+ * across the field grid, and the `hide_block` on-state below.
  */
-#{$host} .acf-field-true-false {
-	align-items: center;
-	/*
-	 * A grid item defaults to `justify-self: stretch`, which fills the column no
-	 * matter what `width` says — that is why nested toggles inside an ACF group
-	 * spanned the whole form. `start` works in both flex and grid contexts.
-	 */
-	align-self: start;
-	justify-self: start;
-	background: none;
-	border: 0;
-	display: flex;
-	flex: 0 0 auto;
-	gap: 10px;
-	max-width: 100%;
-	/* ACF's bare `.acf-field { margin: 15px 0 }` applies at any depth, and its
-	   `.acf-fields > .acf-field` reset no longer reaches these in here. */
-	margin: 0;
-	min-height: 26px;
-	padding: 4px 0;
-	position: relative;
-	width: auto !important;
-}
 
-#{$host} .acf-field-true-false > .acf-input {
-	flex: 0 0 auto;
-	margin: 0;
-	order: 0;
-}
-
-#{$host} .acf-field-true-false > .acf-label {
-	display: flex;
-	margin: 0;
-	order: 1;
-}
-
-/* ACF draws its own focus ring on this wrapper; the input carries that itself. */
-#{$host} .acf-field-true-false .acf-true-false,
-#{$host} .acf-field-true-false .acf-true-false:focus-within {
-	border: 0;
-}
-
-#{$host} .acf-field-true-false .acf-label label {
-	align-items: center;
-	color: var(--herd-ink);
-	cursor: pointer;
-	display: flex;
-	font-size: 13px;
-	/* Weight never changes with state; the switch carries that on its own. */
-	font-weight: 400;
-	line-height: 1.3;
-	margin: 0;
-}
-
-/*
- * Help text has nowhere to sit on a single row, so it becomes a hover popover.
- * Kept at opacity 0 rather than display:none so it stays readable to AT.
- *
- * ACF puts this in two different places: instructions render as
- * `.acf-input > p.description`, while the field's "message" setting renders as
- * `.acf-true-false > label > span.message`.
- */
-#{$host} .acf-field-true-false .acf-input > .description,
-#{$host} .acf-field-true-false .acf-true-false .message {
-	background: var(--herd-ink);
-	border-radius: var(--herd-r-sm);
-	box-shadow: 0 3px 10px rgba(0, 0, 0, .18);
-	color: #fff;
-	font-size: 11px;
-	left: 0;
-	line-height: 1.4;
-	margin: 0;
-	max-width: 260px;
-	opacity: 0;
-	padding: 6px 8px;
-	pointer-events: none;
-	position: absolute;
-	top: calc(100% + 6px);
-	transition: opacity .12s;
-	width: max-content;
-	z-index: 5;
-}
-
-#{$host} .acf-field-true-false:hover .acf-input > .description,
-#{$host} .acf-field-true-false:hover .acf-true-false .message,
-#{$host} .acf-field-true-false:focus-within .acf-input > .description,
-#{$host} .acf-field-true-false:focus-within .acf-true-false .message {
-	opacity: 1;
-}
-
-/* Both would stack in the same spot; instructions are the more specific of the two. */
-#{$host} .acf-field-true-false:has(.acf-input > .description) .acf-true-false .message {
-	display: none;
-}
-
-/* Hide ACF's own switch chrome; the input itself is the affordance now. */
-#{$host} .acf-field-true-false .acf-switch {
-	display: none;
-}
-
-/*
- * The track. Covers both the `ui` switch and a plain checkbox, and stays a real
- * focusable checkbox — nothing here is a styled div.
- */
-#{$host} .acf-field-true-false input[type="checkbox"] {
-	-webkit-appearance: none;
-	appearance: none;
-	background: var(--herd-line-hover);
-	border: 0;
-	border-radius: 99px;
-	cursor: pointer;
-	flex: 0 0 auto;
-	height: 18px;
-	margin: 0;
-	/* ACF hides the real input behind its own chrome with
-	   `.acf-switch-input { opacity: 0; position: absolute }`. Both are undone
-	   here, because the input *is* the control now. */
-	opacity: 1;
-	position: relative;
-	transition: background .12s ease;
-	width: 30px;
-}
-
-/* ACF wraps the input, its switch chrome and the message in a label of its own. */
-#{$host} .acf-field-true-false .acf-true-false > label {
-	align-items: center;
-	display: flex;
-	line-height: 0;
-	margin: 0;
-}
-
-/*
- * wp-admin draws a tick inside a checked checkbox — an SVG data URI in `content`,
- * floated left — which lands in the middle of the track. The knob is the state
- * here, so the tick goes. Both `content` and `display` are reset, and `:checked`
- * is matched explicitly, so this does not rest on out-specifying core.
- */
-#{$host} .acf-field-true-false input[type="checkbox"]::before,
-#{$host} .acf-field-true-false input[type="checkbox"]:checked::before {
-	content: none;
-	display: none;
-}
-
-/* The knob. */
-#{$host} .acf-field-true-false input[type="checkbox"]::after {
-	background: #fff;
-	border-radius: 50%;
-	box-shadow: 0 1px 2px rgba(0, 0, 0, .25);
-	content: "";
-	height: 14px;
-	left: 2px;
-	position: absolute;
-	top: 2px;
-	transition: transform .12s ease;
-	width: 14px;
-}
-
-#{$host} .acf-field-true-false input[type="checkbox"]:hover {
-	background: var(--herd-ink-3);
-}
-
-#{$host} .acf-field-true-false input[type="checkbox"]:checked {
-	background: var(--herd-green);
-}
-
-#{$host} .acf-field-true-false input[type="checkbox"]:checked:hover {
-	background: var(--herd-green-ink);
-}
-
-#{$host} .acf-field-true-false input[type="checkbox"]:checked::after {
-	transform: translateX(12px);
-}
-
-#{$host} .acf-field-true-false input[type="checkbox"]:focus-visible {
-	outline: 2px solid var(--herd-green-ink);
-	outline-offset: 2px;
-}
-
-/* The knob slide is the only motion here. */
-@media (prefers-reduced-motion: reduce) {
-	#{$host} .acf-field-true-false input[type="checkbox"],
-	#{$host} .acf-field-true-false input[type="checkbox"]::after {
-		transition: none;
-	}
-}
 
 /* ---------- nested groups ---------- */
 
@@ -456,127 +300,6 @@ $host: ".herd-editor__field-host";
 	gap: 14px;
 }
 
-/* ---------- links ---------- */
-
-/*
- * ACF's return array already carries title, url and target, and its markup puts
- * them in .link-title and .link-url. The stock rendering shows the same "Select
- * Link" button whether or not a link is set, so a resolved link is invisible.
- */
-#{$host} .herd-link .link-wrap {
-	align-items: center;
-	background: var(--herd-surface);
-	border: 1px solid var(--herd-line);
-	border-radius: var(--herd-r);
-	display: flex;
-	gap: 9px;
-	min-height: var(--herd-control-h);
-	padding: 5px 9px;
-}
-
-#{$host} .herd-link:not(.-value) .link-wrap {
-	display: none;
-}
-
-#{$host} .herd-link .link-title {
-	color: var(--herd-ink);
-	flex: none;
-	font-size: 12px;
-	max-width: 45%;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-/* A URL is read character by character, so it gets the mono tier. */
-#{$host} .herd-link .link-url {
-	color: var(--herd-ink-3);
-	flex: 1;
-	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-	font-size: 11px;
-	min-width: 0;
-	overflow: hidden;
-	text-decoration: none;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-#{$host} .herd-link .link-wrap .acf-icon {
-	background: none;
-	color: var(--herd-ink-3);
-	flex: none;
-	font-size: 11px;
-	height: auto;
-	line-height: 1.6;
-	text-indent: 0;
-	width: auto;
-}
-
-#{$host} .herd-link .link-wrap .acf-icon::before,
-#{$host} .herd-link .link-wrap .acf-icon::after {
-	content: none;
-}
-
-#{$host} .herd-link__edit {
-	border: 1px solid var(--herd-line);
-	border-radius: var(--herd-r);
-	color: var(--herd-ink-2) !important;
-	padding: 2px 8px;
-}
-
-#{$host} .herd-link [data-name="remove"]:hover {
-	color: var(--herd-danger) !important;
-}
-
-/*
- * An empty state is an invitation, not a report — and not an accent. Green marks
- * selection, active state and the primary action, and an empty field is none of
- * those. src/ui/acf/link.js drops WP's `.button` class, which the site's admin
- * CSS paints green with !important, so plain rules are enough here.
- *
- * Sized to the 31px control height so an empty link reads as a field waiting to
- * be filled rather than a banner announcing itself.
- */
-#{$host} .herd-link > [data-name="add"] {
-	align-items: center;
-	background: var(--herd-surface);
-	border: 1px dashed var(--herd-line);
-	border-radius: var(--herd-r);
-	box-shadow: none;
-	color: var(--herd-ink-3);
-	display: flex;
-	font-size: 12px;
-	font-weight: 400;
-	gap: 8px;
-	height: auto;
-	line-height: 1.5;
-	min-height: var(--herd-control-h);
-	padding: 5px 9px;
-	text-align: left;
-	width: 100%;
-}
-
-#{$host} .herd-link > [data-name="add"]:hover {
-	background: var(--herd-canvas);
-	border-color: var(--herd-line-strong);
-	color: var(--herd-ink);
-}
-
-#{$host} .herd-link__glyph {
-	color: inherit;
-	display: flex;
-	flex: none;
-}
-
-#{$host} .herd-link__glyph svg {
-	height: 14px;
-	width: 14px;
-}
-
-#{$host} .herd-link.-value > [data-name="add"] {
-	display: none;
-}
-
 /* ---------- rich text ---------- */
 
 /*
@@ -612,13 +335,10 @@ $host: ".herd-editor__field-host";
 	color: var(--herd-danger);
 }
 
-/* ---------- repeaters and flexible content ---------- */
+/* ---------- buttons ACF renders outside a component ---------- */
 
-#{$host} .acf-flexible-content .layout {
-	border-color: var(--herd-line);
-	border-radius: var(--herd-r);
-}
-
+/* The layout's own border lives in _acf-flexible.scss, which states it with the
+   scope the rest of that field uses. */
 #{$host} .acf-button,
 #{$host} .acf-actions .button {
 	border-radius: var(--herd-r);

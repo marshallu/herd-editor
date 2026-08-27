@@ -2,12 +2,13 @@
  * The one place a block name appears.
  *
  * Everything else in `src/ui/acf/` reads the shape of ACF's rendered markup, so
- * it works on any block the site registers. Three things cannot be inferred from
+ * it works on any block the site registers. Four things cannot be inferred from
  * shape, and only those live here:
  *
  *   - the summary line's wording and ordering
  *   - which control renders as a glyph rather than its label
  *   - what a style switch keeps and what it orphans
+ *   - which choice carries a rule the field group does not record
  *
  * A block with no profile keeps the fully generic treatment.
  */
@@ -121,6 +122,24 @@ export function cardStyleImpact( from, to, count ) {
 	return `${ kept }Clears ${ joinList( clears ) } on ${ cards }.`;
 }
 
+/**
+ * A choice the field group offers everywhere that only one site may use.
+ *
+ * Profiles' `background` offers White and Black on every site, but Black belongs
+ * to Cyber. Nothing in `group_65fc55754b1a6.json` says so, so the rule lived
+ * only in whoever remembered it. This says it at the moment it is broken.
+ *
+ * The notice warns and nothing more. Herd is not told which site it is running
+ * on, and a guardrail that guessed wrong would take Black away from the one site
+ * entitled to it.
+ */
+const PROFILES_BACKGROUND = {
+	field: 'background',
+	value: 'black',
+	title: 'Black is for the Cyber site',
+	body: 'A black background on Profiles is only allowed on the Cyber site. Everywhere else, use White.',
+};
+
 export const PROFILES = {
 	'acf/cards-collection': {
 		/**
@@ -143,6 +162,10 @@ export const PROFILES = {
 		 */
 		styleSwitch: { field: 'card_style', styles: CARD_STYLES, rows: 'cards', impact: cardStyleImpact },
 		budgets: { card_content: 220, card_content_enhanced: 220 },
+	},
+
+	'acf/profiles': {
+		choiceNotices: [ PROFILES_BACKGROUND ],
 	},
 
 	'acf/billboard': {

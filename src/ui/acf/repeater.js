@@ -12,93 +12,26 @@
  * inside `td.acf-fields` and the layout is done in CSS.
  */
 
-import { cleanText, humanize, truncate } from '../summary.js';
 import { awakenEditors } from './editor.js';
 import { iconSvg } from './icons.js';
-import { contentFields } from './layout-fields.js';
+import { GRIP_ICON } from './grip.js';
 import { resetMedia } from './media.js';
+import { resetLinks } from './link.js';
+import { decorateSlots, isMediaSlots } from './slots.js';
+import { describeLinkRow, describeRow, fieldText, isFixed, isLinkList, isReachable, realRows, repeaterTitle, rowHasValue, singularize } from './values.js';
+
+/*
+ * Moved to ./values.js so ./group.js, ./slots.js and ./flexible.js can ask the
+ * same questions without importing this module and closing a cycle. Re-exported
+ * because they are this module's published surface, and its tests'.
+ */
+export { describeRow, fieldText, isReachable };
 
 /** ACF's row actions, restyled as Herd's own. Its handlers bind on `data-event`. */
 const ROW_TOOLS = [
 	{ event: 'duplicate-row', icon: 'admin-page', label: 'Duplicate card' },
 	{ event: 'remove-row', icon: 'no-alt', label: 'Remove card', destructive: true },
 ];
-
-/** Lucide `grip-vertical`, matching GripIcon in ../primitives.js. */
-const GRIP_ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>';
-
-const NAME_TYPES = [ 'text', 'textarea', 'wysiwyg' ];
-const SUMMARY_LIMIT = 90;
-
-/** A field the active conditional logic has taken off the table says nothing. */
-export function isReachable( field ) {
-	return field.style.display !== 'none' && ! field.classList.contains( 'acf-hidden' );
-}
-
-/** Whatever this field would say about itself on one line. */
-export function fieldText( field ) {
-	if ( field.classList.contains( 'acf-field-wysiwyg' ) ) return cleanText( field.querySelector( 'textarea' )?.value );
-	if ( field.classList.contains( 'acf-field-link' ) ) return cleanText( field.querySelector( '.link-title' )?.textContent );
-	if ( field.classList.contains( 'acf-field-select' ) ) {
-		const select = field.querySelector( 'select' );
-		const option = select?.options[ select.selectedIndex ];
-		return option && option.value ? cleanText( option.textContent ) : '';
-	}
-	if ( field.classList.contains( 'acf-field-button-group' ) ) {
-		return cleanText( field.querySelector( 'input[type="radio"]:checked' )?.closest( 'label' )?.textContent );
-	}
-	const input = field.querySelector( 'input[type="text"], input[type="url"], input[type="email"], textarea' );
-	return cleanText( input?.value );
-}
-
-function nameType( field ) {
-	return NAME_TYPES.some( ( type ) => field.classList.contains( `acf-field-${ type }` ) );
-}
-
-/**
- * The name and summary for one row.
- *
- * @param {HTMLElement} cell The row's `td.acf-fields`.
- * @return {{name: string, summary: string}} Row description.
- */
-export function describeRow( cell ) {
-	// `contentFields` drops the layout fields — a spacer, a message — which hold
-	// nothing and so have nothing to contribute to a line describing the row.
-	const fields = contentFields( cell.children ).filter( isReachable );
-
-	const parts = [];
-	let name = '';
-	/*
-	 * A link's title names its row as well as a text field would, but only when
-	 * nothing better turns up: 18 of this site's repeaters carry no text,
-	 * textarea or wysiwyg at all, and 11 of those are lists of links that would
-	 * otherwise read "Untitled" all the way down.
-	 */
-	let linkTitle = '';
-	let linkAt = -1;
-
-	fields.forEach( ( field ) => {
-		const text = fieldText( field );
-		if ( ! text ) return;
-		if ( ! name && nameType( field ) ) {
-			name = text;
-			return;
-		}
-		if ( ! linkTitle && field.classList.contains( 'acf-field-link' ) ) {
-			linkTitle = text;
-			linkAt = parts.length;
-		}
-		parts.push( text );
-	} );
-
-	// Promoted, not duplicated: a name is not also a summary fragment.
-	if ( ! name && linkTitle ) {
-		name = linkTitle;
-		parts.splice( linkAt, 1 );
-	}
-
-	return { name: truncate( name, 64 ), summary: truncate( parts.join( ' · ' ), SUMMARY_LIMIT ) };
-}
 
 /**
  * The row's thumbnail: its image, else its icon, else nothing.
@@ -149,6 +82,13 @@ function buildRowHeader() {
 	summary.className = 'herd-cardrow__summary';
 	main.append( name, summary );
 
+	/*
+	 * Empty on every row but a link list's, and `:empty` is what hides it — the
+	 * same contract the thumbnail keeps.
+	 */
+	const badges = document.createElement( 'span' );
+	badges.className = 'herd-cardrow__badges';
+
 	const tools = document.createElement( 'span' );
 	tools.className = 'herd-cardrow__tools';
 
@@ -156,8 +96,27 @@ function buildRowHeader() {
 	chev.className = 'herd-cardrow__chev dashicons dashicons-arrow-down-alt2';
 	chev.setAttribute( 'aria-hidden', 'true' );
 
-	header.append( thumb, main, tools, chev );
-	return { header, thumb, name, summary, tools };
+	header.append( thumb, main, badges, tools, chev );
+	return { header, thumb, name, summary, badges, tools };
+}
+
+/**
+ * Repaint one row's badges.
+ *
+ * Rebuilt rather than diffed: a row carries two or three of these and they
+ * change on a click, so there is nothing here worth keeping across a repaint.
+ *
+ * @param {HTMLElement} host   The `.herd-cardrow__badges` element.
+ * @param {Array}       badges Descriptions from `describeLinkRow`.
+ */
+function paintBadges( host, badges ) {
+	host.textContent = '';
+	badges.forEach( ( { text, tone } ) => {
+		const badge = document.createElement( 'span' );
+		badge.className = `herd-badge herd-badge--${ tone }`;
+		badge.textContent = text;
+		host.appendChild( badge );
+	} );
 }
 
 function buildRepeaterHeader( field, repeater ) {
@@ -166,7 +125,7 @@ function buildRepeaterHeader( field, repeater ) {
 
 	const title = document.createElement( 'span' );
 	title.className = 'herd-repeater__title';
-	title.textContent = cleanText( field.querySelector( ':scope > .acf-label label' )?.textContent ) || humanize( field.dataset.name || '' );
+	title.textContent = repeaterTitle( field );
 
 	const count = document.createElement( 'span' );
 	count.className = 'herd-repeater__count';
@@ -191,9 +150,11 @@ function buildRepeaterHeader( field, repeater ) {
 		// `data-event`, so nothing here depends on the classes.
 		add.classList.remove( 'button', 'button-primary', 'acf-button' );
 		add.classList.add( 'herd-btn', 'herd-btn--accent' );
-		// Sentence case, like every other label in the editor.
+		// Sentence case, like every other label in the editor -- but only ever by
+		// raising the first character. Lowercasing the rest would turn a field
+		// group's "Add FAQ" into "Add faq" and lose the author's own wording.
 		const label = ( add.textContent || 'Add row' ).trim();
-		add.textContent = label.charAt( 0 ).toUpperCase() + label.slice( 1 ).toLowerCase();
+		add.textContent = label.charAt( 0 ).toUpperCase() + label.slice( 1 );
 		head.appendChild( add );
 	}
 
@@ -221,6 +182,9 @@ function resetDecoration( row ) {
 	} );
 	// The media row owns the order its parts come apart in; media.js knows it.
 	resetMedia( row );
+	// A link chip's listeners are on ACF's own `.link-wrap`, so the class and the
+	// glyphs come off rather than the node.
+	resetLinks( row );
 	// A group's header carries its own listeners; the class is what marks it done.
 	row.querySelectorAll( '.herd-group' ).forEach( ( group ) => {
 		group.classList.remove( 'herd-group', 'herd-group--flat', 'is-open', 'is-incomplete' );
@@ -228,29 +192,59 @@ function resetDecoration( row ) {
 	delete row.herdParts;
 }
 
-/** Rows ACF keeps around as templates must never be decorated or counted. */
-function realRows( repeater ) {
-	return Array.from( repeater.querySelectorAll( ':scope > table > tbody > tr.acf-row' ) )
-		.filter( ( row ) => ! row.classList.contains( 'acf-clone' ) );
-}
-
 function decorateRepeater( field, onRow ) {
 	const repeater = field.querySelector( ':scope > .acf-input > .acf-repeater' );
 	if ( ! repeater || repeater.classList.contains( 'herd-repeater' ) ) return null;
 	repeater.classList.add( 'herd-repeater' );
 
+	/*
+	 * A fixed set of rows holding one image each is not a list of anything. The
+	 * row has no summary to write and the image is the row, so ./slots.js draws
+	 * the rows as the slots they are rather than as cards to open one at a time.
+	 */
+	if ( isMediaSlots( repeater ) ) return decorateSlots( field, repeater );
+
+	/*
+	 * A repeater ACF will not let you add to or remove from is a fixed set of
+	 * slots. It still says how many of them you have filled, and an empty one is
+	 * named by the position it occupies rather than called untitled.
+	 */
+	const fixed = isFixed( repeater );
+	const slotNoun = singularize( repeaterTitle( field ) );
+
+	/*
+	 * A list of links reads as what a link is — where it points, and how it is
+	 * flagged — rather than as a title over a joined line of its settings' values.
+	 * The class is the hook the row's mono URL and its badges are drawn from.
+	 */
+	const linkList = isLinkList( repeater );
+	if ( linkList ) repeater.classList.add( 'herd-linklist' );
+
 	const { head, count, collapse } = buildRepeaterHeader( field, repeater );
 	repeater.insertBefore( head, repeater.firstChild );
+
+	/*
+	 * "Untitled" is true of a card nobody has named yet. It is not true of the
+	 * third of three, which is not untitled but empty — and the field group has
+	 * already said what belongs there.
+	 */
+	const placeholder = ( row ) => {
+		if ( fixed ) return `${ slotNoun } ${ realRows( repeater ).indexOf( row ) + 1 }`;
+		// A link nobody has chosen yet is not untitled; it is empty, and the row
+		// already has a Choose a link waiting inside it.
+		return linkList ? 'No link yet' : 'Untitled';
+	};
 
 	const refreshRow = ( row ) => {
 		const cell = row.querySelector( ':scope > td.acf-fields' );
 		const parts = row.herdParts;
 		if ( ! cell || ! parts ) return;
-		const { name, summary } = describeRow( cell );
-		parts.name.textContent = name || 'Untitled';
+		const { name, summary, badges } = linkList ? describeLinkRow( cell ) : describeRow( cell );
+		parts.name.textContent = name || placeholder( row );
 		parts.name.classList.toggle( 'is-placeholder', ! name );
 		parts.summary.textContent = summary;
-		paintThumb( cell, parts.thumb );
+		paintBadges( parts.badges, badges || [] );
+		if ( ! linkList ) paintThumb( cell, parts.thumb );
 	};
 
 	const setOpen = ( row, open ) => {
@@ -331,11 +325,35 @@ function decorateRepeater( field, onRow ) {
 		refreshRow( row );
 	};
 
+	/*
+	 * A list reports its length; a fixed set reports its progress. "3 items" on a
+	 * repeater ACF padded to three empty rows describes rows that exist rather
+	 * than work that is done. ./slots.js says "chosen" for the same fact, because
+	 * a photo is chosen and a card is filled in.
+	 */
+	const paintCount = ( rows ) => {
+		if ( fixed ) {
+			count.textContent = `${ rows.filter( rowHasValue ).length } of ${ rows.length } filled`;
+			return;
+		}
+		/*
+		 * A capped list reports its headroom. Both More Info repeaters stop at three
+		 * links, and "3 items" beside an add button that has quietly stopped working
+		 * leaves the editor to work out why; "3 of 3 used" says it. ACF puts the cap
+		 * on the repeater as `data-max`, and writes nothing when there is none.
+		 */
+		const max = Number( repeater.dataset.max );
+		count.textContent =
+			max > 0
+				? `${ rows.length } of ${ max } used`
+				: `${ rows.length } ${ rows.length === 1 ? 'item' : 'items' }`;
+	};
+
 	const refreshAll = () => {
 		const rows = realRows( repeater );
 		rows.forEach( decorateRow );
 		rows.forEach( ( row ) => ! row.classList.contains( 'is-open' ) && refreshRow( row ) );
-		count.textContent = `${ rows.length } ${ rows.length === 1 ? 'item' : 'items' }`;
+		paintCount( rows );
 		// A row ACF has just added is the one the editor means to fill in.
 		const added = rows.find( ( row ) => row.herdJustAdded );
 		if ( added ) {
@@ -386,6 +404,9 @@ function decorateRepeater( field, onRow ) {
 	const onEdit = ( event ) => {
 		const row = event.target.closest?.( 'tr.acf-row' );
 		if ( row && row.herdParts ) refreshRow( row );
+		// The count of a fixed set moves as its rows are filled, not as rows come
+		// and go — there is no row change to hang it off.
+		if ( fixed ) paintCount( realRows( repeater ) );
 	};
 	repeater.addEventListener( 'input', onEdit );
 	repeater.addEventListener( 'change', onEdit );

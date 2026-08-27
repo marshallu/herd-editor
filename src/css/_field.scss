@@ -1,0 +1,56 @@
+/*
+ * The one control recipe.
+ *
+ * Every text input, select and textarea in this editor lands on the same
+ * border, radius, type size and focus ring, whoever printed it -- Herd's own
+ * React panels, or WordPress, whose controls arrive wearing core's 3px radius,
+ * #8c8f94 border, 40px select height and blue focus ring.
+ *
+ * This is the fullest form of the recipe, setting `border`, `background` and
+ * `box-sizing` outright rather than trusting what is underneath. That is what
+ * makes it safe over a stock wp-admin control.
+ *
+ * The ACF surfaces (_acf.scss, _acf-boxes.scss, _acf-portals.scss) keep their
+ * own copies on purpose: ACF already draws a 1px border, so those set
+ * `border-color` alone, and a portalled popover renders outside
+ * .herd-editor-screen where the tokens are not in scope and needs hex
+ * fallbacks. Folding them in here would change what they emit.
+ */
+
+/*
+ * `background-color`, never the `background` shorthand. Core draws a select's
+ * caret as a background image (`.wp-core-ui select`, forms.css) and turns the
+ * native one off with `appearance: none`, so a shorthand here wipes the arrow and
+ * leaves a control with no affordance that it opens at all. Repainting the colour
+ * alone keeps core's caret, which is also the caret the ACF fields in the main
+ * column show -- _acf.scss sets no background on a select for the same reason.
+ */
+@mixin control {
+	background-color: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	box-sizing: border-box;
+	font-size: 13px;
+	margin: 0;
+	padding: 7px 9px;
+	width: 100%;
+}
+
+@mixin control-focus {
+	border-color: var(--herd-green);
+	box-shadow: 0 0 0 3px var(--herd-green-tint);
+	outline: none;
+}
+
+/*
+ * What a select needs on top of `control`: core's fixed height undone so it
+ * lines up with the inputs beside it, and the room on the right that core's
+ * own `padding: 0 24px 0 12px` was reserving for the caret it draws at
+ * `right 8px`.
+ */
+@mixin select {
+	height: auto;
+	line-height: 1.5;
+	padding-right: 24px;
+}

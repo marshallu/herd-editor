@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { AcfBlockFormBridge } from '../src/acf/bridge.js';
+import { mergeAcfBlockData } from '../src/acf/helpers.js';
 
 function fakeHost() {
 	const listeners = new Map();
@@ -80,4 +81,62 @@ test( 'a form with nothing to decorate still disposes cleanly', async () => {
 	bridge.fetchForm = async () => '<div class="acf-block-fields"></div>';
 	await bridge.mount( fakeHost().host );
 	assert.doesNotThrow( () => bridge.dispose() );
+} );
+
+test( 'preserves legacy ACF data omitted by an unopened or conditional field', () => {
+	assert.deepEqual(
+		mergeAcfBlockData( { title: 'Old', retired_field: 'Keep', _retired_field: 'field_retired' }, { title: 'New', enabled: '' } ),
+		{ title: 'New', retired_field: 'Keep', _retired_field: 'field_retired', enabled: '' }
+	);
+} );
+
+test( 'drops repeater rows the editor deleted instead of resurrecting them', () => {
+	assert.deepEqual(
+		mergeAcfBlockData(
+			{ cards: '2', _cards: 'field_cards', cards_0_title: 'A', _cards_0_title: 'field_t', cards_1_title: 'B', _cards_1_title: 'field_t' },
+			{ cards: '1', _cards: 'field_cards', cards_0_title: 'A', _cards_0_title: 'field_t' }
+		),
+		{ cards: '1', _cards: 'field_cards', cards_0_title: 'A', _cards_0_title: 'field_t' }
+	);
+} );
+
+test( 'keeps a conditionally hidden sub-field inside a row that still exists', () => {
+	assert.deepEqual(
+		mergeAcfBlockData(
+			{ cards: '1', cards_0_title: 'A', cards_0_subtitle: 'Hidden', _cards_0_subtitle: 'field_s' },
+			{ cards: '1', cards_0_title: 'A' }
+		),
+		{ cards: '1', cards_0_title: 'A', cards_0_subtitle: 'Hidden', _cards_0_subtitle: 'field_s' }
+	);
+} );
+
+test( 'empties a repeater completely when its last row is removed', () => {
+	assert.deepEqual(
+		mergeAcfBlockData( { cards: '1', cards_0_title: 'A' }, { cards: '0' } ),
+		{ cards: '0' }
+	);
+} );
+
+test( 'never mistakes a sibling field for a row of the field it prefixes', () => {
+	assert.deepEqual(
+		mergeAcfBlockData( { cards: '1', cards_footnote: 'Keep', cards_0_title: 'A' }, { cards: '1', cards_0_title: 'A' } ),
+		{ cards: '1', cards_footnote: 'Keep', cards_0_title: 'A' }
+	);
+} );
+
+test( 'drops a removed flexible-content layout, which serializes as a list', () => {
+	assert.deepEqual(
+		mergeAcfBlockData(
+			{ body: [ 'text', 'quote' ], body_0_copy: 'One', body_1_quote: 'Two' },
+			{ body: [ 'text' ], body_0_copy: 'One' }
+		),
+		{ body: [ 'text' ], body_0_copy: 'One' }
+	);
+} );
+
+test( 'preserves a row key when the field length cannot be read', () => {
+	assert.deepEqual(
+		mergeAcfBlockData( { cards_0_title: 'A' }, { title: 'New' } ),
+		{ title: 'New', cards_0_title: 'A' }
+	);
 } );

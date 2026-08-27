@@ -76,10 +76,10 @@ export function applyWidths( root ) {
 	fields.forEach( ( field ) => {
 		const width = snapWidth( field.getAttribute( 'data-width' ) );
 		/*
-		 * A field with no authored width gets no attribute at all, so the role the
-		 * layout inferred for it — half a row for a compact control, the whole row
-		 * for everything else — still decides. Writing `100` here would silently
-		 * promote every unsized field to its own line.
+		 * A field with no authored width gets no attribute at all, and takes the
+		 * whole row from its container's own rule. `100` is written nowhere — not
+		 * here, not in `$spans` — because full width is what every container
+		 * already does and a rule for it would only ever restate that.
 		 */
 		if ( ! field.hasAttribute( 'data-width' ) || width === 100 ) {
 			field.removeAttribute( 'data-herd-width' );

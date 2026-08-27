@@ -3,9 +3,10 @@
  * Registration and lifecycle for the Spacer field type.
  *
  * The field itself is class-herd-editor-field-spacer.php. This is everything
- * around it: registration, where the Style setting is really stored, the one
- * ACF layout a spacer cannot survive, and what happens to a host site's field
- * groups when Herd is switched off.
+ * around it: registration, where the Style setting is really stored, and the
+ * one ACF layout a spacer cannot survive. This file is deliberately a
+ * compatibility shim: it loads independently of the Herd screen and never
+ * rewrites host field groups during activation or deactivation.
  *
  * @package herd-editor
  */
@@ -304,7 +305,7 @@ function herd_editor_spacer_notices() {
 add_action( 'admin_notices', 'herd_editor_spacer_notices' );
 
 /* -------------------------------------------------------------------------
- * Deactivation and activation
+ * Optional migration support
  * ---------------------------------------------------------------------- */
 
 /**
@@ -373,7 +374,7 @@ function herd_editor_stored_fields() {
  *
  * @return void
  */
-function herd_editor_deactivate() {
+function herd_editor_convert_spacers_to_messages() {
 	if ( ! function_exists( 'acf_update_field' ) ) {
 		return;
 	}
@@ -391,7 +392,6 @@ function herd_editor_deactivate() {
 		acf_update_field( $field );
 	}
 }
-register_deactivation_hook( HERD_EDITOR_FILE, 'herd_editor_deactivate' );
 
 /**
  * Turn Herd's markers back into spacers.
@@ -413,7 +413,7 @@ register_deactivation_hook( HERD_EDITOR_FILE, 'herd_editor_deactivate' );
  *
  * @return void
  */
-function herd_editor_activate() {
+function herd_editor_restore_converted_spacers() {
 	if ( ! function_exists( 'acf_update_field' ) ) {
 		return;
 	}
@@ -433,4 +433,3 @@ function herd_editor_activate() {
 		acf_update_field( $field );
 	}
 }
-register_activation_hook( HERD_EDITOR_FILE, 'herd_editor_activate' );

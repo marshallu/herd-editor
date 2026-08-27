@@ -73,7 +73,13 @@ test( 'joins a list the way a sentence does', () => {
 	assert.equal( joinList( [ 'title', 'content', 'link' ] ), 'title, content, and link' );
 } );
 
-test( 'only the two blocks that need one carry a profile', () => {
-	assert.deepEqual( Object.keys( PROFILES ).sort(), [ 'acf/billboard', 'acf/cards-collection' ] );
+test( 'only the blocks that need one carry a profile', () => {
+	assert.deepEqual( Object.keys( PROFILES ).sort(), [ 'acf/billboard', 'acf/cards-collection', 'acf/profiles' ] );
 	assert.equal( profileFor( 'acf/hero' ), null );
+} );
+
+test( 'Profiles names Black as the Cyber site\'s background', () => {
+	// The field group offers White and Black on every site and has nowhere to
+	// record that only one of them may use Black, so the rule is stated here.
+	assert.deepEqual( PROFILES[ 'acf/profiles' ].choiceNotices.map( ( notice ) => [ notice.field, notice.value ] ), [ [ 'background', 'black' ] ] );
 } );

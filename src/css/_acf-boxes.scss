@@ -12,22 +12,7 @@
  * help text and validation. Nothing in this file assumes the block DOM shape.
  */
 
-$boxes: ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail__panel";
-
-@mixin in-boxes($sel) {
-	@each $scope in $boxes {
-		/*
-		 * Nested rather than interpolated as `#{$scope} #{$sel}`: when $sel is a
-		 * comma list, interpolation scopes only the first selector in it and
-		 * leaves the rest global.
-		 */
-		#{$scope} {
-			#{$sel} {
-				@content;
-			}
-		}
-	}
-}
+@use './boxes';
 
 /* ---------- labels and help text ---------- */
 
@@ -36,21 +21,22 @@ $boxes: ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail
  * under the label rather than after the control as it does in a block form.
  * Both positions are covered so a group that sets either one reads the same.
  */
-@include in-boxes(".acf-field > .acf-label label") {
+@include boxes.in-boxes(".acf-field > .acf-label label") {
 	color: var(--herd-ink-2);
 	font-size: 12px;
-	font-weight: 600;
+	/* 500 is the heaviest weight in the editor; the style guide names two. */
+	font-weight: 500;
 	margin: 0;
 }
 
-@include in-boxes(".acf-field > .acf-label .description") {
+@include boxes.in-boxes(".acf-field > .acf-label .description") {
 	color: var(--herd-ink-3);
 	font-size: 11px;
 	line-height: 1.45;
 	margin: 3px 0 0;
 }
 
-@include in-boxes(".acf-field > .acf-input > .description") {
+@include boxes.in-boxes(".acf-field > .acf-input > .description") {
 	color: var(--herd-ink-3);
 	font-size: 11px;
 	line-height: 1.45;
@@ -59,7 +45,7 @@ $boxes: ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail
 
 /* ---------- controls ---------- */
 
-@include in-boxes(".acf-input input[type='text'], .acf-input input[type='number'], .acf-input input[type='url'], .acf-input input[type='email'], .acf-input input[type='password'], .acf-input select, .acf-input textarea") {
+@include boxes.in-boxes(".acf-input input[type='text'], .acf-input input[type='number'], .acf-input input[type='url'], .acf-input input[type='email'], .acf-input input[type='password'], .acf-input select, .acf-input textarea") {
 	border-color: var(--herd-line);
 	border-radius: var(--herd-r);
 	box-shadow: none;
@@ -70,17 +56,46 @@ $boxes: ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail
 }
 
 /* Undoes core's fixed select height so a select matches the inputs beside it. */
-@include in-boxes(".acf-input select") {
+@include boxes.in-boxes(".acf-input select") {
 	height: auto;
 	line-height: 1.5;
 }
 
-@include in-boxes(".acf-input input:focus, .acf-input select:focus, .acf-input textarea:focus") {
+@include boxes.in-boxes(".acf-input input:focus, .acf-input select:focus, .acf-input textarea:focus") {
 	border-color: var(--herd-green);
 	box-shadow: 0 0 0 3px var(--herd-green-tint);
 	outline: none;
 }
 
-@include in-boxes(".acf-button, .acf-actions .button") {
+@include boxes.in-boxes(".acf-button, .acf-actions .button") {
 	border-radius: var(--herd-r);
+}
+
+/* ---------- repeaters in the rail ---------- */
+
+/*
+ * _acf-repeater.scss now draws these, because src/ui/acf/boxes.js runs the same
+ * decorator on a rail panel that the block form runs on itself: a repeater in
+ * More Info collapses to card rows like any other. What is left here is the two
+ * things a postbox repeater has that a block form's does not.
+ */
+
+/*
+ * ACF's `row` layout floats each label against a fixed 20% gutter, which in the
+ * 300-340px rail leaves words such as "Primary Call-to-Action" one letter wide.
+ * An open row is Herd's grid; a float inside it is a leftover.
+ *
+ * `-block` and a normalised `-table` carry no modifier, so the cell is matched
+ * rather than the class: one rule for all three layouts.
+ */
+.herd-editor-screen .herd-rail__panel .herd-repeater td.acf-fields.-left > .acf-field > .acf-label,
+.herd-editor-screen .herd-rail__panel .herd-repeater td.acf-fields.-left > .acf-field > .acf-input {
+	float: none;
+	padding: 0;
+	width: auto;
+}
+
+/* ACF's clearfix for the float above, which has nothing left to clear. */
+.herd-editor-screen .herd-rail__panel .herd-repeater td.acf-fields.-left > .acf-field::before {
+	display: none;
 }

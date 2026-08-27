@@ -10,7 +10,7 @@ export const ADAPTERS = {
 };
 
 export function adapterFor( block, metadata = {} ) {
-	if ( block?.name?.startsWith( 'acf/' ) && metadata.registered ) return ADAPTERS.acf;
+	if ( block?.name?.startsWith( 'acf/' ) && metadata.registered && ! metadata.readOnly ) return ADAPTERS.acf;
 	if ( block?.innerBlocks?.length ) return ADAPTERS.fallback;
 	return ADAPTERS[ block?.name ] || ADAPTERS.fallback;
 }
@@ -20,7 +20,16 @@ export function createAcfBlock( name ) {
 }
 
 export function canAddBlock( name, metadata = {}, counts = {} ) {
-	return metadata.registered === true && name.startsWith( 'acf/' ) && ( metadata.multiple !== false || ! counts[ name ] );
+	return metadata.registered === true && metadata.allowed !== false && metadata.inserter !== false && metadata.readOnly !== true
+		&& !( metadata.parent || [] ).length && !( metadata.ancestor || [] ).length
+		&& name.startsWith( 'acf/' ) && ( metadata.multiple !== false || ! counts[ name ] );
+}
+
+/** Core stores per-block locks in attributes and template locks on the post type. */
+export function blockMutationPolicy( block, templateLock = false ) {
+	const lock = block?.attributes?.lock || {};
+	const templateLocked = [ 'all', 'insert', 'contentOnly' ].includes( templateLock );
+	return { move: !templateLocked && lock.move !== false, remove: !templateLocked && lock.remove !== false, insert: !templateLocked };
 }
 
 export function wrapperInfo( body, tagName ) {

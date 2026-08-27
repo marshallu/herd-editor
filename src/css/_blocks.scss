@@ -174,6 +174,27 @@
 	width: 16px;
 }
 
+.herd-icon {
+	display: inline-flex;
+	flex: none;
+}
+
+.herd-icon svg {
+	display: block;
+	height: 16px;
+	width: 16px;
+}
+
+/*
+ * Font Awesome ships its glyphs with no fill of their own, so left alone they land
+ * black and ignore the row's colour. The two stroke-drawn icons (Lucide, Heroicons)
+ * declare `fill="none"` themselves and must keep it — a CSS fill would outrank that
+ * attribute and flood them solid.
+ */
+.herd-icon svg:not([fill]) {
+	fill: currentColor;
+}
+
 .herd-block.is-open .herd-block__icon {
 	background: var(--herd-green-tint);
 	color: var(--herd-green-ink);
@@ -191,10 +212,34 @@
 	font-weight: 600;
 	gap: 8px;
 	line-height: 1.35;
+	min-width: 0;
 }
 
+/*
+ * The title is its own element so it has a box to be truncated in. A bare text
+ * node in a flex container is an anonymous item, and an anonymous item cannot
+ * carry `text-overflow` -- a long block name simply ran out over the tools.
+ */
+.herd-block__title {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* A pill is the shortest thing in the row and the last thing worth losing. */
+.herd-block__name .herd-badge {
+	flex: none;
+}
+
+/*
+ * `display: block` is what makes the truncation work. `overflow` and
+ * `text-overflow` have no effect on an inline box, so the summary kept its
+ * `nowrap` and ran straight over the chevron and the tools beside it.
+ */
 .herd-block__summary {
 	color: var(--herd-ink-3);
+	display: block;
 	font-size: 12px;
 	line-height: 1.35;
 	overflow: hidden;
@@ -218,18 +263,15 @@
 	transform: rotate(180deg);
 }
 
+/*
+ * Always visible. Reveal-on-hover hid two of a block's three actions behind a
+ * gesture a touch screen does not have and a keyboard reaches only by tabbing
+ * into what it cannot see, and the row already reserves the space either way.
+ */
 .herd-block__tools {
 	display: flex;
 	flex: none;
 	gap: 2px;
-	opacity: 0;
-	transition: opacity .12s;
-}
-
-.herd-block:hover > .herd-block__row .herd-block__tools,
-.herd-block.is-open > .herd-block__row .herd-block__tools,
-.herd-block__row:focus-within .herd-block__tools {
-	opacity: 1;
 }
 
 .herd-block__tool {
@@ -264,9 +306,16 @@
 
 /* ---------- panel ---------- */
 
+/*
+ * Wider at the sides than at the top and bottom, so a field at the right of a row
+ * is not closer to the card's edge than to the field beside it. The vertical 16px
+ * is the card's own rhythm against the header above it; the horizontal 24px is
+ * the field gutter (src/css/_widths.scss), because the inset either side of a row
+ * and the gap inside it are the same measurement doing the same job.
+ */
 .herd-block__body {
 	border-top: 1px solid var(--herd-line-soft);
-	padding: 16px;
+	padding: 16px 24px;
 }
 
 .herd-core-fields {
@@ -319,6 +368,11 @@
 	height: 14px;
 	justify-content: center;
 	position: relative;
+}
+
+/* An open picker must paint above expanded block fields and adjacent controls. */
+.herd-gap.is-open {
+	z-index: 30;
 }
 
 .herd-gap::before {
@@ -469,6 +523,10 @@
 	width: 16px;
 }
 
+.herd-inserter__choice .herd-icon {
+	color: var(--herd-ink-3);
+}
+
 .herd-inserter__title {
 	overflow: hidden;
 	text-overflow: ellipsis;
@@ -521,10 +579,6 @@
 
 	.herd-block__body {
 		padding: 12px 8px;
-	}
-
-	.herd-block__tools {
-		opacity: 1;
 	}
 
 	.herd-gap__btn {

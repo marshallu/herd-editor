@@ -128,9 +128,9 @@ Twelve, because every width preset has to divide it exactly:
 | 33% | 4 |
 | 25% | 3 |
 
-**A field's width is authored, not inferred.** It comes from ACF's own per-field wrapper width — field → Presentation → Wrapper Attributes → Width — which Herd replaces with a segmented control over the six presets above. Storage stays ACF's, so widths survive export, `acf-json` sync, Clone fields, and uninstalling Herd.
+**A field's width is authored, and only authored.** It comes from ACF's own per-field wrapper width — field → Presentation → Wrapper Attributes → Width — which Herd replaces with a segmented control over the six presets above. Storage stays ACF's, so widths survive export, `acf-json` sync, Clone fields, and uninstalling Herd.
 
-Where a field group says nothing, Herd still infers: a compact control takes half a row, everything else takes the whole one. **An authored width always outranks the inference**, including over a structural toggle's full-width row.
+**Where a field group says nothing, the field takes the whole row.** In all four containers, and whatever its type: a select and a WYSIWYG are the same width until somebody says otherwise. Herd infers no width from anything — not the field's type, not its conditional logic, not the container it is in — so laying a block out is a pass through its field group and nothing else. 100% is stored as ACF's empty string rather than as `100`, so "never set" and "set to 100%" are one state with one spelling.
 
 Fields flow left to right in authored order and wrap when the remaining columns can't hold the next span. Two 66% fields do not pair up — the second wraps and the first row keeps 34% of dead space. That is the behavior, not a bug in it, and the Spacer field is how a field group fills that space on purpose. `grid-auto-flow` stays `row`; `dense` would backfill and reorder the screen away from the tab order.
 
@@ -193,6 +193,12 @@ The thumbnail is `34px`, `--canvas` fill, `--line` border. For icon-style cards 
 
 The `2 empty` flag counts empty fields that are *currently reachable* under the active card style. An Icon card has no image field, so a missing image must not be counted.
 
+**A list of links reads as links.** Eleven of this site's repeaters are a link plus one or two settings that qualify it, and the generic row named them from the link title and then joined the settings into one grey sentence — "Apply Now" over "info-circle" — never showing the URL at all. Where every row is one link and nothing that would have named it first, the row says the two things a link is: the title, the URL beneath it in mono, and each remaining setting as a badge on the right.
+
+Badges are 10px caps. A flag that is on is green and is the row's only accent; a flag that is off says nothing, because "not primary" is not a state anybody needs reported. A choice shows its value in grey, and an *empty* choice still shows one — `NO ICON` — because that is a decision somebody can make from the row. Badge text is the field's own name, not its label: two field groups spell the same flag "Primary CTA" and "Primary Call-to-Action", and a badge has room for neither.
+
+This is a property of the field group, not of the surface. A list of links reads the same in a block panel and in the settings rail.
+
 ### Media row
 
 Image and file fields are the same component: a `160 × 90` poster, the file name over an `11px` metadata line, then Edit and Remove. A Video panel holding a thumbnail, a video and a backup video should read as three instances of one control, not three widgets.
@@ -217,9 +223,11 @@ Do not instantiate `wp_editor()` per row. Render static styled HTML and initiali
 
 ### Link field
 
-Resolved state shows title over URL with Edit and clear. Empty state is a dashed border reading "Choose a link".
+Resolved state shows title, then URL, then clear. The row is the edit control — clicking anywhere on it opens the link modal, and its border darkens on hover to say so — so there is no Edit button. The URL is text, not an anchor: a live link inside a form is an invitation to leave the post mid-edit. Clearing keeps its own ✕, because destroying a value should never be what a stray click does. Empty state is a dashed border reading "Choose a link".
 
 ACF's link return array already carries `title`, `url`, and `target`. The current "Select Link" button throws all three away regardless of state — rendering the resolved chip is a template change, not a data change.
+
+The chip is the same control wherever a link renders — block panel or rail postbox — so its rules are written once for every field surface. In a rail repeater it is what an opened row holds; the collapsed row above it is a card row, not a chip.
 
 ### Swatches
 
@@ -244,6 +252,19 @@ The confirm strip names what carries and what clears, per card count:
 > Keeps title, content, and link. Clears the image on 4 cards.
 > [Keep minimal] [Switch anyway]
 
+### Site-restricted choice
+
+A field group offers the same choices on every site in the network, so a choice only one site may use has nowhere to say so. Profiles' Background offers White and Black everywhere; Black is Cyber's.
+
+Choosing it opens a modal — 420px, title, one sentence, one **Got it**:
+
+> **Black is for the Cyber site**
+> A black background on Profiles is only allowed on the Cyber site. Everywhere else, use White.
+
+**The notice warns and does not revert.** Herd is not told which site it is running on, so a guardrail that reverted would take Black away from the one site entitled to it. It fires on the change, never on mount: a block that already carries the value was not set that way just now.
+
+A modal rather than the confirm strip because there is no decision to weigh — the strip exists to put two named outcomes side by side, and this has one.
+
 ### Boolean switch
 
 Booleans render as a small switch — a 30×18 track with a 14px knob, `--mu-green` when on, `#c3c4c7` when off, label to the right at 13px/400.
@@ -261,6 +282,8 @@ Grouped under a **Display options** header carrying a count: `2 of 6 on`. The de
 The old per-checkbox help text ("When enabled, this block will not be displayed on the frontend") is deleted. It appeared five times on one page and said what the label already said. Where a field does carry instructions, they surface as a hover popover, kept at `opacity: 0` rather than `display: none` so they stay in the AT tree.
 
 ### Right rail
+
+A repeater in a rail postbox is the same component as a repeater in a block: collapsed card rows, a header carrying the count and Collapse all, and the add button as an accent rather than a filled green primary. The rail is where it matters most — ACF's own `row` and `table` layouts put a fixed label gutter or a set of columns into 300px, and Custom Nav Items stacked three labelled fields per link, so three links filled the panel.
 
 Fixed `268px`, sticky below the command bar. Editable fields (parent, template) sit on top; read-only facts (status, visibility, publish date, revisions, author) drop to a key/value list. Revisions open in a modal, never inline — the revision dump previously took more vertical space than the page content.
 

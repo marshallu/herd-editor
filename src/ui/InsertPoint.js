@@ -15,7 +15,7 @@ const el = createElement;
 /* Roughly the panel's height. Below this much room, it opens upwards instead. */
 const PANEL_H = 340;
 
-export function InsertPoint( { label, isOpen, onOpen, onClose, ...inserter } ) {
+export function InsertPoint( { label, isOpen, onOpen, onClose, forceAbove = false, ...inserter } ) {
 	const buttonRef = useRef( null );
 	const panelRef = useRef( null );
 	const [ placement, setPlacement ] = useState( 'below' );
@@ -42,7 +42,7 @@ export function InsertPoint( { label, isOpen, onOpen, onClose, ...inserter } ) {
 	const open = () => {
 		const box = buttonRef.current?.getBoundingClientRect();
 		const below = box ? window.innerHeight - box.bottom : PANEL_H;
-		setPlacement( below < PANEL_H && box && box.top > PANEL_H ? 'above' : 'below' );
+		setPlacement( forceAbove || ( below < PANEL_H && box && box.top > PANEL_H ) ? 'above' : 'below' );
 		onOpen();
 	};
 
@@ -61,7 +61,7 @@ export function InsertPoint( { label, isOpen, onOpen, onClose, ...inserter } ) {
 	}, el( 'span', { 'aria-hidden': true }, '+' ) ),
 
 	isOpen && el( 'div', {
-		className: `herd-gap__panel is-${ placement }`,
+		className: `herd-gap__panel is-${ forceAbove ? 'above' : placement }`,
 		ref: panelRef,
 	}, el( Inserter, { ...inserter, onClose: dismiss } ) ) );
 }

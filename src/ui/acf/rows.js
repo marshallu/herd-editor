@@ -36,9 +36,6 @@ export const COLUMNS = 12;
 /** `data-herd-width` to span. Mirrors `$spans` in src/css/_widths.scss. */
 export const SPANS = { 75: 9, 66: 8, 50: 6, 33: 4, 25: 3 };
 
-/** Half a row: what a compact control and a repeater row's toggle each get. */
-const HALF = 6;
-
 /** Marks a spacer whose row has nothing left in it to space. */
 export const ORPHAN_CLASS = 'is-herd-orphan';
 
@@ -53,27 +50,20 @@ function isHidden( field ) {
 	return field.style?.display === 'none' || field.classList.contains( 'acf-hidden' );
 }
 
-/** A repeater row's own cell, where a toggle takes half a row rather than all of it. */
-function inRepeaterRow( field ) {
-	const parent = field.parentElement;
-	return Boolean( parent && 'TD' === parent.tagName && parent.classList?.contains( 'acf-fields' ) );
-}
-
 /**
  * How many of the twelve tracks this field takes.
  *
- * The order is the stylesheet's order: an authored width first, because it
- * outranks everything Herd infers, then the role, then the whole row.
+ * There are two answers and no third: the width the field group authored, or the
+ * whole row. Herd infers nothing from a field's type, so this agrees with the
+ * stylesheet, where every container gives its fields `grid-column: 1 / -1` and
+ * only a `[data-herd-width]` rule narrows one.
  *
  * @param {HTMLElement} field The `.acf-field` wrapper.
  * @return {number} Tracks, 1 to 12.
  */
 export function spanOf( field ) {
 	const width = field.getAttribute?.( 'data-herd-width' );
-	if ( width && SPANS[ width ] ) return SPANS[ width ];
-	if ( field.classList?.contains( 'herd-field--controls' ) ) return HALF;
-	if ( field.classList?.contains( 'acf-field-true-false' ) && inRepeaterRow( field ) ) return HALF;
-	return COLUMNS;
+	return ( width && SPANS[ width ] ) || COLUMNS;
 }
 
 /**

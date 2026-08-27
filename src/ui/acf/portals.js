@@ -1,10 +1,10 @@
 /**
- * Namespacing for the two widgets ACF attaches to <body>.
+ * Namespacing for the widgets ACF attaches to <body>.
  *
- * A select2 dropdown and the jQuery UI datepicker calendar are appended to the
- * document body, not to the field, so they escape every selector scoped under
- * the Herd wrapper. A select that looks right closed drops a stock blue list the
- * moment it opens.
+ * A select2 dropdown, the jQuery UI datepicker calendar and flexible content's
+ * two popups are appended to the document body, not to the field, so they escape
+ * every selector scoped under the Herd wrapper. A select that looks right closed
+ * drops a stock blue list the moment it opens.
  *
  * Both are namespaced rather than overridden globally: ACF renders the same
  * widgets on its own admin screens elsewhere on this site, and a bare
@@ -16,6 +16,7 @@
 
 export const SELECT2_CLASS = 'herd-select2';
 export const DATEPICKER_CLASS = 'herd-datepicker';
+export const FC_POPUP_CLASS = 'herd-fc-popup';
 
 /** Append a class without disturbing whatever ACF or a plugin already set. */
 function withClass( existing, added ) {
@@ -63,4 +64,33 @@ export function registerPortalNamespaces( acf ) {
 	acf.addFilter( 'date_picker_args', addBeforeShow );
 	acf.addFilter( 'date_time_picker_args', addBeforeShow );
 	acf.addFilter( 'time_picker_args', addBeforeShow );
+
+	watchFlexiblePopups();
+}
+
+/**
+ * Mark flexible content's layout picker and its more-actions menu.
+ *
+ * ACF builds both with `acf.newPopup()`, which takes no class option and offers
+ * no filter — unlike select2, and unlike the datepicker, which at least has a
+ * `beforeShow`. So the body is watched instead. The popup is created on the
+ * click that opens it and destroyed on the click that closes it, so this fires
+ * once per opening and does nothing else.
+ *
+ * @return {Function} Disposer, for a caller that has one to give.
+ */
+export function watchFlexiblePopups() {
+	if ( typeof MutationObserver !== 'function' || ! document.body ) return () => {};
+
+	const mark = ( node ) => {
+		if ( node.nodeType !== 1 ) return;
+		if ( node.classList?.contains( 'acf-fc-popup' ) ) node.classList.add( FC_POPUP_CLASS );
+		node.querySelectorAll?.( '.acf-fc-popup' ).forEach( ( popup ) => popup.classList.add( FC_POPUP_CLASS ) );
+	};
+
+	const observer = new MutationObserver( ( records ) => {
+		records.forEach( ( record ) => record.addedNodes.forEach( mark ) );
+	} );
+	observer.observe( document.body, { childList: true } );
+	return () => observer.disconnect();
 }

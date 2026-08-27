@@ -40,6 +40,62 @@ export function dataAttributesFromForm( form, clientId, acf ) {
 	return values || {};
 }
 
+/**
+ * ACF only serializes controls that are currently rendered and enabled.  That
+ * is normally correct for a POST, but is destructive for block comment data:
+ * a field removed from a group, hidden behind conditional logic, or supplied
+ * by a newer version of a field group would otherwise disappear after editing
+ * an unrelated field.  Values explicitly submitted by the form (including an
+ * empty string or an empty array) always win; omitted values remain intact.
+ *
+ * Preserving every omission is too blunt on its own.  Deleting a repeater row
+ * also omits that row's keys, and keeping them would resurrect the row the
+ * moment the field grew back to that length.  So an omitted key is dropped
+ * when — and only when — it addresses a row the submitted value no longer has.
+ */
+export function mergeAcfBlockData( existing = {}, submitted = {} ) {
+	const previous = existing && typeof existing === 'object' ? existing : {};
+	const next = submitted && typeof submitted === 'object' ? submitted : {};
+
+	// Every field the form rendered.  ACF stores each value beside a companion
+	// `_name` entry holding its field key; both describe the same field.
+	const rendered = new Set( Object.keys( next ).map( ( key ) => key.replace( /^_/, '' ) ) );
+
+	const result = { ...next };
+	for ( const [ key, value ] of Object.entries( previous ) ) {
+		if ( Object.prototype.hasOwnProperty.call( next, key ) ) continue;
+		if ( addressesRemovedRow( key.replace( /^_/, '' ), next, rendered ) ) continue;
+		result[ key ] = value;
+	}
+	return result;
+}
+
+/**
+ * Does `name` address a repeater or flexible-content row that the submitted
+ * value no longer contains?
+ *
+ * ACF names sub-values `<field>_<index>_<subfield>`, so a rendered `cards`
+ * owns `cards_1_title` but not a sibling field that merely shares the prefix,
+ * like `cards_footnote`.  The row count decides: an index the field still has
+ * means the omission is conditional logic and the stored value is kept, while
+ * an index beyond the field's length belongs to a row the editor deleted.
+ * When the length cannot be read the key is preserved, because losing a value
+ * is worse than carrying a stale one.
+ */
+function addressesRemovedRow( name, next, rendered ) {
+	for ( const field of rendered ) {
+		if ( name.length <= field.length || ! name.startsWith( `${ field }_` ) ) continue;
+		const row = /^(\d+)_/.exec( name.slice( field.length + 1 ) );
+		if ( ! row ) continue;
+		// A repeater serializes its row count; flexible content serializes the
+		// list of layouts in play.
+		const value = next[ field ];
+		const length = Array.isArray( value ) ? value.length : Number.parseInt( value, 10 );
+		if ( Number.isInteger( length ) && Number.parseInt( row[ 1 ], 10 ) >= length ) return true;
+	}
+	return false;
+}
+
 export function contextForBlock( ancestors, metadata, postId, postType ) {
 	const context = { postId, postType };
 	for ( const block of ancestors ) {

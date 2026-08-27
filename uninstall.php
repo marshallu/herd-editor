@@ -13,17 +13,24 @@
  * out of somebody's field group on uninstall is unrecoverable and arrives
  * without warning.
  *
- * Deactivation is where the real work happens — see `herd_editor_deactivate()`
- * in includes/herd-editor-spacer.php, which converts every stored spacer into an
- * empty ACF Message field so that a site running without Herd has no field of an
- * unknown type in it. WordPress runs deactivation before uninstall, so by the
- * time this file would matter, the conversion has already happened.
+ * Deactivation does not rewrite field groups. The Spacer compatibility shim can
+ * remain active independently of the Herd screen; sites that really want to
+ * remove it must run the explicit, resumable WP-CLI migration and verify it.
  *
- * Nothing else needs cleaning up. Herd stores no options, no transients, no
- * tables, and no postmeta of its own: widths live in ACF's `wrapper['width']`
- * and a spacer holds no value at all.
+ * There is one option and one user option, and they are removed here: the
+ * default-editor choice, which means nothing without the editor it names. Both
+ * were mirrored into Classic Editor's own settings on every save, so a site
+ * that had chosen Herd is already pointed at the Block editor and keeps
+ * behaving that way once these are gone.
+ *
+ * Nothing else needs cleaning up. Herd stores no transients, no tables, and no
+ * postmeta of its own: widths live in ACF's `wrapper['width']` and a spacer
+ * holds no value at all.
  *
  * @package herd-editor
  */
 
 defined( 'WP_UNINSTALL_PLUGIN' ) || exit;
+
+delete_option( 'herd-editor-default' );
+delete_metadata( 'user', 0, $GLOBALS['wpdb']->get_blog_prefix() . 'herd-editor-settings', '', true );

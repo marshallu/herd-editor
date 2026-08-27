@@ -8,8 +8,8 @@
 
 import { createElement, useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { canAddBlock } from '../adapters.js';
-import { titleFor } from './blocks.js';
-import { Dashicon } from './primitives.js';
+import { iconOf, titleFor } from './blocks.js';
+import { BlockIcon } from './primitives.js';
 
 const el = createElement;
 let instances = 0;
@@ -42,6 +42,9 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 	const { groups, flat } = useMemo( () => {
 		const matches = Object.entries( catalog )
 			.filter( ( [ name, metadata ] ) => name.startsWith( 'acf/' ) && metadata.registered )
+			// `inserter: false` is an explicit policy decision, unlike a block
+			// that is merely at its one-instance limit and should explain why.
+			.filter( ( [ , metadata ] ) => metadata.inserter !== false )
 			.filter( ( [ name, metadata ] ) => ! term
 				|| `${ metadata.title } ${ name } ${ metadata.group }`.toLowerCase().includes( term ) )
 			.sort( ( a, b ) => ( a[ 1 ].title || a[ 0 ] ).localeCompare( b[ 1 ].title || b[ 0 ] ) );
@@ -144,7 +147,7 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 				onMouseEnter: () => { if ( ! disabled ) setHighlighted( index ); },
 				onClick: () => onInsert( name ),
 			},
-			el( Dashicon, { icon: metadata.icon } ),
+			el( BlockIcon, { icon: iconOf( metadata ) } ),
 			el( 'span', { className: 'herd-inserter__title' },
 				highlight( metadata.title || titleFor( { name } ), term, name ) ),
 			disabled && el( 'span', { className: 'herd-badge' }, 'Already added' ) ) ) ) )

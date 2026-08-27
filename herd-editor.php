@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Herd Editor
  * Description: A dedicated Herd Editor mode for editing existing ACF blocks alongside Classic and Block Editor.
- * Version: 0.1.0
+ * Version: 1.0.0
  * Requires at least: 7.1
  * Requires PHP: 7.4
  * Requires Plugins: advanced-custom-fields-pro
@@ -11,7 +11,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'HERD_EDITOR_VERSION', '0.1.0' );
+define( 'HERD_EDITOR_VERSION', '1.0.0' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
 /** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
 define( 'HERD_EDITOR_FILE', __FILE__ );
@@ -64,6 +64,21 @@ require_once HERD_EDITOR_DIR . 'includes/herd-editor-width.php';
 require_once HERD_EDITOR_DIR . 'includes/herd-editor-layout-fields.php';
 require_once HERD_EDITOR_DIR . 'includes/herd-editor-spacer.php';
 
+/*
+ * Which editor opens by default, and what a new post opens with. Loaded on
+ * every request rather than Herd's own screen: the setting is edited on
+ * Settings > Writing and on a user profile, and the redirect that honours it
+ * has to be in place before post.php chooses an editor.
+ */
+require_once HERD_EDITOR_DIR . 'includes/herd-editor-default.php';
+
+/*
+ * What a save has to say for itself. Loaded on every admin request rather than
+ * Herd's own screen: the redirect it feeds is chosen inside post.php, long
+ * before the screen this plugin owns is asked to render anything.
+ */
+require_once HERD_EDITOR_DIR . 'includes/herd-editor-saved.php';
+
 function herd_editor_post_types( $post_types ) {
 	return array_values( array_unique( array_filter( (array) $post_types ) ) );
 }
@@ -96,6 +111,133 @@ function herd_editor_supports_post( $post ) {
 
 function herd_editor_url( $post_id ) {
 	return add_query_arg( array( 'page' => 'herd-editor', 'post' => absint( $post_id ) ), admin_url( 'admin.php' ) );
+}
+
+/**
+ * Take over a lock without leaving Herd's editor route.
+ *
+ * Core's post.php handler always redirects to its native editor. Herd uses the
+ * identical nonce action and lock API, but owns this route so a successful
+ * takeover returns to the editor the user chose.
+ */
+function herd_editor_handle_post_lock_takeover() {
+	if ( ! is_admin() || 'herd-editor' !== ( isset( $_GET['page'] ) ? sanitize_key( wp_unslash( $_GET['page'] ) ) : '' ) || empty( $_GET['get-post-lock'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		return;
+	}
+	$post_id = isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$post    = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) {
+		wp_die( esc_html__( 'You cannot edit this item in Herd Editor.', 'herd-editor' ), 403 );
+	}
+	check_admin_referer( 'lock-post_' . $post_id );
+	wp_set_post_lock( $post_id );
+	wp_safe_redirect( herd_editor_url( $post_id ) );
+	exit;
+}
+add_action( 'admin_init', 'herd_editor_handle_post_lock_takeover', 1 );
+
+/** Return a fresh native lock token unless another editor currently owns it. */
+function herd_editor_active_post_lock( $post_id ) {
+	if ( wp_check_post_lock( $post_id ) ) {
+		return '';
+	}
+	$lock = wp_set_post_lock( $post_id );
+	return $lock ? implode( ':', $lock ) : '';
+}
+
+/**
+ * Reject a stale Herd submission before post.php can write post content or meta.
+ *
+ * Core's lock check deliberately reports only *other* users. Herd also verifies
+ * the submitted token against _edit_lock so an old tab owned by the same user
+ * cannot overwrite a newer editing session.
+ */
+function herd_editor_validate_post_lock_before_save() {
+	if ( 'editpost' !== ( isset( $_POST['action'] ) ? sanitize_key( wp_unslash( $_POST['action'] ) ) : '' ) || empty( $_POST['herd-editor'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing
+		return;
+	}
+	$post_id   = isset( $_POST['post_ID'] ) ? absint( $_POST['post_ID'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$submitted = isset( $_POST['active_post_lock'] ) ? (string) wp_unslash( $_POST['active_post_lock'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$current   = $post_id ? (string) get_post_meta( $post_id, '_edit_lock', true ) : '';
+	$parts     = explode( ':', $submitted );
+	$window    = (int) apply_filters( 'wp_check_post_lock_window', 150 );
+	$valid     = 2 === count( $parts )
+		&& ctype_digit( $parts[0] )
+		&& ctype_digit( $parts[1] )
+		&& (int) $parts[1] === get_current_user_id()
+		&& (int) $parts[0] > time() - $window
+		&& '' !== $current
+		&& hash_equals( $current, $submitted );
+
+	if ( ! $valid ) {
+		wp_die( esc_html__( 'This post is no longer locked by your editing session. Reload it from the post list before saving.', 'herd-editor' ), 409 );
+	}
+}
+add_action( 'admin_init', 'herd_editor_validate_post_lock_before_save', 1 );
+
+/** Flatten a parsed Gutenberg tree in the same order as the browser document. */
+function herd_editor_acf_blocks_from_tree( $blocks, &$result ) {
+	foreach ( (array) $blocks as $block ) {
+		if ( ! empty( $block['blockName'] ) && 0 === strpos( $block['blockName'], 'acf/' ) ) {
+			$result[] = $block;
+		}
+		herd_editor_acf_blocks_from_tree( isset( $block['innerBlocks'] ) ? $block['innerBlocks'] : array(), $result );
+	}
+}
+
+/** Validate all ACF block values, including forms that Herd has not mounted. */
+function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
+	$blocks = array();
+	herd_editor_acf_blocks_from_tree( parse_blocks( (string) $content ), $blocks );
+	$errors = array();
+	foreach ( $blocks as $index => $block ) {
+		if ( ! function_exists( 'acf_get_block_fields' ) || ! function_exists( 'acf_validate_value' ) ) { break; }
+		$data = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? $block['attrs']['data'] : array();
+		foreach ( (array) acf_get_block_fields( array( 'name' => $block['blockName'], 'data' => $data ) ) as $field ) {
+			if ( empty( $field['key'] ) ) { continue; }
+			$value = array_key_exists( $field['name'], $data ) ? $data[ $field['name'] ] : null;
+			$valid = acf_validate_value( $value, $field, '' );
+			if ( true !== $valid ) {
+				$errors[] = array(
+					'blockId' => isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '',
+					'field' => $field['key'],
+					'message' => is_string( $valid ) ? $valid : __( 'This field is required.', 'herd-editor' ),
+				);
+			}
+		}
+	}
+	return $errors;
+}
+
+/** AJAX validation is deliberately separate from saving: drafts stay permissive. */
+function herd_editor_ajax_validate_document() {
+	check_ajax_referer( 'herd_editor_validate_document', 'nonce' );
+	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0;
+	$post = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) { wp_send_json_error( array( 'message' => __( 'You cannot validate this post.', 'herd-editor' ) ), 403 ); }
+	$content = isset( $_POST['content'] ) ? wp_unslash( $_POST['content'] ) : '';
+	$ids = isset( $_POST['clientIds'] ) && is_array( $_POST['clientIds'] ) ? wp_unslash( $_POST['clientIds'] ) : array();
+	wp_send_json_success( array( 'errors' => herd_editor_validate_document_acf( $content, $ids ) ) );
+}
+add_action( 'wp_ajax_herd_editor_validate_document', 'herd_editor_ajax_validate_document' );
+
+/** Render core's lock dialog while keeping every return path in Herd or its list. */
+function herd_editor_post_lock_dialog( $post, $list_url ) {
+	if ( ! function_exists( '_admin_notice_post_locked' ) ) {
+		return;
+	}
+	ob_start();
+	_admin_notice_post_locked();
+	$dialog = ob_get_clean();
+	if ( ! $dialog ) {
+		return;
+	}
+	$takeover_url = add_query_arg( 'get-post-lock', '1', wp_nonce_url( herd_editor_url( $post->ID ), 'lock-post_' . $post->ID ) );
+	$dialog = preg_replace( '/(<a class="button button-primary wp-tab-last" href=")[^"]+/', '$1' . esc_url( $takeover_url ), $dialog, 1 );
+	/* Core treats an unfamiliar editor URL as a safe "Go back" destination; Herd's
+	 * lost-lock state must instead offer only the post list. */
+	$dialog = preg_replace( '/(<p>\s*<a class="button" href=")[^"]+/', '$1' . esc_url( $list_url ), $dialog, 1 );
+	echo $dialog; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Core generated the markup above.
 }
 
 function herd_editor_asset( $entry ) {
@@ -233,7 +375,57 @@ function herd_editor_block_groups() {
 	);
 }
 
-function herd_editor_block_metadata( $content ) {
+/**
+ * Registered blocks that Herd must keep out of its inserter.
+ *
+ * These blocks may remain registered for older documents and the native editor,
+ * but are not choices for creating new Herd content. Keeping this policy
+ * separate from the grouping map prevents an omitted block from falling into
+ * the inserter's "Other" group.
+ *
+ * @return string[]
+ */
+function herd_editor_hidden_inserter_blocks() {
+	return apply_filters(
+		'herd_editor_hidden_inserter_blocks',
+		array(
+			'acf/split-feature',
+			'acf/blockquote',
+			'acf/slate-form',
+			'acf/salesforce-form',
+			'acf/program-page-content',
+		)
+	);
+}
+
+/**
+ * The native block editor is the policy authority.  Herd receives the same
+ * allowed-type decision rather than treating registration as permission to
+ * insert a block.
+ *
+ * @return true|false|string[]
+ */
+function herd_editor_allowed_block_types( $post ) {
+	if ( ! class_exists( 'WP_Block_Editor_Context' ) || ! function_exists( 'get_block_editor_settings' ) ) {
+		return true;
+	}
+	$settings = get_block_editor_settings( array(), new WP_Block_Editor_Context( array( 'post' => $post ) ) );
+	return isset( $settings['allowedBlockTypes'] ) ? $settings['allowedBlockTypes'] : true;
+}
+
+/** Return ACF's persistence mode without assuming a particular ACF release. */
+function herd_editor_acf_storage_mode( $name ) {
+	if ( ! function_exists( 'acf_get_block_type' ) ) {
+		return 'unknown';
+	}
+	$type = acf_get_block_type( $name );
+	if ( ! is_array( $type ) ) {
+		return 'unknown';
+	}
+	return ! empty( $type['usePostMeta'] ) ? 'post_meta' : 'comment';
+}
+
+function herd_editor_block_metadata( $content, $post = null ) {
 	$names = array();
 	herd_editor_collect_block_names( parse_blocks( $content ), $names );
 	$registry = WP_Block_Type_Registry::get_instance();
@@ -242,22 +434,28 @@ function herd_editor_block_metadata( $content ) {
 	$order = herd_editor_block_group_order();
 	$fallback = end( $order );
 	$registered = $registry->get_all_registered();
+	$allowed = $post instanceof WP_Post ? herd_editor_allowed_block_types( $post ) : true;
+	$hidden_inserter_blocks = herd_editor_hidden_inserter_blocks();
 	foreach ( array_keys( $registered ) as $name ) {
 		$names[ $name ] = true;
 	}
 	foreach ( array_keys( $names ) as $name ) {
 		$type = $registry->get_registered( $name );
-		$icon = 'block-default';
-		if ( $type && isset( $type->icon ) && is_string( $type->icon ) && preg_match( '/^[a-z0-9-]+$/', $type->icon ) ) {
-			$icon = preg_replace( '/^dashicons-/', '', $type->icon );
-		}
+		$storage_mode = 0 === strpos( $name, 'acf/' ) ? herd_editor_acf_storage_mode( $name ) : 'comment';
+		$allowed_here = true === $allowed || ( is_array( $allowed ) && in_array( $name, $allowed, true ) );
 		$result[ $name ] = array(
 			'title'            => $type ? $type->title : '',
-			'icon'             => $icon,
+			'icon'             => herd_editor_block_icon( $type ),
 			'category'         => $type ? (string) $type->category : '',
 			'group'            => isset( $groups[ $name ] ) ? $groups[ $name ] : $fallback,
 			'registered'       => (bool) $type,
 			'multiple'         => ! $type || ! isset( $type->supports['multiple'] ) || false !== $type->supports['multiple'],
+			'inserter'         => ! in_array( $name, $hidden_inserter_blocks, true ) && ( ! $type || ! isset( $type->supports['inserter'] ) || false !== $type->supports['inserter'] ),
+			'allowed'          => $allowed_here,
+			'parent'           => $type ? array_values( (array) $type->parent ) : array(),
+			'ancestor'         => $type ? array_values( (array) $type->ancestor ) : array(),
+			'storageMode'      => $storage_mode,
+			'readOnly'         => 0 === strpos( $name, 'acf/' ) && 'comment' !== $storage_mode,
 			'provides_context' => $type ? (array) $type->provides_context : array(),
 			'uses_context'     => $type ? array_values( (array) $type->uses_context ) : array(),
 		);
@@ -400,19 +598,56 @@ function herd_editor_register_screen() {
 }
 add_action( 'admin_menu', 'herd_editor_register_screen' );
 
+/**
+ * The post this screen is editing.
+ *
+ * Memoised because the answer is not simply the row in the database: a post
+ * that has never been saved is given the starting document its post type asks
+ * for, and both callers -- the render path and the asset enqueue, which build
+ * the hidden #content input and window.HerdEditor.postContent -- have to be
+ * handed the same one. Nothing is written; the seed reaches the database on the
+ * first save, exactly as core's own `default_content` does.
+ *
+ * @return WP_Post|null
+ */
 function herd_editor_current_post() {
+	static $current = false;
+	if ( false !== $current ) {
+		return $current;
+	}
+
 	$post_id = isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	return $post_id ? get_post( $post_id ) : null;
+	$current = $post_id ? get_post( $post_id ) : null;
+
+	if ( $current && 'auto-draft' === $current->post_status ) {
+		/*
+		 * A brand new post is a real row: core inserts it with the literal title
+		 * "Auto Draft" and blanks that on the object before rendering. Herd
+		 * renders from the object too, so it has to do the same or the title
+		 * field opens pre-filled with a word nobody typed.
+		 */
+		if ( __( 'Auto Draft' ) === $current->post_title ) {
+			$current->post_title = '';
+		}
+		if ( '' === trim( (string) $current->post_content ) ) {
+			$current->post_content = herd_editor_starter_content( $current );
+		}
+	}
+
+	return $current;
 }
 
 function herd_editor_render_screen() {
+	global $post;
 	$post = herd_editor_current_post();
 	if ( ! herd_editor_has_acf_pro() || ! herd_editor_supports_post( $post ) ) {
 		wp_die( esc_html__( 'You cannot edit this item in Herd Editor.', 'herd-editor' ), 403 );
 	}
+	/* Keep the token that is rendered in form#post in step with Heartbeat. When
+	 * somebody else owns it, core's dialog is rendered instead and no save token
+	 * is issued until the user explicitly takes over. */
+	$herd_active_post_lock = herd_editor_active_post_lock( $post->ID );
 
-	global $post;
-	$post = herd_editor_current_post();
 	require_once ABSPATH . 'wp-admin/includes/meta-boxes.php';
 	// ACF only auto-registers post field groups on the native post screen.
 	// Herd uses the same post form, so register those groups explicitly here.
@@ -424,6 +659,33 @@ function herd_editor_render_screen() {
 	remove_meta_box( 'slugdiv', get_current_screen()->id, 'normal' );
 	require HERD_EDITOR_DIR . 'includes/herd-editor-screen.php';
 }
+
+/**
+ * Mark the Herd screen on `<body>`.
+ *
+ * `.herd-editor-screen` sits on the `div.wrap` this screen renders, which is
+ * where every Herd stylesheet scopes itself. The theme's admin CSS has to make
+ * the opposite statement -- "not here" -- and a `:not()` on an ancestor it
+ * cannot name is not a selector. So the screen says so on the body, and
+ * `admin-marshall.css` fences its ACF overrides behind
+ * `body:not(.herd-editor-active)`: those rules were written for the Classic and
+ * Block editors, they carry `!important`, and on this screen they paint over
+ * everything Herd renders.
+ *
+ * @param string $classes Space-separated body classes.
+ * @return string The classes, with Herd's own appended when this is its screen.
+ */
+function herd_editor_body_class( $classes ) {
+	global $herd_editor_screen_hook, $hook_suffix;
+	if ( $hook_suffix !== $herd_editor_screen_hook || ! herd_editor_has_acf_pro() ) {
+		return $classes;
+	}
+	if ( ! herd_editor_supports_post( herd_editor_current_post() ) ) {
+		return $classes;
+	}
+	return trim( $classes . ' herd-editor-active' );
+}
+add_filter( 'admin_body_class', 'herd_editor_body_class' );
 
 /** Load Herd-only assets on the dedicated mode, never on frontend requests. */
 function herd_editor_enqueue_assets( $hook_suffix ) {
@@ -437,6 +699,11 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 	}
 
 	wp_enqueue_media();
+	wp_enqueue_script( 'heartbeat' );
+	// Core autosave owns its per-user revision and session-storage recovery
+	// protocol. Herd deliberately supplies its normal post fields below instead
+	// of creating a second document store.
+	wp_enqueue_script( 'autosave' );
 	if ( function_exists( 'acf_enqueue_scripts' ) ) {
 		acf_enqueue_scripts();
 	}
@@ -462,18 +729,16 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 			array(
 				'postId' => $post->ID,
 				'postType' => $post->post_type,
+				'templateLock' => ( $post_type = get_post_type_object( $post->post_type ) ) ? $post_type->template_lock : false,
 				'postContent' => $post->post_content,
-				'blockEditorUrl' => remove_query_arg( array( 'page', 'post', 'classic-editor' ), get_edit_post_link( $post->ID, 'raw' ) ),
-				'classicEditorUrl' => add_query_arg( 'classic-editor', '', get_edit_post_link( $post->ID, 'raw' ) ),
-				'blockTypes' => herd_editor_block_metadata( $post->post_content ),
+				'blockEditorUrl' => herd_editor_native_url( $post->ID, 'block' ),
+				'classicEditorUrl' => herd_editor_native_url( $post->ID, 'classic' ),
+				'blockTypes' => herd_editor_block_metadata( $post->post_content, $post ),
 				'blockGroupOrder' => herd_editor_block_group_order(),
-				'modifiedHuman' => sprintf(
-					/* translators: %s: human readable time difference. */
-					__( 'Saved %s ago', 'herd-editor' ),
-					human_time_diff( (int) get_post_modified_time( 'U', true, $post ) )
-				),
+				'modifiedHuman' => herd_editor_saved_label( $post ),
 				/** Filter how many ACF blocks Expand all mounts before asking for confirmation. */
 				'expandWarnAt' => (int) apply_filters( 'herd_editor_expand_warn_at', 8 ),
+				'validationNonce' => wp_create_nonce( 'herd_editor_validate_document' ),
 				'icons' => herd_editor_icon_set(),
 			)
 		) . ';',
@@ -481,6 +746,82 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 	);
 }
 add_action( 'admin_enqueue_scripts', 'herd_editor_enqueue_assets' );
+
+/**
+ * The SVG vocabulary a block icon may use.
+ *
+ * `wp_kses()` has no notion of SVG, so the shapes and their geometry have to be
+ * spelled out. Presentation attributes are shared by every element because these
+ * icon sets hang stroke and fill wherever it suits them.
+ *
+ * @return array<string,array<string,bool>> Tag name to allowed attributes.
+ */
+function herd_editor_svg_tags() {
+	$common = array_fill_keys(
+		array(
+			'xmlns', 'viewbox', 'width', 'height', 'class', 'role', 'focusable',
+			'aria-hidden', 'fill', 'fill-rule', 'fill-opacity', 'clip-rule',
+			'stroke', 'stroke-width', 'stroke-linecap', 'stroke-linejoin',
+			'stroke-opacity', 'opacity', 'transform',
+		),
+		true
+	);
+	$shapes = array(
+		'svg'      => array(),
+		'g'        => array(),
+		'title'    => array(),
+		'defs'     => array(),
+		'symbol'   => array(),
+		'use'      => array( 'href' => true, 'xlink:href' => true ),
+		'path'     => array( 'd' => true ),
+		'circle'   => array( 'cx' => true, 'cy' => true, 'r' => true ),
+		'ellipse'  => array( 'cx' => true, 'cy' => true, 'rx' => true, 'ry' => true ),
+		'rect'     => array( 'x' => true, 'y' => true, 'rx' => true, 'ry' => true ),
+		'line'     => array( 'x1' => true, 'y1' => true, 'x2' => true, 'y2' => true ),
+		'polyline' => array( 'points' => true ),
+		'polygon'  => array( 'points' => true ),
+	);
+	$tags = array();
+	foreach ( $shapes as $tag => $extra ) {
+		$tags[ $tag ] = array_merge( $common, $extra );
+	}
+	return $tags;
+}
+
+/**
+ * The icon a block type offers, in a shape the screen can draw.
+ *
+ * Blocks on this site declare either a dashicon slug or inline SVG in block.json;
+ * WordPress allows both, and roughly a third of the theme's blocks take the second
+ * route. Anything else — an icon registered from JS, an object naming colours we do
+ * not honour, nothing at all — falls back to the default glyph.
+ *
+ * @param WP_Block_Type|null $type Registered type, when there is one.
+ * @return array{dashicon?:string,svg?:string}
+ */
+function herd_editor_block_icon( $type ) {
+	$icon = $type && isset( $type->icon ) ? $type->icon : null;
+
+	/* WordPress also allows `array( 'src' => …, 'foreground' => … )`; we want the src. */
+	if ( is_array( $icon ) && isset( $icon['src'] ) ) {
+		$icon = $icon['src'];
+	}
+	if ( ! is_string( $icon ) || '' === trim( $icon ) ) {
+		return array( 'dashicon' => 'block-default' );
+	}
+	$icon = trim( $icon );
+
+	if ( preg_match( '/^[a-z0-9-]+$/', $icon ) ) {
+		return array( 'dashicon' => preg_replace( '/^dashicons-/', '', $icon ) );
+	}
+	if ( 0 === stripos( $icon, '<svg' ) ) {
+		$svg = trim( wp_kses( $icon, herd_editor_svg_tags() ) );
+		if ( '' !== $svg ) {
+			return array( 'svg' => $svg );
+		}
+	}
+	return array( 'dashicon' => 'block-default' );
+}
 
 /**
  * The named SVG icons an editor can choose from.
@@ -505,7 +846,25 @@ function herd_editor_icon_set() {
 	 */
 	$icons = apply_filters( 'herd_editor_icons', is_array( $icons ) ? $icons : array() );
 
-	return array_filter( $icons, 'is_string' );
+	/*
+	 * The editor inserts these with `innerHTML`, so they go through the same
+	 * allowlist as a registered block's icon rather than being trusted for
+	 * coming from the theme. A filter is a supported way in, and the set is
+	 * only as safe as whatever last wrote to it. Anything that survives
+	 * `wp_kses()` as an empty string is dropped rather than drawn as a hole.
+	 */
+	$safe = array();
+	foreach ( $icons as $name => $icon ) {
+		if ( ! is_string( $icon ) ) {
+			continue;
+		}
+		$svg = trim( wp_kses( $icon, herd_editor_svg_tags() ) );
+		if ( '' !== $svg ) {
+			$safe[ $name ] = $svg;
+		}
+	}
+
+	return $safe;
 }
 
 /**
@@ -625,6 +984,23 @@ function herd_editor_add_list_table_link( $actions, $post ) {
 	if ( ! herd_editor_has_acf_pro() || ! herd_editor_supports_post( $post ) ) {
 		return $actions;
 	}
+	/*
+	 * Classic Editor's own two links point at post.php, which Herd's
+	 * replace_editor filter would bounce straight back here when Herd is the
+	 * default. The stand-down arg is what makes them mean what they say.
+	 */
+	foreach ( array( 'classic-editor-block', 'classic-editor-classic' ) as $action ) {
+		if ( isset( $actions[ $action ] ) ) {
+			$actions[ $action ] = preg_replace_callback(
+				'/href="([^"]+)"/',
+				static function ( $match ) {
+					return 'href="' . esc_url( add_query_arg( HERD_EDITOR_FORGET_ARG, '1', html_entity_decode( $match[1] ) ) ) . '"';
+				},
+				$actions[ $action ]
+			);
+		}
+	}
+
 	$title = _draft_or_post_title( $post->ID );
 	$actions['herd-editor'] = sprintf(
 		'<a href="%1$s" aria-label="%2$s">%3$s</a>',
@@ -637,26 +1013,48 @@ function herd_editor_add_list_table_link( $actions, $post ) {
 add_filter( 'post_row_actions', 'herd_editor_add_list_table_link', 20, 2 );
 add_filter( 'page_row_actions', 'herd_editor_add_list_table_link', 20, 2 );
 
-/** Make Herd available while viewing either native editor. */
+/**
+ * The way into Herd, and the way back out again.
+ *
+ * One section in the publish box, pointing at whichever editor you are not in:
+ * Herd from the native editors, the Block Editor from Herd. A switch that only
+ * goes one way is a trap, and on the Herd screen this box is the Page tab of
+ * the rail, which is where someone looks for a setting about the whole post.
+ *
+ * The Block link is built by herd_editor_native_url(), whose stand-down args
+ * are what keep it from being redirected straight back here when Herd is the
+ * site's default editor. Unsaved work is already guarded: the editor app holds
+ * a beforeunload handler while the document is dirty.
+ *
+ * @param WP_Post $post Post being edited.
+ */
 function herd_editor_switch_link( $post ) {
 	if ( ! herd_editor_has_acf_pro() || ! herd_editor_supports_post( $post ) ) {
 		return;
 	}
-	// On the Herd screen itself the command bar already carries the mode switcher
-	// and the save state, so the publish box must not repeat either.
-	if ( isset( $_GET['page'] ) && 'herd-editor' === $_GET['page'] ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		return;
-	}
-	echo '<div class="misc-pub-section herd-editor-switch"><a href="' . esc_url( herd_editor_url( $post->ID ) ) . '">' . esc_html__( 'Switch to Herd Editor', 'herd-editor' ) . '</a></div>';
+	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$on_herd = isset( $_GET['page'] ) && 'herd-editor' === $_GET['page'];
+	$url     = $on_herd ? herd_editor_native_url( $post->ID, 'block' ) : herd_editor_url( $post->ID );
+	$label   = $on_herd ? __( 'Switch to Block Editor', 'herd-editor' ) : __( 'Switch to Herd Editor', 'herd-editor' );
+
+	echo '<div class="misc-pub-section herd-editor-switch"><a href="' . esc_url( $url ) . '">' . esc_html( $label ) . '</a></div>';
 }
 add_action( 'post_submitbox_misc_actions', 'herd_editor_switch_link' );
 
-/** Return a normal post-form save to the Herd route. */
+/**
+ * Return a normal post-form save to the Herd route.
+ *
+ * The URL is rebuilt rather than amended, because core's points at post.php and
+ * Herd's screen is somewhere else entirely. What core wrote into it still has to
+ * survive the move: `$location` is where WordPress says what just happened, and
+ * an editor who is told nothing after pressing Update has no way to know it
+ * worked. See herd_editor_carry_message_from().
+ */
 function herd_editor_keep_editor_mode_after_save( $location ) {
 	if ( isset( $_REQUEST['herd-editor'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$post_id = isset( $_REQUEST['post_ID'] ) ? absint( $_REQUEST['post_ID'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		if ( $post_id ) {
-			return herd_editor_url( $post_id );
+			return herd_editor_carry_message_from( $location, $post_id );
 		}
 	}
 	return $location;

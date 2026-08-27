@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { adapterFor, canAddBlock, changeHeadingLevel, createAcfBlock, replaceWrapperContent, wrapperInfo } from '../src/adapters.js';
+import { adapterFor, blockMutationPolicy, canAddBlock, changeHeadingLevel, createAcfBlock, replaceWrapperContent, wrapperInfo } from '../src/adapters.js';
 import { serializeDocument } from '../src/document.js';
 
 test( 'dispatches all supported adapters and safely falls back', () => {
@@ -31,4 +31,11 @@ test( 'single-instance ACF blocks cannot be inserted or duplicated once present'
 	assert.equal( canAddBlock( 'acf/hero', metadata, { 'acf/hero': 1 } ), false );
 	assert.equal( canAddBlock( 'acf/card', { registered: true, multiple: true }, { 'acf/card': 2 } ), true );
 	assert.equal( canAddBlock( 'core/paragraph', { registered: true }, {} ), false );
+} );
+
+test( 'catalog and lock policy prevent unsafe mutations', () => {
+	assert.equal( canAddBlock( 'acf/meta', { registered: true, readOnly: true }, {} ), false );
+	assert.equal( canAddBlock( 'acf/child', { registered: true, parent: [ 'acf/container' ] }, {} ), false );
+	assert.deepEqual( blockMutationPolicy( { attributes: { lock: { move: false } } } ), { move: false, remove: true, insert: true } );
+	assert.deepEqual( blockMutationPolicy( {}, 'all' ), { move: false, remove: false, insert: false } );
 } );

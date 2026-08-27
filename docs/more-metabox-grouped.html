@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>More Info — grouped navigation</title>
+<style>
+  :root{
+    --mu-green:#00B140;
+    --border:#dcdcde;
+    --text:#1d2327;
+    --muted:#646970;
+    --canvas:#f0f0f1;
+    --radius:6px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0;padding:32px 16px 64px;background:var(--canvas);color:var(--text);
+    font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .stage{max-width:420px;margin:0 auto}
+  .caption{font-size:12px;color:var(--muted);margin:0 0 12px;text-align:center}
+
+  .panel{background:#fff;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .tabs{display:flex;background:#f6f7f7;border-bottom:1px solid var(--border)}
+  .tab{flex:1;padding:12px 8px;text-align:center;font-weight:600;color:var(--muted);
+       background:none;border:0;border-bottom:2px solid transparent;cursor:pointer;font-size:13px}
+  .tab[aria-selected="true"]{background:#fff;color:var(--text);border-bottom-color:var(--mu-green)}
+  .tab:focus-visible{outline:2px solid var(--mu-green);outline-offset:-2px}
+
+  .searchwrap{padding:12px;border-bottom:1px solid var(--border)}
+  .search{width:100%;padding:6px 10px;border:1px solid #8c8f94;border-radius:var(--radius);font-size:13px}
+  .search:focus{outline:none;border-color:var(--mu-green);box-shadow:0 0 0 1px var(--mu-green)}
+
+  .sec{border-bottom:1px solid var(--border)}
+  .sec:last-of-type{border-bottom:0}
+  .sec[hidden]{display:none}
+  .sec-head{width:100%;display:flex;align-items:center;gap:8px;padding:12px;background:none;
+            border:0;cursor:pointer;text-align:left;font-size:13px;font-weight:600;color:var(--text)}
+  .sec-head:hover{background:#f6f7f7}
+  .sec-head:focus-visible{outline:2px solid var(--mu-green);outline-offset:-2px}
+  .chev{width:9px;height:9px;flex:none;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);
+        transform:rotate(-45deg);transition:transform .15s ease;margin-left:2px}
+  .sec[data-open="true"] .chev{transform:rotate(45deg)}
+  .sec-title{flex:1}
+  .count{font-size:11px;font-weight:600;color:var(--mu-green);background:rgba(0,177,64,.1);
+         border-radius:10px;padding:2px 7px}
+  .count[hidden]{display:none}
+  .sec-body{display:none;padding:0 12px 12px}
+  .sec[data-open="true"] .sec-body{display:block}
+
+  .row{display:flex;align-items:flex-start;gap:12px;padding:9px 0;border-top:1px solid #f0f0f1}
+  .row:first-child{border-top:0}
+  .row[hidden]{display:none}
+  .row label{flex:1;cursor:pointer;padding-top:1px}
+  .hint{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:2px}
+  .note{display:block;font-size:11px;color:#8a6d00;font-weight:600;margin-top:2px}
+
+  .sw{position:relative;flex:none;width:34px;height:20px;margin-top:1px}
+  .sw input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer}
+  .sw span{position:absolute;inset:0;background:#c3c4c7;border-radius:10px;transition:background .15s}
+  .sw span::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;background:#fff;
+                  border-radius:50%;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .sw input:checked + span{background:var(--mu-green)}
+  .sw input:checked + span::after{transform:translateX(14px)}
+  .sw input:focus-visible + span{box-shadow:0 0 0 2px #fff,0 0 0 4px var(--mu-green)}
+
+  .dep{padding:2px 0 2px 12px;border-left:2px solid var(--mu-green);margin:2px 0}
+  .dep[hidden]{display:none}
+
+  .field{padding:8px 0}
+  .field[hidden]{display:none}
+  .field > label{display:block;font-weight:600;margin-bottom:4px}
+  .field input[type=text],.field select{width:100%;padding:6px 10px;border:1px solid #8c8f94;
+        border-radius:var(--radius);font-size:13px;background:#fff}
+  .field input:focus,.field select:focus{outline:none;border-color:var(--mu-green);box-shadow:0 0 0 1px var(--mu-green)}
+
+  .rep{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-top:8px}
+  .rep-label{font-weight:600;margin-top:10px}
+  .item{border-bottom:1px solid var(--border);background:#fff}
+  .item-head{display:flex;align-items:center;gap:8px;width:100%;padding:8px 10px;background:none;border:0;
+             cursor:pointer;text-align:left;font-size:13px;color:var(--text)}
+  .item-head:hover{background:#f6f7f7}
+  .item-head:focus-visible{outline:2px solid var(--mu-green);outline-offset:-2px}
+  .grip{flex:none;color:#a7aaad;font-size:13px;cursor:grab;letter-spacing:-1px}
+  .item-label{flex:1;min-width:0}
+  .item-label b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .item-label small{color:var(--muted);font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+        display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pill{flex:none;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;
+        border-radius:3px;padding:2px 5px;background:#f0f0f1;color:var(--muted);white-space:nowrap}
+  .pill.on{background:var(--mu-green);color:#fff}
+  .pill[hidden]{display:none}
+  .item-body{display:none;padding:2px 10px 12px;border-top:1px solid #f0f0f1}
+  .item[data-open="true"] .item-body{display:block}
+  .rep-foot{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;
+        background:#f6f7f7;border-top:1px solid var(--border)}
+  .maxnote{font-size:11px;color:var(--muted)}
+  .addlink{background:#fff;border:1px solid var(--mu-green);color:var(--mu-green);font-weight:600;
+           border-radius:var(--radius);padding:5px 12px;font-size:13px;cursor:pointer}
+  .addlink:hover{background:var(--mu-green);color:#fff}
+  .addlink:disabled{border-color:#c3c4c7;color:#a7aaad;background:#fff;cursor:not-allowed}
+  .addlink:focus-visible{outline:2px solid var(--mu-green);outline-offset:2px}
+
+  .empty{padding:16px 12px;color:var(--muted);text-align:center;font-size:12px}
+  .empty[hidden]{display:none}
+
+  @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="stage">
+  <p class="caption">More Info — regrouped, with the field group’s real conditional logic wired up.</p>
+
+  <div class="panel">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="false">Page</button>
+      <button class="tab" role="tab" aria-selected="false">SEO</button>
+      <button class="tab" role="tab" aria-selected="true">More</button>
+      <button class="tab" role="tab" aria-selected="false">History</button>
+    </div>
+
+    <div class="searchwrap">
+      <input class="search" type="search" placeholder="Filter settings…" aria-label="Filter settings">
+    </div>
+
+    <div id="sections">
+
+      <!-- ───────────── NAVIGATION ───────────── -->
+      <section class="sec" data-open="true">
+        <button class="sec-head" aria-expanded="true"><span class="chev"></span><span class="sec-title">Navigation</span><span class="count"></span></button>
+        <div class="sec-body">
+
+          <div class="row"><label for="hide_top_nav">Hide Top Navigation</label>
+            <span class="sw"><input type="checkbox" id="hide_top_nav" checked><span></span></span></div>
+
+          <div class="row"><label for="nav_over_hero">Place Main Nav over Photo/Video</label>
+            <span class="sw"><input type="checkbox" id="nav_over_hero" checked><span></span></span></div>
+
+          <div class="row"><label for="custom_nav">Display Custom Primary Navigation</label>
+            <span class="sw"><input type="checkbox" id="custom_nav" checked data-controls="dep_customnav"><span></span></span></div>
+
+          <div class="dep" id="dep_customnav">
+
+            <div class="row"><label for="below_title">Display Below Page Title</label>
+              <span class="sw"><input type="checkbox" id="below_title" checked data-controls="icons"><span></span></span></div>
+
+            <div class="rep-label">Custom Nav Items</div>
+            <div class="rep">
+              <div class="item">
+                <button class="item-head"><span class="grip">⠿</span>
+                  <span class="item-label"><b>Apply Now</b><small>/admissions/apply/</small></span>
+                  <span class="pill" hidden>Primary</span>
+                  <span class="pill icon-pill">No icon</span></button>
+                <div class="item-body">
+                  <div class="field"><label>Link text</label><input type="text" value="Apply Now"></div>
+                  <div class="field"><label>URL</label><input type="text" value="/admissions/apply/"></div>
+                  <div class="row"><label>Primary Call-to-Action</label>
+                    <span class="sw"><input type="checkbox"><span></span></span></div>
+                  <div class="field icon-field"><label>Icon</label>
+                    <select><option>— Select —</option><option>info-circle</option><option>location</option><option>cap</option></select></div>
+                </div>
+              </div>
+
+              <div class="item">
+                <button class="item-head"><span class="grip">⠿</span>
+                  <span class="item-label"><b>Request Info</b><small>#request</small></span>
+                  <span class="pill on">Primary</span>
+                  <span class="pill icon-pill">info-circle</span></button>
+                <div class="item-body">
+                  <div class="field"><label>Link text</label><input type="text" value="Request Info"></div>
+                  <div class="field"><label>URL</label><input type="text" value="#request"></div>
+                  <div class="row"><label>Primary Call-to-Action</label>
+                    <span class="sw"><input type="checkbox" checked><span></span></span></div>
+                  <div class="field icon-field"><label>Icon</label>
+                    <select><option>— Select —</option><option selected>info-circle</option><option>location</option></select></div>
+                </div>
+              </div>
+
+              <div class="item">
+                <button class="item-head"><span class="grip">⠿</span>
+                  <span class="item-label"><b>Visit Us</b><small>#</small></span>
+                  <span class="pill" hidden>Primary</span>
+                  <span class="pill icon-pill">location</span></button>
+                <div class="item-body">
+                  <div class="field"><label>Link text</label><input type="text" value="Visit Us"></div>
+                  <div class="field"><label>URL</label><input type="text" value="#"></div>
+                  <div class="row"><label>Primary Call-to-Action</label>
+                    <span class="sw"><input type="checkbox"><span></span></span></div>
+                  <div class="field icon-field"><label>Icon</label>
+                    <select><option>— Select —</option><option>info-circle</option><option selected>location</option></select></div>
+                </div>
+              </div>
+
+              <div class="rep-foot">
+                <span class="maxnote">3 of 3 used</span>
+                <button class="addlink" disabled>Add Link</button>
+              </div>
+            </div>
+
+            <div class="row"><label for="tns">Display Take the Next Step</label>
+              <span class="sw"><input type="checkbox" id="tns" checked data-controls="dep_tns"><span></span></span></div>
+
+            <div class="dep" id="dep_tns">
+              <div class="field"><label for="alt_apply">Alternate Apply Now URL</label>
+                <input type="text" id="alt_apply" placeholder="https://">
+                <span class="hint">Leave blank to use the site default</span></div>
+            </div>
+          </div>
+
+          <div class="row"><label for="hide_site_menu">Hide Site Menu</label>
+            <span class="sw"><input type="checkbox" id="hide_site_menu"><span></span></span></div>
+
+          <div class="row"><label for="back_to_top">Display Back to Top
+              <span class="hint">Appears bottom-right once the visitor scrolls past halfway. Useful on long pages.</span></label>
+            <span class="sw"><input type="checkbox" id="back_to_top"><span></span></span></div>
+
+          <div class="row"><label for="breadcrumbs">Display Breadcrumbs</label>
+            <span class="sw"><input type="checkbox" id="breadcrumbs" data-controls="dep_crumbs"><span></span></span></div>
+
+          <div class="dep" id="dep_crumbs" hidden>
+            <div class="row"><label for="hide_parent">Hide Parent Breadcrumb
+                <span class="note">Proposed: gate this on Display Breadcrumbs (currently ungated)</span></label>
+              <span class="sw"><input type="checkbox" id="hide_parent" checked><span></span></span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────── CALLS TO ACTION ───────────── -->
+      <section class="sec" data-open="false">
+        <button class="sec-head" aria-expanded="false"><span class="chev"></span><span class="sec-title">Calls to action</span><span class="count"></span></button>
+        <div class="sec-body">
+          <div class="row"><label for="hide_request">Hide Request Info</label>
+            <span class="sw"><input type="checkbox" id="hide_request" data-controls-inverse="dep_request"><span></span></span></div>
+
+          <div class="dep" id="dep_request">
+            <div class="field"><label for="request_url">Custom Request Info URL</label>
+              <input type="text" id="request_url" value="#request"></div>
+          </div>
+
+          <div class="row"><label for="hide_footer_cta">Hide Footer CTA</label>
+            <span class="sw"><input type="checkbox" id="hide_footer_cta" checked><span></span></span></div>
+        </div>
+      </section>
+
+      <!-- ───────────── PAGE & FOOTER ───────────── -->
+      <section class="sec" data-open="false">
+        <button class="sec-head" aria-expanded="false"><span class="chev"></span><span class="sec-title">Page &amp; footer</span><span class="count"></span></button>
+        <div class="sec-body">
+          <div class="row"><label for="hide_title">Hide Page Title</label>
+            <span class="sw"><input type="checkbox" id="hide_title"><span></span></span></div>
+
+          <div class="row"><label for="minimal_footer">Use Minimal Footer</label>
+            <span class="sw"><input type="checkbox" id="minimal_footer" data-controls="dep_footer"><span></span></span></div>
+
+          <div class="dep" id="dep_footer" hidden>
+            <div class="rep-label">Footer Calls to Action</div>
+            <div class="rep">
+              <div class="item">
+                <button class="item-head"><span class="grip">⠿</span>
+                  <span class="item-label"><b>Apply Now</b><small>/admissions/apply/</small></span>
+                  <span class="pill on">Primary</span></button>
+                <div class="item-body">
+                  <div class="field"><label>Link text</label><input type="text" value="Apply Now"></div>
+                  <div class="field"><label>URL</label><input type="text" value="/admissions/apply/"></div>
+                  <div class="row"><label>Primary CTA</label>
+                    <span class="sw"><input type="checkbox" checked><span></span></span></div>
+                </div>
+              </div>
+              <div class="rep-foot">
+                <span class="maxnote">1 of 3 used</span>
+                <button class="addlink">Add Link</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ───────────── ACCESS & REDIRECTS ───────────── -->
+      <section class="sec" data-open="false">
+        <button class="sec-head" aria-expanded="false"><span class="chev"></span><span class="sec-title">Access &amp; redirects</span><span class="count"></span></button>
+        <div class="sec-body">
+          <div class="row"><label for="munet">Require MUNet to Access Page</label>
+            <span class="sw"><input type="checkbox" id="munet"><span></span></span></div>
+
+          <div class="field"><label for="redirect">Redirect URL</label>
+            <input type="text" id="redirect" placeholder="https://">
+            <span class="hint">Visitors are sent here instead of seeing this page</span></div>
+
+          <div class="row"><label for="https">Disable HTTP to HTTPS on Links</label>
+            <span class="sw"><input type="checkbox" id="https"><span></span></span></div>
+        </div>
+      </section>
+
+      <!-- ───────────── EXTRAS ───────────── -->
+      <section class="sec" data-open="false">
+        <button class="sec-head" aria-expanded="false"><span class="chev"></span><span class="sec-title">Extras</span><span class="count"></span></button>
+        <div class="sec-body">
+          <div class="row"><label for="mainstay">Add MainStay Chatbot</label>
+            <span class="sw"><input type="checkbox" id="mainstay"><span></span></span></div>
+
+          <div class="row"><label for="confetti">Confetti
+              <span class="note">This is for Admissions only</span></label>
+            <span class="sw"><input type="checkbox" id="confetti"><span></span></span></div>
+        </div>
+      </section>
+
+      <p class="empty" hidden>No settings match that filter.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var sections = Array.prototype.slice.call(document.querySelectorAll('.sec'));
+
+  function setCounts(){
+    sections.forEach(function(sec){
+      var on = sec.querySelectorAll('.sec-body > .row input:checked, .sec-body > .dep > .row input:checked').length;
+      var badge = sec.querySelector('.count');
+      badge.textContent = on + ' on';
+      badge.hidden = on === 0;
+    });
+  }
+
+  sections.forEach(function(sec){
+    sec.querySelector('.sec-head').addEventListener('click', function(){
+      var open = sec.dataset.open === 'true';
+      sec.dataset.open = String(!open);
+      this.setAttribute('aria-expanded', String(!open));
+    });
+  });
+
+  document.querySelectorAll('.item-head').forEach(function(h){
+    h.addEventListener('click', function(){
+      var it = h.parentElement;
+      it.dataset.open = it.dataset.open === 'true' ? 'false' : 'true';
+    });
+  });
+
+  document.querySelectorAll('input[data-controls]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var t = document.getElementById(cb.dataset.controls);
+      if(t) t.hidden = !cb.checked;
+    });
+  });
+  document.querySelectorAll('input[data-controls-inverse]').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var t = document.getElementById(cb.dataset.controlsInverse);
+      if(t) t.hidden = cb.checked;
+    });
+  });
+
+  // Icon subfield is gated on "Display Below Page Title" in the current field group
+  var belowTitle = document.getElementById('below_title');
+  function syncIcons(){
+    var on = belowTitle.checked;
+    document.querySelectorAll('.icon-field').forEach(function(f){ f.hidden = !on; });
+    document.querySelectorAll('.icon-pill').forEach(function(p){ p.hidden = !on; });
+  }
+  belowTitle.addEventListener('change', syncIcons);
+  syncIcons();
+
+  document.addEventListener('change', setCounts);
+  setCounts();
+
+  var search = document.querySelector('.search');
+  var empty = document.querySelector('.empty');
+  search.addEventListener('input', function(){
+    var q = search.value.trim().toLowerCase(), anyVisible = false;
+    sections.forEach(function(sec){
+      if(!q){
+        sec.hidden = false;
+        sec.querySelectorAll('.row,.field,.rep,.rep-label').forEach(function(r){ r.removeAttribute('data-filtered'); r.hidden = false; });
+        syncIcons();
+        anyVisible = true;
+        return;
+      }
+      var hit = 0;
+      sec.querySelectorAll('.sec-body .row, .sec-body .field, .sec-body .rep-label').forEach(function(r){
+        var match = r.textContent.toLowerCase().indexOf(q) > -1;
+        r.hidden = !match;
+        if(match) hit++;
+      });
+      sec.querySelectorAll('.rep').forEach(function(r){ r.hidden = true; });
+      sec.hidden = hit === 0;
+      if(hit){ anyVisible = true; sec.dataset.open = 'true'; }
+    });
+    empty.hidden = anyVisible;
+  });
+})();
+</script>
+</body>
+</html>

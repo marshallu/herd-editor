@@ -5,10 +5,19 @@
  * — 18 layouts in the main column and 7 in the sidebar. That block is the
  * heaviest thing an editor opens, and before this it had a single border rule.
  *
- * ACF already provides collapse, a title and expand/collapse-all controls, so
- * none of that is rebuilt here; the layout row is dressed to match the block row
- * and the repeater card row above it. Same anatomy at a third level: grip, name,
- * tools, chevron.
+ * ACF already provides collapse, a title, drag, rename, disable and
+ * expand/collapse-all, so none of that is rebuilt here; the layout row is
+ * dressed to match the block row and the repeater card row above it. Same
+ * anatomy at a third level: grip, name over summary, tools, chevron.
+ *
+ * The classes with a `herd-` prefix below are put on by src/ui/acf/flexible.js,
+ * which adopts ACF's own elements rather than replacing them. The rest are ACF's
+ * as of 6.5, where the layout bar moved out of `.acf-fc-layout-handle` and into
+ * an `.acf-fc-layout-actions-wrap` around it.
+ *
+ * The layout picker and the more-actions menu are not here: ACF appends both to
+ * <body>, so they are namespaced in src/ui/acf/portals.js and styled in
+ * _acf-portals.scss alongside select2 and the datepicker.
  */
 
 @use './widths';
@@ -31,6 +40,15 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 }
 
 /* ---------- container ---------- */
+
+/*
+ * ACF 6.5 moved the layout bar out of `.acf-fc-layout-handle` and into a new
+ * `.acf-fc-layout-actions-wrap` around it, and took the bar's background with
+ * it. Everything below therefore addresses the wrap, not the handle: the handle
+ * is now only the draggable name area inside it. A rule left on the handle looks
+ * like it works and paints a transparent strip over ACF's own grey -- or, on the
+ * open layout, over its blue.
+ */
 
 @include on-fields(".acf-flexible-content") {
 	position: relative;
@@ -55,28 +73,158 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 	border-color: var(--herd-line-hover);
 }
 
-/* ---------- layout handle ---------- */
+/*
+ * ACF marks the layout you are working in `active-layout` and fills its bar with
+ * the admin theme colour -- `#2271b1` outside the block editor, which this
+ * screen is. Herd says the same thing with a border, as the block row does, and
+ * a fill that loud on the one row you are editing is the opposite of "nothing
+ * should be as loud as the thing an editor came to change".
+ */
+@include on-fields(".acf-flexible-content .layout.active-layout") {
+	border-color: var(--herd-line-hover);
+}
 
-@include on-fields(".acf-flexible-content .acf-fc-layout-handle") {
+/*
+ * Stated on the active layout as well as on the row, because ACF states it
+ * twice: once at the same weight as the rule above, and once as
+ * `body:not(.block-editor-page) .acf-flexible-content .layout.active-layout >
+ * .acf-fc-layout-actions-wrap`, which is `#2271b1`. This screen is not the block
+ * editor, so that second one applies.
+ *
+ * The `.herd-flex` below is what beats it, and is the reason these five rules
+ * name the container twice while the rest of the file names it once. ACF's rule
+ * is six weights; matching it and relying on this sheet loading second would
+ * hold today and break the day anything reorders the queue.
+ */
+@include on-fields(".acf-flexible-content.herd-flex .layout.active-layout > .herd-fcrow") {
+	background: transparent;
+	border: 0;
+	border-bottom: 1px solid var(--herd-line-soft);
+}
+
+@include on-fields(".acf-flexible-content.herd-flex .layout.active-layout.-collapsed > .herd-fcrow") {
+	border-bottom-color: transparent;
+}
+
+@include on-fields(".acf-flexible-content.herd-flex .layout.active-layout > .acf-fields, .acf-flexible-content.herd-flex .layout.active-layout > .acf-table") {
+	background: transparent;
+	border: 0;
+}
+
+/* The bar is no longer filled, so the white text ACF paired with the fill has
+   nothing to sit on. */
+@include on-fields(".acf-flexible-content.herd-flex .layout.active-layout > .herd-fcrow .acf-fc-layout-handle") {
+	color: var(--herd-ink);
+}
+
+@include on-fields(".acf-flexible-content.herd-flex .layout.active-layout > .herd-fcrow .acf-fc-layout-original-title") {
+	color: var(--herd-ink-3);
+}
+
+/* ---------- field header ---------- */
+
+/*
+ * The same header the repeater has, on the same metrics: title, count, then the
+ * controls, at the height every collapsible header in the editor lands on.
+ */
+@include on-fields(".acf-flexible-content > .herd-flex__head") {
+	align-items: center;
+	background: var(--herd-tint);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-sizing: border-box;
+	display: flex;
+	gap: 9px;
+	justify-content: flex-start;
+	margin: 0 0 8px;
+	min-height: var(--herd-header-h);
+	padding: 7px 10px;
+	text-align: left;
+}
+
+@include on-fields(".herd-flex__title") {
+	color: var(--herd-ink);
+	font-size: 12px;
+	font-weight: 500;
+}
+
+@include on-fields(".herd-flex__count") {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+}
+
+@include on-fields(".herd-flex__spacer") {
+	flex: 1;
+}
+
+@include on-fields(".herd-flex__head .herd-btn") {
+	flex: none;
+}
+
+/*
+ * The field's own label is the header's title -- but only while there is a
+ * header. An empty field has none, so it keeps the label ACF rendered rather
+ * than going out unnamed.
+ */
+@include on-fields(".acf-field-flexible-content:has(.herd-flex:not(.-empty)) > .acf-label") {
+	display: none;
+}
+
+/*
+ * ACF renders the add button twice, above and below, and hides the bar above
+ * while the field is empty -- `.acf-flexible-content.-empty .acf-fc-top-actions
+ * { display: none !important }`. The one below is therefore the only way into an
+ * empty field, and is hidden only once the header it duplicates is on screen.
+ * ACF drops `-empty` from the container the moment a layout is added, so the two
+ * swap over together.
+ *
+ * Hidden rather than removed: ACF's handler is bound to both.
+ */
+@include on-fields(".herd-flex:not(.-empty) > .acf-actions:not(.acf-fc-top-actions)") {
+	display: none;
+}
+
+@include on-fields(".herd-flex.-empty > .acf-actions:not(.acf-fc-top-actions)") {
+	display: flex;
+	justify-content: flex-start;
+	padding: 8px 0 0;
+	text-align: left;
+}
+
+/* ---------- layout row ---------- */
+
+@include on-fields(".acf-flexible-content .herd-fcrow") {
 	align-items: center;
 	background: transparent;
 	border: 0;
 	border-bottom: 1px solid var(--herd-line-soft);
-	color: var(--herd-ink);
-	cursor: pointer;
+	box-sizing: border-box;
 	display: flex;
-	font-size: 13px;
-	gap: 8px;
-	line-height: 1.4;
-	padding: 8px 10px;
+	gap: 10px;
+	min-height: var(--herd-header-h);
+	padding: 6px 6px 6px 10px;
 }
 
-@include on-fields(".acf-flexible-content .layout.-collapsed .acf-fc-layout-handle") {
+@include on-fields(".acf-flexible-content .layout.-collapsed > .herd-fcrow") {
 	border-bottom-color: transparent;
 }
 
-@include on-fields(".acf-flexible-content .acf-fc-layout-handle:hover") {
+@include on-fields(".acf-flexible-content .herd-fcrow:hover") {
 	background: var(--herd-canvas);
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-handle") {
+	align-items: center;
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	flex: 1;
+	font-size: 13px;
+	font-weight: 400;
+	gap: 10px;
+	line-height: 1.4;
+	min-width: 0;
+	padding: 0;
 }
 
 @include on-fields(".acf-flexible-content .acf-fc-layout-handle:focus-visible") {
@@ -85,72 +233,194 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 }
 
 /*
- * ACF numbers its layouts. The handle already names each one, and the repeater
- * rows above dropped their ordinals for the same reason: a position you can read
- * off the list is not worth a badge. ACF renumbers this node on every re-render,
- * so it is hidden rather than removed and its bookkeeping is left alone.
+ * ACF numbers its layouts and swaps the number for a grip of its own on hover.
+ * The handle already names each one, and the repeater rows above dropped their
+ * ordinals for the same reason: a position you can read off the list is not
+ * worth a badge. Both are hidden rather than removed -- ACF renumbers the order
+ * node on every re-render, and its bookkeeping is left alone.
+ *
+ * `.layout .herd-fcrow` rather than the shorter chain both of these were written
+ * with first. ACF reveals its grip from
+ * `.acf-flexible-content .layout .acf-fc-layout-actions-wrap:hover
+ * .acf-fc-layout-draggable-icon`, which is five classes to that chain's four, so
+ * the row came out with two grips side by side the moment it was hovered -- and
+ * ACF's, on the layout being edited, painted in the accent this site sets to
+ * Marshall green.
  */
-@include on-fields(".acf-flexible-content .acf-fc-layout-order") {
+@include on-fields(".acf-flexible-content .layout .herd-fcrow .acf-fc-layout-order, .acf-flexible-content .layout .herd-fcrow .acf-fc-layout-draggable-icon") {
 	display: none;
 }
 
-@include on-fields(".acf-flexible-content .acf-fc-layout-title") {
-	flex: 1 1 auto;
-	font-weight: 400;
+@include on-fields(".acf-flexible-content .herd-fcrow .herd-grip") {
+	color: var(--herd-line);
+	flex: none;
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow:hover .herd-grip") {
+	color: var(--herd-ink-3);
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow__main") {
+	flex: 1;
 	min-width: 0;
+}
+
+@include on-fields(".acf-flexible-content .acf-fc-layout-title, .acf-flexible-content .herd-fcrow__summary") {
+	display: block;
 	overflow: hidden;
-	padding: 0;
 	text-overflow: ellipsis;
 	white-space: nowrap;
 }
 
+/* Stated so the pair comes to 33px, the same as a repeater card row's. */
+@include on-fields(".acf-flexible-content .acf-fc-layout-title") {
+	color: var(--herd-ink);
+	font-size: 13px;
+	font-weight: 400;
+	line-height: 18px;
+	padding: 0;
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow__summary") {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	line-height: 15px;
+}
+
+/* Nothing to say yet: an empty line is not worth 15px on every row. */
+@include on-fields(".acf-flexible-content .herd-fcrow__summary:empty") {
+	display: none;
+}
+
+/*
+ * A renamed layout keeps its original name beside the new one. It is metadata,
+ * so it takes the metadata tier and sits on the summary line rather than pushing
+ * the title around.
+ */
 @include on-fields(".acf-flexible-content .acf-fc-layout-original-title, .acf-flexible-content .acf-fc-layout-custom-label") {
 	color: var(--herd-ink-3);
 	font-size: 11px;
+	font-weight: 400;
+	line-height: 15px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
-
-@include on-fields(".acf-flexible-content .acf-fc-layout-draggable-icon") {
-	color: var(--herd-line-hover);
-	cursor: grab;
-	flex: 0 0 auto;
-}
-
-/* ---------- layout controls ---------- */
 
 /*
- * Tools stay out of the way until the row is hovered or open, the same rule the
- * block row and the repeater card row follow.
+ * No `display` above, deliberately. ACF shows this only on a layout somebody has
+ * renamed and hides it otherwise, from a selector this one ties with -- and a
+ * tie goes to whichever sheet loaded last, which is this one. Stating a display
+ * here would put "(Alternator)" under every layout called Alternator.
  */
-@include on-fields(".acf-flexible-content .acf-fc-layout-controls") {
+
+/*
+ * "This card has two empty fields" is information, not a problem -- and so is a
+ * disabled module. Grey, and a labelled badge rather than colour alone.
+ */
+@include on-fields(".acf-flexible-content .acf-layout-disabled") {
+	background: var(--herd-line-soft);
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-2);
+	flex: none;
+	font-size: 11px;
+	font-weight: 400;
+	line-height: 1.4;
+	margin: 0;
+	padding: 2px 6px;
+}
+
+@include on-fields(".acf-flexible-content .acf-layout-disabled:before") {
+	display: none;
+}
+
+@include on-fields(".acf-flexible-content .layout[data-enabled='0']") {
+	opacity: .6;
+}
+
+/* ---------- layout tools ---------- */
+
+/*
+ * Always visible, like the repeater card row's: a control that appears on hover
+ * is one you cannot find without already knowing it is there, and on a list of
+ * 18 modules that is most of them.
+ */
+@include on-fields(".acf-flexible-content .herd-fcrow__tools") {
+	align-items: center;
 	display: flex;
+	flex: none;
 	gap: 2px;
-	opacity: 0;
 	position: static;
-	transition: opacity .12s;
 }
 
-@include on-fields(".acf-flexible-content .layout:hover .acf-fc-layout-controls, .acf-flexible-content .layout:focus-within .acf-fc-layout-controls, .acf-flexible-content .layout:not(.-collapsed) .acf-fc-layout-controls") {
-	opacity: 1;
-}
-
-@include on-fields(".acf-flexible-content .acf-fc-layout-controls .acf-icon") {
+@include on-fields(".acf-flexible-content .herd-fcrow__tool") {
+	align-items: center;
 	background: transparent;
 	border: 0;
 	border-radius: var(--herd-r-sm);
+	box-shadow: none;
+	box-sizing: content-box;
 	color: var(--herd-ink-3);
+	display: flex;
 	height: 24px;
+	justify-content: center;
+	text-decoration: none;
+	visibility: visible;
 	width: 24px;
 }
 
-@include on-fields(".acf-flexible-content .acf-fc-layout-controls .acf-icon:hover") {
+@include on-fields(".acf-flexible-content .herd-fcrow__tool .dashicons") {
+	font-size: 16px;
+	height: 16px;
+	line-height: 1;
+	width: 16px;
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow__tool:hover") {
 	background: var(--herd-canvas);
 	color: var(--herd-ink);
 }
 
-/* Destructive is grey at rest and only turns on hover. */
-@include on-fields(".acf-flexible-content .acf-fc-layout-controls .acf-icon.-trash-alt:hover") {
+/* Destructive at rest is grey; a trash icon that is always red reads as an error
+   state on a row with nothing wrong. */
+@include on-fields(".acf-flexible-content .herd-fcrow__tool.is-destructive:hover") {
 	background: var(--herd-canvas);
 	color: var(--herd-danger);
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow__tool:focus-visible") {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow__chev") {
+	align-items: center;
+	color: var(--herd-ink-3);
+	display: flex;
+	flex: none;
+	font-size: 16px;
+	height: 24px;
+	justify-content: center;
+	line-height: 1;
+	margin-left: 2px;
+	text-decoration: none;
+	transition: transform .15s ease;
+	width: 24px;
+}
+
+@include on-fields(".acf-flexible-content .layout:not(.-collapsed) .herd-fcrow__chev") {
+	transform: rotate(180deg);
+}
+
+@include on-fields(".acf-flexible-content .herd-fcrow__chev:focus-visible") {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+@media ( prefers-reduced-motion: reduce ) {
+	@include on-fields(".acf-flexible-content .herd-fcrow__chev") {
+		transition: none;
+	}
 }
 
 /* ---------- layout body ---------- */
@@ -166,7 +436,7 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 }
 
 /*
- * The body owns the padding and the gap owns the rhythm — the same reset a group
+ * The body owns the padding and the gap owns the rhythm -- the same reset a group
  * body does in _acf-group.scss. Without it ACF's `.acf-fields > .acf-field
  * { padding: 16px; border-top: 1px }` still applies inside a layout that has
  * already been given its own, and the fields come out 44px apart with a hairline
@@ -176,7 +446,7 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
  * table, and its cells are not `.acf-field` children of an `.acf-fields`.
  */
 @include on-fields(".acf-flexible-content .layout > .acf-fields") {
-	@include widths.grid(14px, 16px);
+	@include widths.grid();
 }
 
 @include on-fields(".acf-flexible-content .layout > .acf-fields > .acf-field") {
@@ -195,25 +465,14 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 	@include widths.spans("#{$scope} .acf-flexible-content .layout > .acf-fields");
 }
 
-/* ---------- toolbars ---------- */
-
-@include on-fields(".acf-flexible-content > .acf-actions, .acf-flexible-content .acf-fc-top-actions") {
-	display: flex;
-	gap: 6px;
-	justify-content: flex-start;
-	padding: 8px 0 0;
-	text-align: left;
-}
-
-@include on-fields(".acf-flexible-content .acf-fc-top-actions") {
-	justify-content: flex-end;
-	padding: 0 0 6px;
-}
+/* ---------- buttons ---------- */
 
 /*
- * ACF ships the add button as `acf-btn-primary`. Update is the only filled
- * button on this screen, so it is demoted to the outlined accent the repeater's
- * Add row already uses.
+ * ACF ships the add button as `button-primary`, which this site's admin CSS
+ * paints green with `!important` on every other screen. src/ui/acf/flexible.js
+ * drops those classes rather than fighting them -- the same move ./repeater.js
+ * and ./link.js make, and for the same reason: Update is the only filled button
+ * on this screen. What is left is anything Herd's JS did not reach.
  */
 @include on-fields(".acf-flexible-content .acf-btn, .acf-flexible-content .button, .acf-flexible-content .acf-button") {
 	background: var(--herd-surface);
@@ -234,43 +493,6 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 	background: var(--herd-green-tint);
 	border-color: var(--herd-green);
 	color: var(--herd-green-ink);
-}
-
-@include on-fields(".acf-flexible-content .acf-btn-clear") {
-	border-color: transparent;
-	color: var(--herd-ink-2);
-}
-
-@include on-fields(".acf-flexible-content .acf-btn-clear:hover") {
-	background: var(--herd-canvas);
-	border-color: transparent;
-	color: var(--herd-ink);
-}
-
-/* ---------- layout picker popup ---------- */
-
-@include on-fields(".acf-fc-popup") {
-	background: var(--herd-ink);
-	border-radius: var(--herd-r);
-	padding: 4px;
-}
-
-@include on-fields(".acf-fc-popup ul") {
-	margin: 0;
-	padding: 0;
-}
-
-@include on-fields(".acf-fc-popup a") {
-	border-radius: var(--herd-r-sm);
-	color: #fff;
-	font-size: 12px;
-	padding: 5px 9px;
-	text-decoration: none;
-}
-
-@include on-fields(".acf-fc-popup a:hover") {
-	background: var(--herd-green-ink);
-	color: #fff;
 }
 
 /* ---------- empty state ---------- */

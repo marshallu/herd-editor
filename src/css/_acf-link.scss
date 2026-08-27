@@ -1,0 +1,227 @@
+/*
+ * The link chip.
+ *
+ * ACF's return array already carries title, url and target, and its markup puts
+ * them in .link-title and .link-url. The stock rendering shows the same "Select
+ * Link" button whether or not a link is set, so a resolved link is invisible.
+ *
+ * Emitted for every surface that holds an ACF field rather than for the block
+ * form alone: a link is the same control in a block panel and in a rail postbox,
+ * and the More Info group renders 2 of them in the rail. src/ui/acf/boxes.js is
+ * what carries the `herd-link` class -- and therefore all of this -- onto the
+ * postbox surfaces.
+ *
+ * DOM shape, after src/ui/acf/link.js has been over it:
+ *   .acf-link.herd-link > [data-name="add"]
+ *   .acf-link.herd-link > .link-wrap > .herd-link__glyph
+ *                                    + .herd-link__text > .link-title + span.link-url
+ *                                    + a.herd-link__edit + a[data-name="remove"]
+ */
+
+@use './boxes';
+
+@include boxes.in-surfaces(".herd-link .link-wrap") {
+	align-items: center;
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	cursor: pointer;
+	display: flex;
+	gap: 9px;
+	min-height: var(--herd-control-h);
+	padding: 5px 9px;
+	transition: border-color 90ms ease;
+}
+
+/* The row is the edit control, so it has to look like it answers a click. */
+@include boxes.in-surfaces(".herd-link .link-wrap:hover") {
+	border-color: var(--herd-line-strong);
+}
+
+@include boxes.in-surfaces(".herd-link .link-wrap:focus-visible") {
+	border-color: var(--herd-line-strong);
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: -2px;
+}
+
+@include boxes.in-surfaces(".herd-link:not(.-value) .link-wrap") {
+	display: none;
+}
+
+/*
+ * The title and the URL are one block, so the chip can lay them out as a line or
+ * as a stack without either arrangement having to know about the glyph and the
+ * ✕ that flank them. ACF rewrites both by descendant search, so the extra level
+ * is invisible to it.
+ */
+@include boxes.in-surfaces(".herd-link__text") {
+	align-items: center;
+	display: flex;
+	flex: 1;
+	gap: 9px;
+	min-width: 0;
+}
+
+@include boxes.in-surfaces(".herd-link .link-title") {
+	color: var(--herd-ink);
+	flex: none;
+	font-size: 12px;
+	max-width: 45%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * A URL is read character by character, so it gets the mono tier. It is text,
+ * not an anchor -- src/ui/acf/link.js swaps ACF's `<a>` for a span, because the
+ * row's own click is the edit modal and following the link would leave the post.
+ */
+@include boxes.in-surfaces(".herd-link .link-url") {
+	color: var(--herd-ink-3);
+	flex: 1;
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	min-width: 0;
+	overflow: hidden;
+	text-decoration: none;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+@include boxes.in-surfaces(".herd-link .link-wrap .acf-icon") {
+	background: none;
+	color: var(--herd-ink-3);
+	flex: none;
+	font-size: 11px;
+	height: auto;
+	line-height: 1.6;
+	text-indent: 0;
+	width: auto;
+}
+
+@include boxes.in-surfaces(".herd-link .link-wrap .acf-icon::before, .herd-link .link-wrap .acf-icon::after") {
+	content: none;
+}
+
+/*
+ * ACF's `.acf-icon` is a 28px circle by way of `border-radius: 100%`, and the
+ * rule above sizes it to its glyph instead -- which leaves the radius drawing an
+ * ellipse around a ✕ that is wider than it is tall. A round control needs a
+ * square box, so the ✕ gets one and the hover and focus rings come out round.
+ */
+@include boxes.in-surfaces(".herd-link .link-wrap [data-name='remove']") {
+	align-items: center;
+	border-radius: 50%;
+	display: inline-flex;
+	height: 20px;
+	justify-content: center;
+	line-height: 1;
+	width: 20px;
+}
+
+@include boxes.in-surfaces(".herd-link .link-wrap [data-name='remove']:focus-visible") {
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: 1px;
+}
+
+/*
+ * The whole row edits, so a second control saying so is noise. ACF binds the
+ * link modal to this anchor, so it stays in the DOM and stays the thing the row
+ * clicks -- hidden, not removed.
+ */
+@include boxes.in-surfaces(".herd-link__edit") {
+	display: none !important;
+}
+
+/* Destructive actions rest grey and only turn red under the cursor. */
+@include boxes.in-surfaces(".herd-link [data-name='remove']:hover") {
+	background: var(--herd-canvas);
+	color: var(--herd-danger) !important;
+}
+
+/*
+ * An empty state is an invitation, not a report -- and not an accent. Green marks
+ * selection, active state and the primary action, and an empty field is none of
+ * those. src/ui/acf/link.js drops WP's `.button` class, which the site's admin
+ * CSS paints green with !important, so plain rules are enough here.
+ *
+ * Sized to the 31px control height so an empty link reads as a field waiting to
+ * be filled rather than a banner announcing itself.
+ */
+@include boxes.in-surfaces(".herd-link > [data-name='add']") {
+	align-items: center;
+	background: var(--herd-surface);
+	border: 1px dashed var(--herd-line);
+	border-radius: var(--herd-r);
+	/* An anchor is not one of the four elements wp-admin hands border-box, and
+	   link.js drops the `.button` class that was the only other route to it -- so
+	   `width: 100%` below is 100% plus 20px of padding and border. Enough to eat
+	   the gutter between two half-width link fields and hang the second one past
+	   the right of the form. Same reason as the media empty state in
+	   _acf-media.scss. */
+	box-sizing: border-box;
+	box-shadow: none;
+	color: var(--herd-ink-3);
+	display: flex;
+	font-size: 12px;
+	font-weight: 400;
+	gap: 8px;
+	height: auto;
+	line-height: 1.5;
+	min-height: var(--herd-control-h);
+	padding: 5px 9px;
+	text-align: left;
+	width: 100%;
+}
+
+@include boxes.in-surfaces(".herd-link > [data-name='add']:hover") {
+	background: var(--herd-canvas);
+	border-color: var(--herd-line-strong);
+	color: var(--herd-ink);
+}
+
+@include boxes.in-surfaces(".herd-link__glyph") {
+	color: inherit;
+	display: flex;
+	flex: none;
+}
+
+@include boxes.in-surfaces(".herd-link__glyph svg") {
+	height: 14px;
+	width: 14px;
+}
+
+@include boxes.in-surfaces(".herd-link.-value > [data-name='add']") {
+	display: none;
+}
+
+/* ---------- the rail ---------- */
+
+/*
+ * A repeater row in the rail leaves about 230px between the number gutter and
+ * the edge, and a title and a URL do not share it -- which is what wrapped the ✕
+ * onto a line of its own. So the two lines are stated rather than discovered:
+ * title, then the URL beneath it, both truncating on their own.
+ *
+ * The glyph and the ✕ stay centred on the pair. Pinning them to the title's line
+ * was the first attempt, and it left the ✕ hanging over an inch of nothing --
+ * a control has to look attached to what it acts on.
+ */
+.herd-editor-screen .herd-rail__panel .herd-link__text {
+	align-items: stretch;
+	flex-direction: column;
+	gap: 0;
+}
+
+/* The stack gives the title the whole width; the 45% cap is the line's rule. */
+.herd-editor-screen .herd-rail__panel .herd-link .link-title {
+	font-size: 13px;
+	max-width: none;
+}
+
+/* Two short lines do not need the gutter a one-line chip does. */
+.herd-editor-screen .herd-rail__panel .herd-link .link-wrap {
+	gap: 8px;
+	padding: 6px 8px;
+}

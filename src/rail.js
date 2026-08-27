@@ -118,11 +118,92 @@ function buildTabs() {
 	} );
 }
 
+/**
+ * The slug reads as text until asked for.
+ *
+ * The markup ships in its no-JS state -- the input visible, the text and the
+ * Edit button hidden -- so a bundle that never runs leaves an editable slug
+ * rather than an unreachable one. This inverts that once, then toggles.
+ */
+function wireSlugEditor() {
+	const wrap = document.getElementById( 'herd-slug' );
+	const text = document.getElementById( 'herd-slug-text' );
+	const input = document.getElementById( 'post_name' );
+	const button = document.getElementById( 'herd-slug-edit' );
+	if ( ! wrap || ! text || ! input || ! button ) return;
+
+	const placeholder = input.getAttribute( 'placeholder' ) || '';
+
+	const collapse = () => {
+		text.textContent = input.value || placeholder;
+		text.hidden = false;
+		button.hidden = false;
+		input.hidden = true;
+		wrap.classList.remove( 'is-editing' );
+	};
+
+	const expand = () => {
+		text.hidden = true;
+		button.hidden = true;
+		input.hidden = false;
+		wrap.classList.add( 'is-editing' );
+		input.focus();
+		input.select();
+	};
+
+	collapse();
+
+	button.addEventListener( 'click', expand );
+	input.addEventListener( 'blur', collapse );
+	input.addEventListener( 'keydown', ( event ) => {
+		if ( event.key !== 'Enter' && event.key !== 'Escape' ) return;
+		// Enter inside form#post would submit the post; this field is done instead.
+		event.preventDefault();
+		collapse();
+		button.focus();
+	} );
+}
+
+/**
+ * The post-save notice, and getting rid of it.
+ *
+ * The confirmation lives in the URL -- it is how a form POST tells the page it
+ * came back to what happened -- so dismissing has to take it out of the URL as
+ * well as out of the DOM. Leave it there and a reload congratulates you again
+ * for a save you made ten minutes ago.
+ *
+ * The button ships hidden, so a bundle that never runs leaves a notice that
+ * scrolls away rather than one with a dead control in it.
+ */
+export function wireSavedNotice() {
+	const notice = document.getElementById( 'herd-saved' );
+	const button = document.getElementById( 'herd-saved-dismiss' );
+	if ( ! notice || ! button ) return;
+
+	button.hidden = false;
+	button.addEventListener( 'click', () => {
+		notice.remove();
+		// Dismissing must not drop focus to the body; the back arrow is the
+		// nearest thing above where the notice was.
+		document.querySelector( '.herd-bar__back' )?.focus();
+		try {
+			const url = new URL( window.location.href );
+			url.searchParams.delete( 'message' );
+			url.searchParams.delete( 'revision' );
+			window.history.replaceState( {}, '', url.toString() );
+		} catch ( error ) {
+			// An unparseable URL is not a reason to keep the notice on screen.
+		}
+	} );
+}
+
 export function assembleRail() {
 	try {
 		liftPublishActions();
 		distribute( readMap() );
 		buildTabs();
+		wireSlugEditor();
+		wireSavedNotice();
 	} catch ( error ) {
 		// Never strand the editor without a publish box.
 		const staging = document.getElementById( 'herd-staging' );

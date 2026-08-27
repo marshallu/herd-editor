@@ -1,0 +1,233 @@
+/*
+ * ACF Accordion sections, in the rail.
+ *
+ * The More Info group is authored as five Accordion sections. ACF renders and
+ * drives them itself; without this file they arrive as stock admin chrome — a
+ * dashicon arrow, ACF's grey, a 300ms slide — inside a panel drawn to Herd's
+ * tokens. src/ui/acf/layout.js names the type only to bail out of Herd's layout
+ * when it sees one, so a block form never reaches any of this: a section only
+ * ever appears on a postbox surface, which is why these emit through
+ * `in-boxes()` rather than `in-surfaces()`.
+ *
+ * A SECTION IS A LIST OF SETTINGS, and that is the whole layout idea here. Each
+ * setting is a full-width row with a hairline above it and its control on the
+ * right — so the labels form one column the eye runs down, and the states form
+ * another. The block form cannot do this: its fields sit on a 12-column grid
+ * where a toggle is sized to its own content and packs beside its neighbours.
+ * Same switch, two arrangements, and the rail's is the one that survives a
+ * 300px column holding nineteen of them.
+ *
+ * WHAT ACF OWNS, because a rule that fights it loses quietly:
+ *   - the inline `display` and `height` on `.acf-accordion-content`, written by
+ *     jQuery's slideDown and slideUp. Nothing here sets either; a competing rule
+ *     gives you a section that half-opens and stays that way.
+ *   - the `.acf-accordion-icon` element, destroyed and rebuilt on every toggle.
+ *   - `.acf-accordion.-open`, which is the open state and all the CSS needs.
+ */
+
+@use './boxes';
+
+/* ---------- the section ---------- */
+
+/*
+ * Full bleed. `.herd-rail__panel` insets everything by 14px, and a section header
+ * that stops short of the panel edge reads as a card rather than as a divider.
+ * The alternative — dropping the panel's padding and putting it back on
+ * `.inside` — reaches the publish box, the slug editor, the SEO tabs and the
+ * revisions list for one group's benefit. The inset comes back below.
+ */
+@include boxes.in-boxes(".acf-field.acf-accordion") {
+	background: var(--herd-surface);
+	border-bottom: 1px solid var(--herd-line);
+	border-top: 0;
+	margin: 0 -14px;
+	/*
+	 * ACF gives every accordion `z-index: 1`, making each section its own stacking
+	 * context: a switch's help popover near the foot of one section is then painted
+	 * under the header of the next. Nothing in the rail needs the context.
+	 */
+	z-index: auto;
+}
+
+/* The endpoint accordion deletes itself at init, so the last section is last. */
+@include boxes.in-boxes(".acf-field.acf-accordion:last-child") {
+	border-bottom: 0;
+}
+
+/* ---------- the header ---------- */
+
+/*
+ * ACF gives this `role="button"`, `tabindex="0"` and `aria-expanded`, so the
+ * semantics are already right. src/ui/acf/accordion.js adds only the Space key,
+ * which ACF promises with the role and does not implement.
+ */
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title") {
+	align-items: center;
+	background: var(--herd-tint);
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	gap: 10px;
+	margin: 0;
+	min-height: var(--herd-header-h);
+	/* Gives back the 14px the wrapper's negative margin took. */
+	padding: 7px 14px;
+}
+
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title:hover") {
+	background: var(--herd-canvas);
+}
+
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title:focus-visible") {
+	/* ACF paints a blue inset ring of its own here. */
+	box-shadow: none;
+	outline: 2px solid var(--herd-green-ink);
+	/* Inset, because the header is full bleed and .herd-rail clips at its radius. */
+	outline-offset: -2px;
+}
+
+/*
+ * A section name, not a field label — so it takes the row's weight and the row's
+ * slack, and the count and the chevron sit against the right edge after it.
+ */
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title label") {
+	color: var(--herd-ink);
+	cursor: pointer;
+	flex: 1;
+	font-size: 13px;
+	font-weight: 500;
+	margin: 0;
+	min-width: 0;
+	padding: 0;
+}
+
+/* ---------- the chevron ---------- */
+
+/*
+ * ACF replaces its `<i class="acf-accordion-icon">` wholesale on every open and
+ * close (`iconHtml()` builds a fresh element, `replaceWith()` swaps it in), so a
+ * decorated icon survives exactly one click. This is drawn where ACF cannot
+ * reach it.
+ *
+ * `dashicons-arrow-down-alt2` rotated 180 is the chevron every other collapsible
+ * in the editor draws — the group header, the repeater row, the flexible layout
+ * row. ACF's own pair is arrow-right/arrow-down, two glyphs swapped rather than
+ * one turned, so matching the house chevron and matching ACF were never the same
+ * choice.
+ *
+ * `::before` and `order: -1` rather than `::after`: the chevron leads the row, as
+ * it does in the mockup and as a disclosure triangle does everywhere else.
+ */
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title > .acf-accordion-icon") {
+	display: none;
+}
+
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title::before") {
+	color: var(--herd-ink-2);
+	content: "\f347";
+	flex: none;
+	font-family: dashicons;
+	font-size: 18px;
+	height: 18px;
+	line-height: 1;
+	order: -1;
+	transition: transform .15s ease;
+	width: 18px;
+}
+
+@include boxes.in-boxes(".acf-field.acf-accordion.-open > .acf-accordion-title::before") {
+	transform: rotate(180deg);
+}
+
+/* ---------- the count ---------- */
+
+/*
+ * Not `.herd-badge`. That one is a row flag — 10px, caps, letter-spaced — and a
+ * section count set in caps reads as a shout ("5 ON") next to a sentence-case
+ * heading. This is metadata about the section, so it takes the 11px metadata
+ * size and ordinary casing.
+ *
+ * Green tint as a fill with `--herd-green-ink` on top; `--herd-green` is never
+ * text on white. It is the only accent on the header, and it is carrying meaning
+ * — there is something switched on inside a section you cannot see into.
+ */
+.herd-accordion__count {
+	background: var(--herd-green-tint);
+	border-radius: 10px;
+	color: var(--herd-green-ink);
+	flex: none;
+	font-size: 11px;
+	font-weight: 500;
+	line-height: 1.5;
+	padding: 1px 8px;
+}
+
+.herd-accordion__count[hidden] {
+	display: none;
+}
+
+/* ---------- the body ---------- */
+
+/*
+ * No `display` here, deliberately: jQuery's slideDown and slideUp write it inline
+ * and an `!important` would break the animation outright. Horizontal padding
+ * gives back the 14px the wrapper took; vertical padding is animated to and
+ * lands on its own.
+ */
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-input.acf-accordion-content") {
+	padding: 0 14px 6px;
+}
+
+/* ACF draws a rule at the top of the flow; the header's own edge is the divider. */
+@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-content > .acf-fields") {
+	border-top: 0;
+}
+
+/* ---------- fields a toggle reveals ---------- */
+
+/*
+ * Conditional logic is the most useful thing a dense field group does and the
+ * least visible: three rows appear in the middle of a list and nothing says the
+ * toggle above put them there. The rule says it.
+ *
+ * Green, and green is a fill everywhere else in this editor rather than a
+ * decoration. It earns the exception by carrying meaning — this belongs to that —
+ * and it is the only accent in the panel. src/ui/acf/dep.js builds the container.
+ */
+.herd-dep {
+	border-left: 2px solid var(--herd-green);
+	padding-left: 14px;
+}
+
+/*
+ * A container whose fields ACF has all hidden. Without this the rule outlives
+ * what it was drawn around: turn the toggle off and a green stub is left behind,
+ * marking nothing.
+ */
+.herd-dep.is-empty,
+/* Belt and braces for a container that ended up with no children at all. */
+.herd-dep:empty {
+	display: none;
+}
+
+/* The rule is the grouping; a line across its top would cut it off from its toggle. */
+@include boxes.in-boxes(".acf-accordion-content > .acf-fields > .herd-dep") {
+	border-top: 0;
+	margin: 0;
+	padding-bottom: 0;
+	padding-top: 0;
+}
+
+/* ---------- motion ---------- */
+
+/*
+ * The chevron is the only thing here CSS can still. ACF's 300ms jQuery slide is
+ * an animation over inline styles and no media query reaches it;
+ * src/ui/acf/accordion.js turns that off under the same query.
+ */
+@media (prefers-reduced-motion: reduce) {
+	@include boxes.in-boxes(".acf-field.acf-accordion > .acf-accordion-title::before") {
+		transition: none;
+	}
+}
+

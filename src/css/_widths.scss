@@ -24,11 +24,12 @@
 /*
  * Value of `data-herd-width` to column span.
  *
- * 100 is deliberately absent. `applyWidths()` in src/ui/acf/widths.js removes the
- * attribute entirely for a full-width field rather than writing 100, so that a
- * field with no authored width keeps the width its *role* implies — half a row
- * for a compact control. A `100` entry here would never match anything, and its
- * presence would suggest the opposite.
+ * 100 is deliberately absent. Every container below gives its fields
+ * `grid-column: 1 / -1` outright, so full width is the default rather than a
+ * width, and `applyWidths()` in src/ui/acf/widths.js removes the attribute
+ * entirely for a full-width field rather than writing 100. A `100` entry here
+ * would never match anything, and its presence would suggest a field can be
+ * sized to something it is already.
  *
  * Keep in step with `herd_editor_width_presets()` in includes/herd-editor-width.php
  * and `WIDTH_PRESETS` in src/ui/acf/widths.js. All three name the same set; PHP
@@ -51,8 +52,20 @@ $breakpoint: 782px;
  * `minmax(0, 1fr)` rather than `1fr` throughout: a bare `1fr` floors at the
  * item's min-content size, so one long select option blows the track out and
  * takes the row's arithmetic with it.
+ *
+ * THE GUTTER IS WIDER THAN THE ROW GAP, and deliberately. Two stacked fields are
+ * already separated by the lower one's label; two fields side by side have
+ * nothing between them but the gutter, and it is the only thing saying they are
+ * two controls rather than one wide one. Sixteen pixels did not say it: a
+ * half-row field on a full-width panel is several hundred pixels across, and a
+ * gap of sixteen against that reads as a seam rather than a separation.
+ *
+ * Both defaults, so every container gets them by calling `grid()` with no
+ * arguments. Passing a gap per container is what let the block form and the
+ * repeater row drift to 16 and 18 — a difference nobody chose and nobody could
+ * see, in the one file whose whole job is keeping the four containers agreeing.
  */
-@mixin grid($row-gap: 14px, $column-gap: 16px) {
+@mixin grid($row-gap: 14px, $column-gap: 24px) {
 	align-items: start;
 	display: grid;
 	gap: $row-gap $column-gap;

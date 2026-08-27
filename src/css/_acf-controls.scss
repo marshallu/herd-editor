@@ -199,6 +199,46 @@ $host: ".herd-editor__field-host";
 	min-width: 0;
 }
 
+/* ---------- site-restricted choice notice ---------- */
+
+/*
+ * A field group offers the same choices on every site, so a choice reserved for
+ * one of them has nowhere to say so. This says it once, at the moment it is
+ * chosen, and gets out of the way — the value is never touched.
+ */
+.herd-alert {
+	background: var(--herd-surface);
+	border: 0;
+	border-radius: var(--herd-r);
+	color: var(--herd-ink);
+	max-width: min(420px, 92vw);
+	padding: 20px;
+}
+
+.herd-alert::backdrop {
+	background: rgba(29, 35, 39, .7);
+}
+
+.herd-alert__title {
+	display: block;
+	font-size: 15px;
+	font-weight: 600;
+}
+
+.herd-alert__body {
+	color: var(--herd-ink-2);
+	font-size: 13px;
+	line-height: 1.5;
+	/* wp-admin gives a `p` its own margins; padding is the gap this asked for. */
+	margin: 0;
+	padding: 8px 0 16px;
+}
+
+.herd-alert__actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
 /* ---------- icon picker ---------- */
 
 /*

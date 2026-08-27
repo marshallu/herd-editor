@@ -31,6 +31,35 @@ function parseConditions( value ) {
 }
 
 /**
+ * The one field this field's visibility hangs on, when there is exactly one.
+ *
+ * `gatingKeys` answers the question from the controlling end -- does anything
+ * depend on me. This answers it from the dependent end, and it is deliberately
+ * stricter: it returns a key only when every rule, across every OR group, names
+ * the same field. A field revealed by `layout == split` OR `modern == 1` has two
+ * controllers and no single toggle it can be said to belong under.
+ *
+ * The operator is not read. `request_info_link` shows when `hide_request_info`
+ * is NOT set, and it belongs under that toggle exactly as much as a field that
+ * shows when its toggle IS set -- the reveal is what groups them, not the
+ * polarity of the test.
+ *
+ * @param {HTMLElement} field The `.acf-field` wrapper.
+ * @return {string|null} The controlling field key, or null when there is not
+ *                       exactly one.
+ */
+export function controllingKey( field ) {
+	const raw = field?.getAttribute?.( 'data-conditions' );
+	if ( ! raw ) return null;
+	const rules = parseConditions( raw );
+	if ( ! rules.length ) return null;
+
+	const first = rules[ 0 ].field ? String( rules[ 0 ].field ) : '';
+	if ( ! first ) return null;
+	return rules.every( ( rule ) => String( rule.field || '' ) === first ) ? first : null;
+}
+
+/**
  * Every field key that some other field's visibility depends on.
  *
  * @param {HTMLElement} form The mounted ACF form.

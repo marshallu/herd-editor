@@ -27,7 +27,11 @@
 import { cleanText, humanize, truncate } from '../summary.js';
 import { awakenEditors } from './editor.js';
 import { contentFields } from './layout-fields.js';
-import { fieldText, isReachable } from './repeater.js';
+import { fieldText, hasValue, isReachable } from './values.js';
+
+/* Re-exported: the badge's own tests reach for it here, and this is where it is
+   used. ./values.js holds it so ./repeater.js can ask the same question. */
+export { hasValue };
 
 /** Two fragments, like the repeater row: a third never survives the ellipsis. */
 const SUMMARY_PARTS = 2;
@@ -35,34 +39,6 @@ const SUMMARY_LIMIT = 90;
 
 /** Ids have to be unique per element, and a repeater repeats every field key. */
 let uid = 0;
-
-/**
- * Does this sub-field hold anything?
- *
- * `fieldText` answers what a field would *say*, which is deliberately nothing
- * for an image or a file — a filename is not a summary. The badge counts what is
- * set, so those types are read from the hidden input carrying the real value.
- *
- * @param {HTMLElement} field The `.acf-field` wrapper.
- * @return {boolean} True when the field has a value.
- */
-export function hasValue( field ) {
-	if ( ! field ) return false;
-	if ( field.classList.contains( 'acf-field-true-false' ) ) {
-		return Boolean( field.querySelector( 'input[type="checkbox"]' )?.checked );
-	}
-	if ( field.classList.contains( 'acf-field-link' ) ) {
-		return Boolean( cleanText( field.querySelector( 'input.input-url' )?.value ) );
-	}
-	if ( field.classList.contains( 'acf-field-image' ) || field.classList.contains( 'acf-field-file' ) ) {
-		return Boolean( cleanText( field.querySelector( 'input[type="hidden"]' )?.value ) );
-	}
-	if ( field.classList.contains( 'acf-field-repeater' ) ) {
-		// ACF keeps a template row in the table; it is not content.
-		return field.querySelectorAll( 'tr.acf-row:not(.acf-clone)' ).length > 0;
-	}
-	return Boolean( fieldText( field ) );
-}
 
 /** ACF marks a required field on the wrapper and again with an asterisk. */
 function isRequired( field ) {

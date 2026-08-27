@@ -1,0 +1,262 @@
+/*
+ * Herd's styling for the controls WordPress itself prints.
+ *
+ * The Herd screen renders classic meta boxes into a hidden staging div and
+ * src/rail.js moves each .postbox into a rail tab. _rail.scss flattens their
+ * chrome — border, heading, .inside padding — but nothing in the tree selects
+ * the form controls inside them, because every other rule here is qualified by
+ * .acf-input or .herd-editor__field-host. So Parent, Template, Order, Author,
+ * the visibility and date editors, the excerpt and the tag input all arrived as
+ * stock wp-admin, sitting beside ACF fields _acf-boxes.scss had already dressed.
+ *
+ * They also broke the rail. Two core rules normally keep a select inside a
+ * narrow sidebar and this screen defeats both: `#poststuff .inside #parent_id`
+ * has no #poststuff wrapper to match, and `.meta-box-sortables select` lost its
+ * ancestor the moment rail.js moved the box out of it. What was left was
+ * `.wp-core-ui select { max-width: 25rem }` — a 400px control in a 280px column
+ * under `.herd-rail { overflow: hidden }`.
+ *
+ * Everything below is element-level on purpose. It is a floor: a plugin that
+ * ships its own class-based styling for its own meta box still wins, and only
+ * the width containment is stated strongly enough to hold either way.
+ *
+ * Nothing here assumes any DOM shape Herd controls. These are WordPress's nodes.
+ */
+
+@use './boxes';
+@use './field';
+
+/* ---------- controls ---------- */
+
+@include boxes.in-boxes("input[type='text'], input[type='search'], input[type='url'], input[type='email'], input[type='number'], input[type='password'], input[type='datetime-local'], select, textarea") {
+	@include field.control;
+	/*
+	 * `100%` rather than the `none` the ACF rules use. A select is as wide as its
+	 * widest option unless something stops it, and #parent_id's options are page
+	 * titles — `none` would let one long title do exactly what core's max-width
+	 * was there to prevent.
+	 */
+	max-width: 100%;
+}
+
+@include boxes.in-boxes("select") {
+	@include field.select;
+}
+
+/* Core's select hover is a black border. Herd has one hover border. */
+@include boxes.in-boxes("select:hover") {
+	border-color: var(--herd-line-hover);
+	color: var(--herd-ink);
+}
+
+@include boxes.in-boxes("input:focus, select:focus, textarea:focus") {
+	@include field.control-focus;
+}
+
+@include boxes.in-boxes("textarea") {
+	min-height: 60px;
+	resize: vertical;
+}
+
+/* ---------- labels ---------- */
+
+/*
+ * A field label, and only a field label. Three things that are spelled <label>
+ * in core markup are not one, and each needs a different exclusion:
+ *
+ *   .screen-reader-text  Author's label, and the month name inside the date
+ *                        editor. Visible styling on a hidden label is noise.
+ *   .selectit            Core's own class for "this names a checkbox or a
+ *                        radio". Sometimes it wraps the control, sometimes the
+ *                        control is its sibling; the class is the reliable tell.
+ *   :has(input, select, textarea)
+ *                        A label that contains its control — a comment
+ *                        checkbox, a category row, every part of #timestampdiv.
+ *
+ * And `:not(.acf-field *)` keeps this off ACF's labels, which _acf-boxes.scss
+ * owns. Those two rules would otherwise be a specificity tie decided by the
+ * order of two @use lines.
+ */
+@include boxes.in-boxes("label:not(.screen-reader-text):not(.selectit):not(:has(input, select, textarea)):not(.acf-field *)") {
+	color: var(--herd-ink-2);
+	display: block;
+	font-size: 12px;
+	font-weight: 600;
+	margin-bottom: 4px;
+}
+
+/*
+ * Core wraps Parent, Template and Order labels in a <p> carrying its own margin,
+ * and that margin is bottom-only: a select sits flush against the label of the
+ * field below it, so three fields read as one crowded block. The top margin is
+ * the gap between fields; the label keeps its own 4px to the control it names.
+ */
+@include boxes.in-boxes(".post-attributes-label-wrapper") {
+	margin: 16px 0 4px;
+}
+
+@include boxes.in-boxes(".inside > .post-attributes-label-wrapper:first-child") {
+	margin-top: 0;
+}
+
+/* ---------- checkbox and radio rows ---------- */
+
+/* The same row _acf-states.scss draws for an ACF checkbox or radio list. */
+@include boxes.in-boxes(".selectit:has(input), label:has(input[type='checkbox']), label:has(input[type='radio'])") {
+	align-items: center;
+	color: var(--herd-ink);
+	display: flex;
+	font-size: 13px;
+	gap: 6px;
+}
+
+/*
+ * The visibility radios are the other shape: core prints the input first and
+ * the label beside it, so the row is the pair rather than the label alone.
+ */
+@include boxes.in-boxes(".selectit:not(:has(input))") {
+	color: var(--herd-ink);
+	display: inline;
+	font-size: 13px;
+	font-weight: 400;
+	margin: 0;
+}
+
+/* Focus is already handled by `.herd-editor-screen :focus-visible` in _shell.scss. */
+@include boxes.in-boxes("input[type='checkbox'], input[type='radio']") {
+	accent-color: var(--herd-green-ink);
+	margin: 0;
+}
+
+/* ---------- the date editor ---------- */
+
+/*
+ * The one place that opts out of full width. #timestampdiv holds five controls
+ * that together mean a single date; stacked full width they read as five
+ * unrelated fields.
+ */
+@include boxes.in-boxes("#timestampdiv .timestamp-wrap") {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+@include boxes.in-boxes("#timestampdiv select, #timestampdiv input[type='text']") {
+	padding: 7px 6px;
+	width: auto;
+}
+
+@include boxes.in-boxes("#timestampdiv input[type='text']") {
+	text-align: center;
+	width: 3.4em;
+}
+
+/* Year needs the extra digit. */
+@include boxes.in-boxes("#timestampdiv input#aa") {
+	width: 4.4em;
+}
+
+/* ---------- buttons ---------- */
+
+/* The values .herd-btn carries in _shell.scss. */
+@include boxes.in-boxes(".button, .button-secondary") {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: none;
+	color: var(--herd-ink);
+	font-size: 13px;
+	line-height: 1.5;
+	min-height: 0;
+	padding: 6px 12px;
+	text-shadow: none;
+}
+
+@include boxes.in-boxes(".button:hover:not(:disabled), .button-secondary:hover:not(:disabled)") {
+	background: var(--herd-canvas);
+	border-color: var(--herd-line-hover);
+	color: var(--herd-ink);
+}
+
+@include boxes.in-boxes(".button-primary") {
+	background: var(--herd-green-ink);
+	border-color: var(--herd-green-ink);
+	color: #fff;
+	font-weight: 600;
+}
+
+@include boxes.in-boxes(".button-primary:hover:not(:disabled), .button-primary:focus:not(:disabled)") {
+	background: var(--herd-green-ink-hover);
+	border-color: var(--herd-green-ink-hover);
+	color: #fff;
+}
+
+/*
+ * .button-link is a link core happens to render as a <button> — the Edit beside
+ * Status, Set featured image. It must not inherit any of the above.
+ */
+@include boxes.in-boxes(".button-link") {
+	background: none;
+	border: 0;
+	border-radius: 0;
+	box-shadow: none;
+	color: var(--herd-green-ink);
+	font-size: inherit;
+	min-height: 0;
+	padding: 0;
+}
+
+@include boxes.in-boxes(".button-link:hover") {
+	background: none;
+	border: 0;
+	color: var(--herd-green-ink-hover);
+}
+
+/* ---------- the tag box ---------- */
+
+/*
+ * Core floats the input left and the Add button right, which needs both to be
+ * fixed widths. The input is full width here like everything else, so the pair
+ * becomes a row instead.
+ */
+@include boxes.in-boxes(".ajaxtag") {
+	align-items: center;
+	display: flex;
+	gap: 8px;
+}
+
+@include boxes.in-boxes(".ajaxtag input.newtag") {
+	flex: 1;
+	float: none;
+	min-width: 0;
+}
+
+@include boxes.in-boxes(".ajaxtag .button") {
+	flex: none;
+	float: none;
+	margin: 0;
+}
+
+/* ---------- containment ---------- */
+
+/*
+ * The floor under everything above: a meta box Herd has never seen still cannot
+ * push the rail wider than its column, because .herd-rail clips rather than
+ * scrolls and an overflowing control would simply vanish at the edge.
+ */
+@include boxes.in-boxes(".inside") {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* Custom Fields is a table, and a table sizes to its content whatever its
+   children are told. */
+@include boxes.in-boxes("#postcustomstuff table") {
+	table-layout: fixed;
+	width: 100%;
+}
+
+@include boxes.in-boxes("#postcustomstuff #newmeta td, #postcustomstuff .left") {
+	width: auto;
+}

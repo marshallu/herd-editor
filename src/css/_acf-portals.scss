@@ -1,14 +1,16 @@
 /*
- * The two widgets that render outside the Herd wrapper.
+ * The widgets that render outside the Herd wrapper.
  *
- * jQuery UI's datepicker and select2's dropdown are appended to <body>, so no
- * selector scoped under .herd-editor-screen can reach them. They are matched on
- * the namespace classes src/ui/acf/portals.js puts on them instead — never on
- * bare .select2-dropdown or .ui-datepicker, which would follow ACF onto its own
- * screens elsewhere in this admin.
+ * jQuery UI's datepicker, select2's dropdown and flexible content's two popups
+ * are appended to <body>, so no selector scoped under .herd-editor-screen can
+ * reach them. They are matched on the namespace classes src/ui/acf/portals.js
+ * puts on them instead — never on bare .select2-dropdown, .ui-datepicker or
+ * .acf-fc-popup, which would follow ACF onto its own screens elsewhere in this
+ * admin.
  *
- * Both ship core blue out of the box: select2 highlights the active result in
- * #0073aa and the datepicker paints its header and active day the same way.
+ * All three ship core blue out of the box: select2 highlights the active result
+ * in #0073aa, the datepicker paints its header and active day the same way, and
+ * the popups hover and focus in #2271b1.
  */
 
 /* ---------- select2 ---------- */
@@ -230,4 +232,80 @@
 #ui-datepicker-div.herd-datepicker :focus-visible {
 	outline: 2px solid var(--herd-green-ink, #04742d);
 	outline-offset: 1px;
+}
+
+/* ---------- flexible content popups ---------- */
+
+/*
+ * Two of them, and one stylesheet: the layout picker that opens from Add module,
+ * and the per-module more-actions menu, which ACF marks .acf-more-layout-actions
+ * and fills with Rename and Disable.
+ *
+ * A picker on the Page with Sidebar block is 18 entries long, so it is a list
+ * before it is a menu: same 12px as every other list of choices in the editor,
+ * and a green tint on hover rather than blue text, because the hovered row is a
+ * selection.
+ */
+.acf-fc-popup.herd-fc-popup {
+	background: var(--herd-surface, #fff);
+	border: 1px solid var(--herd-line, #dcdcde);
+	border-radius: var(--herd-r, 6px);
+	box-shadow: 0 4px 14px rgba(0, 0, 0, .12);
+	padding: 4px;
+}
+
+.acf-fc-popup.herd-fc-popup li {
+	height: auto;
+}
+
+.acf-fc-popup.herd-fc-popup a {
+	border-radius: var(--herd-r-sm, 4px);
+	color: var(--herd-ink, #1d2327);
+	font-size: 12px;
+	line-height: 1.5;
+	padding: 5px 9px;
+}
+
+.acf-fc-popup.herd-fc-popup a:hover {
+	background: var(--herd-green-tint, #e9f7ee);
+	color: var(--herd-green-ink, #04742d);
+}
+
+/* A layout at its max is off the table, and says so by looking it. */
+.acf-fc-popup.herd-fc-popup a.disabled,
+.acf-fc-popup.herd-fc-popup a.disabled:hover {
+	background: transparent;
+	color: var(--herd-ink-3, #7d838a);
+}
+
+/*
+ * ACF marks a layout at its limit with a count badge in its own orange. Amber is
+ * not in the palette, and "you have used all four of these" is information.
+ */
+.acf-fc-popup.herd-fc-popup .badge {
+	background: var(--herd-line-soft, #eceded);
+	border-radius: var(--herd-r-sm, 4px);
+	color: var(--herd-ink-2, #50575e);
+	font-size: 10px;
+	line-height: 15px;
+	margin: 0 0 0 6px;
+	padding: 0 5px;
+}
+
+/* The more-actions menu draws its Rename and Disable glyphs with a mask. */
+.acf-fc-popup.herd-fc-popup.acf-more-layout-actions a:before {
+	background: var(--herd-ink-3, #7d838a);
+}
+
+.acf-fc-popup.herd-fc-popup.acf-more-layout-actions a:hover:before {
+	background: var(--herd-green-ink, #04742d);
+}
+
+.acf-fc-popup.herd-fc-popup a:focus {
+	box-shadow: none;
+}
+
+.acf-fc-popup.herd-fc-popup :focus-visible {
+	outline: 2px solid var(--herd-green-ink, #04742d);
+	outline-offset: -2px;
 }

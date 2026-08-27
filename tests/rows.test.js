@@ -42,24 +42,28 @@ test( 'the span map matches src/css/_widths.scss', () => {
 	}
 } );
 
-test( 'reads a span from the authored width first', () => {
+test( 'reads the span from the authored width', () => {
 	const root = container( field( { width: 33, role: 'controls' } ) );
-	// The width outranks the role, exactly as the stylesheet's source order does.
 	assert.equal( spanOf( root.firstElementChild ), 4 );
 } );
 
-test( 'falls back to the role, then to the whole row', () => {
-	assert.equal( spanOf( container( field( { role: 'controls' } ) ).firstElementChild ), 6 );
+test( 'gives a field with no authored width the whole row', () => {
+	// The role is a placement marker and nothing more: a select and an editor are
+	// the same width until the field group says otherwise.
+	assert.equal( spanOf( container( field( { role: 'controls' } ) ).firstElementChild ), 12 );
 	assert.equal( spanOf( container( field( { role: 'content' } ) ).firstElementChild ), 12 );
 	assert.equal( spanOf( container( field() ).firstElementChild ), 12 );
 } );
 
-test( 'gives a toggle half a repeater row', () => {
-	const doc = new JSDOM(
-		`<table><tr class="acf-row is-open"><td class="acf-fields">${ field( { type: 'true_false' } ) }</td></tr></table>`
-	).window.document;
-	assert.equal( spanOf( doc.querySelector( '.acf-field' ) ), 6 );
-	// The same toggle at the top level of a block form is a full-width switch row.
+test( 'sizes a toggle in a repeater row the same as anywhere else', () => {
+	const cell = ( html ) =>
+		new JSDOM( `<table><tr class="acf-row is-open"><td class="acf-fields">${ html }</td></tr></table>` ).window
+			.document;
+
+	// A repeater row used to pair two toggles per row. It no longer infers that;
+	// a row that wants the pair authors 50% on both.
+	assert.equal( spanOf( cell( field( { type: 'true_false' } ) ).querySelector( '.acf-field' ) ), 12 );
+	assert.equal( spanOf( cell( field( { type: 'true_false', width: 50 } ) ).querySelector( '.acf-field' ) ), 6 );
 	assert.equal( spanOf( container( field( { type: 'true_false' } ) ).firstElementChild ), 12 );
 } );
 
@@ -91,6 +95,13 @@ test( 'never backfills a gap', () => {
 test( 'a full-width field always starts and ends a row', () => {
 	const root = container( field( { width: 50 } ) + field( { role: 'content' } ) + field( { width: 50 } ) );
 	assert.deepEqual( spans( pack( kids( root ) ) ), [ [ 6 ], [ 12 ], [ 6 ] ] );
+} );
+
+test( 'packs a form that authored no widths one field per row', () => {
+	// What every field group looks like before somebody lays it out: three
+	// compact controls, three rows.
+	const root = container( field( { role: 'controls' } ).repeat( 3 ) );
+	assert.deepEqual( spans( pack( kids( root ) ) ), [ [ 12 ], [ 12 ], [ 12 ] ] );
 } );
 
 test( 'packs nothing into no rows', () => {

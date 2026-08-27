@@ -7,6 +7,11 @@
  * inserts at the top of the fields cell. Nothing leaves the row, so ACF's
  * delegated events and its sortable still work.
  *
+ * Emitted for every surface that holds an ACF field. A repeater is the same
+ * component in a block panel and in a rail postbox, and src/ui/acf/boxes.js runs
+ * the same decorator on both — so the rail's Custom Nav Items and Footer Calls
+ * to Action collapse to card rows like every repeater in a block.
+ *
  * DOM shape:
  *   .acf-repeater.herd-repeater
  *     > .herd-repeater__head
@@ -16,11 +21,10 @@
  *         > td.acf-row-handle.remove
  */
 
+@use './boxes';
 @use './widths';
 
-$host: ".herd-editor__field-host";
-
-#{$host} .herd-repeater {
+@include boxes.in-surfaces(".herd-repeater") {
 	background: var(--herd-surface);
 	border: 1px solid var(--herd-line);
 	border-radius: var(--herd-r);
@@ -31,7 +35,7 @@ $host: ".herd-editor__field-host";
 
 .herd-repeater__head {
 	align-items: center;
-	background: #fbfbfc;
+	background: var(--herd-tint);
 	border-bottom: 1px solid var(--herd-line);
 	box-sizing: border-box;
 	display: flex;
@@ -58,12 +62,12 @@ $host: ".herd-editor__field-host";
 }
 
 /* Collapse all and the add button are the same control at different weights. */
-#{$host} .herd-repeater__head .herd-btn {
+@include boxes.in-surfaces(".herd-repeater__head .herd-btn") {
 	flex: none;
 }
 
 /* The field's own label is now the header's title. */
-#{$host} .acf-field-repeater:has(.herd-repeater) > .acf-label {
+@include boxes.in-surfaces(".acf-field-repeater:has(.herd-repeater) > .acf-label") {
 	display: none;
 }
 
@@ -85,22 +89,18 @@ $host: ".herd-editor__field-host";
  * That rule is the black bar across every row. These selectors are more specific
  * than it, so matching its `!important` is enough to win.
  */
-#{$host} .herd-repeater table.acf-table,
-#{$host} .herd-repeater table.acf-table tbody,
-#{$host} .herd-repeater table.acf-table tr,
-#{$host} .herd-repeater table.acf-table td {
+@include boxes.in-surfaces(".herd-repeater table.acf-table, .herd-repeater table.acf-table tbody, .herd-repeater table.acf-table tr, .herd-repeater table.acf-table td") {
 	background: transparent !important;
 	border: 0 !important;
 	box-shadow: none !important;
 	outline: 0;
 }
 
-#{$host} .herd-repeater > table.acf-table,
-#{$host} .herd-repeater > table.acf-table > tbody {
+@include boxes.in-surfaces(".herd-repeater > table.acf-table, .herd-repeater > table.acf-table > tbody") {
 	display: block;
 }
 
-#{$host} .herd-repeater tr.acf-row:not(.acf-clone) {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row:not(.acf-clone)") {
 	align-items: start;
 	border-top: 1px solid var(--herd-line-soft) !important;
 	display: grid;
@@ -108,21 +108,21 @@ $host: ".herd-editor__field-host";
 }
 
 /* ACF appends its clone row last, so the first `tr` is a real row. */
-#{$host} .herd-repeater tr.acf-row:not(.acf-clone):first-of-type {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row:not(.acf-clone):first-of-type") {
 	border-top: 0 !important;
 }
 
-#{$host} .herd-repeater tr.acf-row > td {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row > td") {
 	padding: 0;
 }
 
-#{$host} .herd-repeater tr.acf-row > td.acf-fields {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row > td.acf-fields") {
 	display: block;
 }
 
 /* ACF's fields inside a row keep their own top rules; the row header is the only
    divider this design wants. */
-#{$host} .herd-repeater td.acf-fields > .acf-field {
+@include boxes.in-surfaces(".herd-repeater td.acf-fields > .acf-field") {
 	border-top: 0;
 }
 
@@ -131,7 +131,7 @@ $host: ".herd-editor__field-host";
  * open row's fields, so the grip and tools sit on the same line as the name.
  */
 /* Specific enough to beat the `tr.acf-row > td` rule above. */
-#{$host} .herd-repeater tr.acf-row > td.acf-row-handle {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row > td.acf-row-handle") {
 	align-items: center;
 	align-self: start;
 	color: var(--herd-ink-3);
@@ -139,7 +139,7 @@ $host: ".herd-editor__field-host";
 	flex-direction: row;
 	font-size: 11px;
 	gap: 5px;
-	height: 48px;
+	height: var(--herd-header-h);
 	width: auto;
 }
 
@@ -149,14 +149,14 @@ $host: ".herd-editor__field-host";
  * and the icon, so the column and the inset an open row's fields take from it
  * cannot drift apart.
  */
-#{$host} .herd-repeater tr.acf-row > td.acf-row-handle.order {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row > td.acf-row-handle.order") {
 	box-sizing: border-box;
 	cursor: grab;
 	padding: 0 4px 0 8px;
 	width: var(--herd-row-inset);
 }
 
-#{$host} .herd-repeater td.acf-row-handle.order:active {
+@include boxes.in-surfaces(".herd-repeater td.acf-row-handle.order:active") {
 	cursor: grabbing;
 }
 
@@ -171,12 +171,12 @@ $host: ".herd-editor__field-host";
 	width: 16px;
 }
 
-#{$host} .herd-repeater td.acf-row-handle.order:hover .herd-grip {
+@include boxes.in-surfaces(".herd-repeater td.acf-row-handle.order:hover .herd-grip") {
 	color: var(--herd-ink-3);
 }
 
 /* Herd moved the anchors into the row header; the cell has nothing left to show. */
-#{$host} .herd-repeater tr.acf-row > td.acf-row-handle.remove {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row > td.acf-row-handle.remove") {
 	display: none;
 }
 
@@ -235,34 +235,41 @@ $host: ".herd-editor__field-host";
  * dragged row's class list onto a fresh `tr` full of `&nbsp;` cells, so every
  * rule above applies to it too — it needs to be told to look like a slot.
  */
-#{$host} .herd-repeater tr.acf-row.ui-sortable-helper {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row.ui-sortable-helper") {
 	background: var(--herd-surface);
 	border-radius: var(--herd-r);
 	box-shadow: 0 6px 16px rgba(0, 0, 0, .14);
 }
 
-#{$host} .herd-repeater tr.ui-sortable-placeholder {
+@include boxes.in-surfaces(".herd-repeater tr.ui-sortable-placeholder") {
 	background: var(--herd-green-tint) !important;
 	border-top: 0 !important;
 	visibility: visible !important;
 }
 
-#{$host} .herd-repeater tr.ui-sortable-placeholder > td {
+@include boxes.in-surfaces(".herd-repeater tr.ui-sortable-placeholder > td") {
 	visibility: hidden;
 }
 
 /* ---------- the row header ---------- */
 
+/*
+ * Height, not padding: the grip cell flanking this is a table cell of the row's
+ * grid, and the only way its bottom rule can land level with this one is for both
+ * to stand at a height neither has to measure. The padding is what is left over
+ * once the thumbnail has its 34px.
+ */
 .herd-cardrow {
 	align-items: center;
+	box-sizing: border-box;
 	cursor: pointer;
 	display: flex;
 	gap: 10px;
-	padding: 7px 4px 7px 0;
+	height: var(--herd-header-h);
+	padding: 6px 4px 6px 0;
 }
 
-.herd-cardrow:hover,
-#{$host} .acf-row.is-open .herd-cardrow {
+.herd-cardrow:hover {
 	background: transparent;
 }
 
@@ -310,9 +317,12 @@ $host: ".herd-editor__field-host";
 	white-space: nowrap;
 }
 
+/* Stated so the pair comes to 33px and the header holds its height whatever the
+   admin's base line-height happens to be. */
 .herd-cardrow__name {
 	color: var(--herd-ink);
 	font-size: 13px;
+	line-height: 18px;
 }
 
 .herd-cardrow__name.is-placeholder {
@@ -322,6 +332,70 @@ $host: ".herd-editor__field-host";
 .herd-cardrow__summary {
 	color: var(--herd-ink-3);
 	font-size: 11px;
+	line-height: 15px;
+}
+
+/* ---------- link lists ---------- */
+
+/*
+ * A list of links says the two things a link is: where it points, and how it is
+ * flagged. The URL is the row's second line and gets the mono tier, because it
+ * is read character by character like every other URL in this editor.
+ */
+.herd-linklist .herd-cardrow__summary {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.herd-cardrow__badges {
+	align-items: center;
+	display: flex;
+	flex: none;
+	gap: 6px;
+}
+
+/* Nothing to report is not a gap in the row. */
+.herd-cardrow__badges:empty {
+	display: none;
+}
+
+/*
+ * Badges are 10px, which is below the 11px floor the guide sets for text — they
+ * are set in caps with letter-spacing, which buys back the legibility, and they
+ * are labels rather than anything anybody has to read in a line.
+ */
+.herd-badge {
+	border-radius: var(--herd-r-sm);
+	flex: none;
+	font-size: 10px;
+	font-weight: 600;
+	letter-spacing: .04em;
+	line-height: 1;
+	max-width: 120px;
+	overflow: hidden;
+	padding: 4px 6px;
+	text-overflow: ellipsis;
+	text-transform: uppercase;
+	white-space: nowrap;
+}
+
+/* A flag that is on is the one thing here worth an accent. */
+.herd-badge--on {
+	background: var(--herd-green);
+	color: #fff;
+}
+
+.herd-badge--set {
+	background: var(--herd-canvas);
+	color: var(--herd-ink-2);
+}
+
+/*
+ * An unset choice still reports itself — "no icon" is a decision somebody can
+ * make from the row — but quieter than one that carries a value.
+ */
+.herd-badge--empty {
+	background: var(--herd-tint);
+	color: var(--herd-ink-3);
 }
 
 .herd-cardrow__chev {
@@ -334,7 +408,7 @@ $host: ".herd-editor__field-host";
 	width: 16px;
 }
 
-#{$host} .acf-row.is-open .herd-cardrow__chev {
+@include boxes.in-surfaces(".acf-row.is-open .herd-cardrow__chev") {
 	transform: rotate(180deg);
 }
 
@@ -353,17 +427,23 @@ $host: ".herd-editor__field-host";
  * so anything this rule says about padding is dropped no matter how specific it
  * is. The open row below matches that `!important` where it needs to.
  */
-#{$host} .herd-repeater td.acf-fields {
+@include boxes.in-surfaces(".herd-repeater td.acf-fields") {
 	background: transparent;
 }
 
-/* Collapsed is the default state. */
-#{$host} .herd-repeater tr.acf-row:not(.is-open) > td.acf-fields > .acf-field {
+/* Collapsed is the default state — for a list of cards. A slot grid has nothing
+   to open, so excluding it here is what keeps its tiles on screen at all. */
+@include boxes.in-surfaces(".herd-repeater:not(.herd-slots) tr.acf-row:not(.is-open) > td.acf-fields > .acf-field") {
 	display: none !important;
 }
 
-#{$host} .herd-repeater tr.acf-row.is-open {
-	background: #fbfbfc;
+/*
+ * An open row is plain surface. The tint that used to wash the whole row said
+ * "open" so quietly that nothing said "header" at all; it now sits on the header
+ * alone, where it has a job.
+ */
+@include boxes.in-surfaces(".herd-repeater tr.acf-row.is-open") {
+	background: var(--herd-surface);
 }
 
 /*
@@ -373,8 +453,8 @@ $host: ".herd-editor__field-host";
  * one container where the two models are visibly different, and the note on
  * `.acf-field-true-false` below says how.
  */
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields {
-	@include widths.grid(14px, 18px);
+@include boxes.in-surfaces(".herd-repeater tr.acf-row.is-open > td.acf-fields") {
+	@include widths.grid();
 	/*
 	 * The grip column is what insets the fields on the left; ACF's remove cell is
 	 * hidden, so nothing does it on the right and the cell draws that edge itself.
@@ -387,10 +467,36 @@ $host: ".herd-editor__field-host";
 /*
  * The header belongs to the row, not to the field body: it reaches back out over
  * the inset above so its tools land where a collapsed row's do.
+ *
+ * Open, it also takes the tint and the rule that a repeater's own header carries.
+ * Without them the line naming the row and the fields under it are one
+ * undifferentiated block, and where the row starts is a guess.
  */
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .herd-cardrow {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row.is-open > td.acf-fields > .herd-cardrow") {
+	background: var(--herd-tint);
+	border-bottom: 1px solid var(--herd-line);
 	grid-column: 1 / -1;
+	/* The height above plus the rule, so the box keeps its 34px of room. */
+	height: calc(var(--herd-header-h) + 1px);
 	margin-right: calc(-1 * var(--herd-row-inset));
+}
+
+/*
+ * The header's left edge is the grip column, which is a cell of the row's grid
+ * and not part of the fields cell — so the band is drawn across both, or it stops
+ * short of the row's edge.
+ */
+@include boxes.in-surfaces(".herd-repeater:not(.herd-slots) tr.acf-row.is-open > td.acf-row-handle.order") {
+	/*
+	 * Both `!important`, and for the same reason: the reset at the top of this
+	 * file blanks every cell's background and border with `!important` of its own,
+	 * which no amount of specificity answers on its own.
+	 */
+	background: var(--herd-tint) !important;
+	border-bottom: 1px solid var(--herd-line) !important;
+	/* Grown by the rule exactly as the header beside it is, so the two halves of
+	   that rule land on the same line. */
+	height: calc(var(--herd-header-h) + 1px);
 }
 
 /*
@@ -405,7 +511,7 @@ $host: ".herd-editor__field-host";
  * a metabox's metrics inside a cell that already draws its own inset. The gap
  * owns the rhythm.
  */
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field {
+@include boxes.in-surfaces(".herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field") {
 	grid-column: 1 / -1;
 	margin: 0;
 	min-width: 0;
@@ -419,50 +525,161 @@ $host: ".herd-editor__field-host";
  * classes deeper — now reaches.
  *
  * `justify-self` is what keeps it from stretching now that the row is a grid;
- * under the old flexbox that was `flex: 0 0 auto`, which also let as many
- * toggles pack onto a row as happened to fit. A grid track count cannot vary per
- * item, so a toggle takes half a row and two of them pair up — the same half
- * row a compact control gets in the block form. An authored width overrides the
- * span below and leaves `justify-self` alone, which is right: a 50% toggle is a
- * toggle in half a row, not a switch stretched across one.
+ * under the old flexbox that was `flex: 0 0 auto`. It takes the whole row like
+ * every other unsized field and sits at the left of it, so a repeater row that
+ * wants two toggles side by side says so in the field group. An authored width
+ * narrows the track and leaves `justify-self` alone, which is right: a 50%
+ * toggle is a toggle in half a row, not a switch stretched across one.
  */
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-true-false {
-	grid-column: span 6;
+@include boxes.in-surfaces(".herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-true-false") {
 	justify-self: start;
 	margin: 0;
 	padding: 4px 0;
 }
 
-@include widths.spans("#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields");
-
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-select,
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-button-group,
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-text,
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-url,
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-email,
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-number {
-	flex: 1 1 240px;
+@each $scope in boxes.$surfaces {
+	@include widths.spans("#{$scope} .herd-repeater tr.acf-row.is-open > td.acf-fields");
 }
 
-/* The image is the row's anchor; it takes its own column beside the text. */
-#{$host} .herd-repeater tr.acf-row.is-open > td.acf-fields > .acf-field-image {
-	flex: 0 0 auto;
+/* ---------- fixed media slots ---------- */
+
+/*
+ * src/ui/acf/slots.js marks a repeater whose row count ACF has fixed and whose
+ * rows hold one image each. The rows are not opened one at a time here — there
+ * is nothing to open, since a tile shows everything its row holds — so the table
+ * is laid out one level further than the rules above take it: the rows sit
+ * side by side instead of stacking.
+ *
+ * Doing it in CSS rather than by moving nodes is what keeps ACF's sortable, its
+ * `[data-name]` descendant lookups and its row renumbering all working.
+ */
+@include boxes.in-surfaces(".herd-slots > table.acf-table > tbody") {
+	padding: 10px;
+}
+
+/* Floated children leave their parent with no height of its own. */
+@include boxes.in-surfaces(".herd-slots > table.acf-table > tbody::after") {
+	clear: both;
+	content: "";
+	display: block;
+}
+
+/*
+ * `float`, and not `display: grid` on the tbody — and the reason is jQuery UI,
+ * not taste. WordPress ships jQuery UI sortable, which picks its intersection
+ * maths from
+ *
+ *   _isFloating: function(t){
+ *     return /left|right/.test(t.css("float")) || /inline|table-cell/.test(t.css("display"))
+ *   }
+ *
+ * A `tr` that is a grid item computes to `display: block` and would answer no,
+ * so sortable would run its vertical logic on a horizontal list: with the
+ * pointer moving sideways, `dragDirection.vertical` is false, the vertical
+ * branch of `_intersectsWithSides` returns false, and `_mouseDrag` *breaks* out
+ * of its loop rather than continuing — dropping a tile beside its neighbour
+ * would do nothing. Floating is jQuery UI's own recipe for a grid, and it is
+ * read once in `_mouseStart` (through `refreshPositions`) before the helper is
+ * made absolute, so it holds for the whole drag.
+ *
+ * Reordering is not decoration here: the theme's offset grid renders slots 1
+ * and 4 double-width, so which slot a photo sits in changes the page.
+ *
+ * As specific as the `tr.acf-row` grid rule above and later in the file, which
+ * is what settles the tie.
+ */
+@include boxes.in-surfaces(".herd-slots tr.acf-row:not(.acf-clone)") {
+	border-top: 0 !important;
+	box-sizing: border-box;
+	display: block;
+	float: left;
+	/* The column count is the slot count — slots.js sets it, because how many
+	   there are is a fact about the field and not about the stylesheet. */
+	padding: 0 5px 10px;
+	position: relative;
+	width: calc(100% / var(--herd-slot-cols, 4));
+}
+
+/* Four 150px tiles need 600px; below that they pair up rather than shrink. */
+@media (max-width: 782px) {
+	@include boxes.in-surfaces(".herd-slots tr.acf-row:not(.acf-clone)") {
+		width: 50%;
+	}
+}
+
+/*
+ * The handle floats over the tile rather than taking a column beside it: at a
+ * quarter of the form's width there is no room for a gutter. It carries ACF's
+ * row number, which is the one thing a tile cannot say for itself, so the thing
+ * you grab to move a slot is the thing that says which slot it is.
+ *
+ * Absolute positioning changes no parentage, so `$( "> td.order", tr )` still
+ * finds it and ACF's renumbering still reaches the span inside.
+ */
+@include boxes.in-surfaces(".herd-slots tr.acf-row > td.acf-row-handle.order") {
+	background: rgba(255, 255, 255, .92);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r-sm);
+	font-variant-numeric: tabular-nums;
+	gap: 3px;
+	height: auto;
+	left: 11px;
+	padding: 2px 6px 2px 3px;
+	position: absolute;
+	top: 6px;
+	width: auto;
+	z-index: 2;
+}
+
+/*
+ * The field's label is the header's title already, and the tile says the rest.
+ * Four labels reading "Photo" under a header reading "Photos" is the label said
+ * five times.
+ */
+@include boxes.in-surfaces(".herd-slots td.acf-fields > .acf-field > .acf-label") {
+	display: none;
+}
+
+/*
+ * No box of its own. The media control already draws one in both states — solid
+ * when it holds a photo, dashed when it is inviting one — and a tile border
+ * around a bordered control is one nested box more than this reads at.
+ */
+@include boxes.in-surfaces(".herd-slots td.acf-fields > .acf-field") {
+	border-top: 0;
+	margin: 0;
+	padding: 0;
+	/* ACF writes an inline width onto a sub-field the field group sized. */
+	width: auto !important;
+}
+
+@include boxes.in-surfaces(".herd-slots tr.acf-row.ui-sortable-helper") {
+	box-shadow: 0 6px 16px rgba(0, 0, 0, .14);
+}
+
+/*
+ * `forcePlaceholderSize` writes the dragged tile's inner width and height inline,
+ * which is a content-box measurement — so the placeholder is told to be a
+ * content box rather than shrunk by the padding it inherits from the rule above.
+ */
+@include boxes.in-surfaces(".herd-slots tr.ui-sortable-placeholder") {
+	border-radius: var(--herd-r);
+	box-sizing: content-box;
+	display: block;
+	float: left;
 }
 
 /* ---------- table furniture Herd does not use ---------- */
 
-#{$host} .herd-repeater > table.acf-table > thead,
-#{$host} .herd-repeater .acf-row-handle .acf-icon.-collapse,
-#{$host} .herd-repeater .acf-row-number {
+@include boxes.in-surfaces(".herd-repeater > table.acf-table > thead, .herd-repeater .acf-row-handle .acf-icon.-collapse, .herd-repeater:not(.herd-slots) .acf-row-number") {
 	display: none;
 }
 
 /* The add button now lives in the header; the empty bar it left does not. */
-#{$host} .herd-repeater > .acf-actions:empty,
-#{$host} .herd-repeater > .acf-actions:has(> .clear:only-child) {
+@include boxes.in-surfaces(".herd-repeater > .acf-actions:empty, .herd-repeater > .acf-actions:has(> .clear:only-child)") {
 	display: none;
 }
 
-#{$host} .herd-repeater > .acf-actions {
+@include boxes.in-surfaces(".herd-repeater > .acf-actions") {
 	padding: 0 10px 10px;
 }

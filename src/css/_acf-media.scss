@@ -373,6 +373,75 @@ $host: ".herd-editor__field-host";
 	font-size: 11px;
 }
 
+/* ---------- the media row as a slot ---------- */
+
+/*
+ * Inside a fixed slot grid (src/ui/acf/slots.js) the same row turns on its side:
+ * the poster becomes the tile and the name and the actions become a footer bar
+ * under it. Nothing is rebuilt and no class is added from JS — media.js leaves
+ * `.image-wrap` holding exactly three children, in this order, and they are
+ * re-laid rather than re-made:
+ *
+ *   img.herd-mediarow__art  .herd-mediarow__body  .acf-actions.herd-mediarow__acts
+ *
+ * The empty state is scoped by location for the same reason it has to be: it is
+ * not a `.herd-mediarow` at all but ACF's `[data-name="add"]` anchor, a sibling
+ * of `.image-wrap`, with nothing to hang a modifier class on.
+ */
+#{$host} .herd-slots .herd-mediarow {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	/* The tile's width is its track's; --herd-media-w is a row's measure. */
+	max-width: none;
+}
+
+#{$host} .herd-slots .herd-mediarow__art {
+	aspect-ratio: 4 / 3;
+	flex: none;
+	grid-column: 1 / -1;
+	height: auto;
+	/* ACF writes `max-height` inline from the field's preview size; only an
+	   !important gets past it — the same fight the rule above already picks, at
+	   a different size. */
+	max-height: none !important;
+	max-width: none;
+	width: 100%;
+}
+
+#{$host} .herd-slots .herd-mediarow__body {
+	border-top: 1px solid var(--herd-line-soft);
+	grid-column: 1;
+	padding: 0 0 0 9px;
+}
+
+/*
+ * Format, dimensions and date are worth a row's width and are not worth a
+ * tile's — at a quarter of the form they wrap to three lines and push the
+ * actions out of the tile. The filename stays, because it is the thing that
+ * tells two photos apart.
+ */
+#{$host} .herd-slots .herd-mediarow__meta {
+	display: none;
+}
+
+#{$host} .herd-slots .herd-mediarow__acts {
+	border-top: 1px solid var(--herd-line-soft);
+	grid-column: 2;
+	padding: 0 4px 0 0;
+}
+
+/*
+ * The empty slot takes the filled tile's shape, so choosing a photo reveals it
+ * rather than resizing the grid around it — which is what the row's own
+ * `min-height` was already protecting, at a size a tile cannot use.
+ */
+#{$host} .herd-slots .herd-media:not(.has-value) [data-name="add"],
+#{$host} .herd-slots .herd-file:not(.has-value) [data-name="add"] {
+	aspect-ratio: 4 / 3;
+	max-width: none;
+	min-height: 0;
+}
+
 /* ---------- preview dialog ---------- */
 
 /*

@@ -1,5 +1,6 @@
 /**
- * Choice fields: swatches, segmented controls, and the card style picker.
+ * Choice fields: swatches, segmented controls, the card style picker, and the
+ * notice a site-restricted choice raises.
  *
  * ACF's button group renders text radios sized for the Gutenberg sidebar. Herd
  * builds its own control instead of restyling that one — a colour control has to
@@ -13,6 +14,10 @@
  *
  * Replacing native radios means replacing what they gave for free, so the group
  * is a real `radiogroup` with a roving tabindex and arrow keys.
+ *
+ * Two of these guard a choice rather than draw it. Both take what they know from
+ * the block's profile, and neither writes to the value: the strip explains what
+ * a style switch orphans, and the dialog says a choice belongs to one site.
  */
 
 import { humanize } from '../summary.js';
@@ -244,6 +249,92 @@ function decorateStyleSwitch( form, profile ) {
 	select.closest( '.acf-input' ).appendChild( strip );
 }
 
+/* ---------- site-restricted choices ---------- */
+
+/**
+ * The dialog the notices share, built on first use.
+ *
+ * It lives on the screen root rather than on `document.body` so the Herd tokens
+ * resolve, and it is found by class rather than held in a module variable so a
+ * second mount reuses the one already there.
+ */
+function alertDialog() {
+	const found = document.querySelector( '.herd-alert' );
+	if ( found ) return found;
+
+	const dialog = document.createElement( 'dialog' );
+	dialog.className = 'herd-alert';
+
+	const title = document.createElement( 'strong' );
+	title.className = 'herd-alert__title';
+	title.id = 'herd-alert-title';
+	dialog.setAttribute( 'aria-labelledby', title.id );
+
+	const body = document.createElement( 'p' );
+	body.className = 'herd-alert__body';
+
+	const actions = document.createElement( 'div' );
+	actions.className = 'herd-alert__actions';
+
+	const ok = document.createElement( 'button' );
+	ok.type = 'button';
+	ok.className = 'herd-btn herd-btn--primary';
+	ok.textContent = 'Got it';
+	// The message has one way out, so it is what the dialog opens focused on.
+	ok.autofocus = true;
+	actions.appendChild( ok );
+
+	dialog.append( title, body, actions );
+	( document.querySelector( '.herd-editor-screen' ) || document.body ).appendChild( dialog );
+
+	ok.addEventListener( 'click', () => dialog.close() );
+	dialog.addEventListener( 'click', ( event ) => {
+		// The backdrop is the dialog element itself; anything inside it is not.
+		if ( event.target === dialog ) dialog.close();
+	} );
+
+	return dialog;
+}
+
+function openAlert( notice ) {
+	const dialog = alertDialog();
+	dialog.querySelector( '.herd-alert__title' ).textContent = notice.title;
+	dialog.querySelector( '.herd-alert__body' ).textContent = notice.body;
+	// jsdom has no dialog implementation; the editor is the only place this runs.
+	if ( typeof dialog.showModal === 'function' ) dialog.showModal();
+}
+
+/** What a field is currently set to, whether ACF drew it as a select or radios. */
+function fieldValue( field ) {
+	const select = field.querySelector( 'select' );
+	if ( select ) return select.value;
+	return field.querySelector( 'input[type="radio"]:checked' )?.value || '';
+}
+
+/**
+ * Say the rule at the moment it is broken.
+ *
+ * Some choices a field group offers are only for one site, and the field group
+ * has nowhere to record that — every site gets the same choices. The notice
+ * fires on the change, not on mount: a block that already carries the value was
+ * not set that way just now, and reopening it is not a decision to re-examine.
+ *
+ * It warns and nothing more. The value stays, because the editor who chose it
+ * may be the one entitled to.
+ */
+function decorateChoiceNotices( form, profile ) {
+	( profile?.choiceNotices || [] ).forEach( ( notice ) => {
+		const field = form.querySelector( `.acf-field[data-name="${ notice.field }"]` );
+		if ( ! field || field.classList.contains( 'herd-has-notice' ) ) return;
+		if ( field.closest( '.acf-clone' ) ) return;
+		field.classList.add( 'herd-has-notice' );
+
+		field.addEventListener( 'change', () => {
+			if ( fieldValue( field ) === notice.value ) openAlert( notice );
+		} );
+	} );
+}
+
 /**
  * Decorate every choice control in a mounted form.
  *
@@ -254,4 +345,5 @@ export function decorateControls( form, profile ) {
 	if ( ! form ) return;
 	decorateButtonGroups( form );
 	decorateStyleSwitch( form, profile );
+	decorateChoiceNotices( form, profile );
 }

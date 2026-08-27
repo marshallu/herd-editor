@@ -101,8 +101,28 @@ export function findBlockByClientId( blocks, clientId ) {
 
 function generatedOpening( block ) {
 	const name = block.name.startsWith( 'core/' ) ? block.name.slice( 5 ) : block.name;
-	const json = Object.keys( block.attributes || {} ).length ? ` ${ JSON.stringify( block.attributes ) }` : '';
+	const json = Object.keys( block.attributes || {} ).length ? ` ${ serializeBlockAttributes( block.attributes ) }` : '';
 	return `<!-- wp:${ name }${ json } ${ block.selfClosing ? '/-->' : '-->' }`;
+}
+
+/**
+ * Mirror WordPress's `serialize_block_attributes()` exactly.
+ *
+ * JSON.stringify already has the same unescaped slash and Unicode behaviour as
+ * WordPress's JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE flags. The
+ * replacements must happen in one pass: replacing a backslash first and then
+ * replacing an escaped quote would otherwise alter the escape we just wrote.
+ */
+export function serializeBlockAttributes( attributes ) {
+	const replacements = {
+		'\\\\': '\\u005c',
+		'--': '\\u002d\\u002d',
+		'<': '\\u003c',
+		'>': '\\u003e',
+		'&': '\\u0026',
+		'\\"': '\\u0022',
+	};
+	return JSON.stringify( attributes ).replace( /\\\\|--|<|>|&|\\"/g, ( value ) => replacements[ value ] );
 }
 
 export function serializeDocument( blocks ) {

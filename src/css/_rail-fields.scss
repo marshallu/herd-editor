@@ -1,0 +1,273 @@
+/*
+ * A setting in the rail is a row.
+ *
+ * The rail is one column of about 300px holding six field groups and 77 fields,
+ * and that width is the whole design problem. A control sized to its own content
+ * — which is what the block form's 12-column grid wants — leaves nineteen
+ * switches hard against the left edge with labels of every length trailing off
+ * them, and no column for the eye to run down.
+ *
+ * So in the rail every setting is a full-width row with a hairline above it, its
+ * label on the left and its control on the right. Labels form one column, states
+ * form another, and a group can be read without reading it.
+ *
+ * WHY `in-rail` AND NOT `in-boxes`. `.herd-main__boxes` is the surface a field
+ * group is routed to by the `herd_editor_rail_tabs` filter precisely *because*
+ * it is too wide for the rail. Stretching a setting across 900px there, or
+ * folding a repeater header into a footer, would be solving a problem that
+ * surface does not have.
+ *
+ * WHY NOT SCOPED TO AN ACCORDION SECTION. It was, and that was wrong twice over.
+ * More Info is the only group with accordions, so On This Page Navigation kept
+ * ACF's arrangement — the rail ended up with two switch conventions, and the one
+ * crushed repeater header left on screen was in the group that had no section
+ * for the fix to be inside.
+ */
+
+@use './boxes';
+
+/*
+ * The three places a rail field flow actually is.
+ *
+ * Scoped to these rather than to `.acf-field` anywhere in the rail, because
+ * "anywhere" also means inside an open repeater row — which is a grid of
+ * authored widths where a toggle is deliberately sized to its label
+ * (_acf-repeater.scss) — and inside a group body and a flexible layout, which
+ * are field flows of their own with their own arrangement.
+ *
+ *   1. `.inside` is the postbox's own flow; ACF's Postbox model adds `.acf-fields`
+ *      to it at init. `:not(.acf-accordion)` keeps the sections themselves out of
+ *      it, since a section wrapper is an `.acf-field` too and _acf-accordion.scss
+ *      draws it.
+ *   2. the flow inside an open accordion section.
+ *   3. a run of revealed fields, which src/ui/acf/dep.js wraps in `.herd-dep`.
+ */
+$flows: ".postbox > .inside > ", ".acf-accordion-content > .acf-fields > ", ".herd-dep > ";
+
+@mixin in-flow($sel) {
+	@each $flow in $flows {
+		@include boxes.in-rail("#{$flow}#{$sel}") {
+			@content;
+		}
+	}
+}
+
+/* ---------- the row ---------- */
+
+/*
+ * The hairline is on the top edge and suppressed on the first row, which is what
+ * puts a line *between* settings and none against whatever is above them.
+ */
+@include in-flow(".acf-field:not(.acf-accordion)") {
+	border-top: 1px solid var(--herd-line-soft);
+	margin: 0;
+	padding: 10px 0;
+	width: auto;
+}
+
+@include in-flow(".acf-field:not(.acf-accordion):first-child") {
+	border-top: 0;
+}
+
+/*
+ * The switch goes to the right-hand edge and the label takes the rest.
+ *
+ * `_switch.scss` sizes a toggle to its own content and pins it left, because on
+ * the block form's grid a toggle is one cell among several and a switch stranded
+ * at the far side of a 12-column row would be nowhere near its label. In a single
+ * column that reverses. The `!important` matches the one it overrides, which is
+ * there to beat ACF's inline width.
+ */
+@include in-flow(".acf-field-true-false") {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0 12px;
+	width: 100% !important;
+}
+
+@include in-flow(".acf-field-true-false > .acf-label") {
+	flex: 1 1 auto;
+	min-width: 0;
+	order: 0;
+}
+
+/*
+ * `display: contents` so the two things ACF nests in here — the switch and the
+ * instructions — become items of the row itself and can be placed independently.
+ *
+ * Without it the instructions are stuck inside `.acf-input`, and anything that
+ * makes them legible makes that box grow: setting them `position: static` while
+ * they still carried the popover's `width: max-content` pushed `.acf-input` out
+ * to the width of the sentence and left the label, the only flexible item in the
+ * row, a column one letter wide. "Display Back to Top" came out spelled
+ * downwards.
+ *
+ * The box is removed, not the element — ACF still finds `.acf-input` by selector
+ * and the label still toggles the checkbox.
+ */
+@include in-flow(".acf-field-true-false > .acf-input") {
+	display: contents;
+}
+
+/*
+ * The same one level further down, for the field group's "message". ACF nests
+ * that as `.acf-true-false > label > span.message`, so hoisting only `.acf-input`
+ * would leave it stranded inside the switch cell and still painted as the dark
+ * popover.
+ */
+@include in-flow(".acf-field-true-false .acf-true-false") {
+	display: contents;
+}
+
+@include in-flow(".acf-field-true-false .acf-true-false > label") {
+	display: contents;
+}
+
+@include in-flow(".acf-field-true-false input[type='checkbox']") {
+	order: 1;
+}
+
+/*
+ * Instructions on the row, not on a hover.
+ *
+ * A popover is the right answer on the block form, where a toggle shares a grid
+ * row with two others and there is nowhere to put a sentence. The rail is one
+ * column with the full width free under the label, and "Appears bottom-right
+ * once the visitor scrolls past halfway" is something you need before you
+ * decide, not after. Every popover property is undone rather than a few, because
+ * a half-reset tooltip is a dark box floating over the rail.
+ */
+@include in-flow(".acf-field-true-false .acf-input > .description") {
+	background: none;
+	border-radius: 0;
+	box-shadow: none;
+	color: var(--herd-ink-3);
+	flex: 1 0 100%;
+	font-size: 11px;
+	line-height: 1.45;
+	margin: 3px 0 0;
+	max-width: none;
+	opacity: 1;
+	order: 2;
+	padding: 0;
+	pointer-events: auto;
+	position: static;
+	transition: none;
+	white-space: normal;
+	width: auto;
+	z-index: auto;
+}
+
+/* A note the field group wrote, under the setting it is about. */
+@include in-flow(".acf-field-true-false .acf-true-false .message") {
+	background: none;
+	border-radius: 0;
+	box-shadow: none;
+	color: var(--herd-ink-3);
+	flex: 1 0 100%;
+	font-size: 11px;
+	line-height: 1.45;
+	margin: 3px 0 0;
+	max-width: none;
+	opacity: 1;
+	order: 3;
+	padding: 0;
+	pointer-events: auto;
+	position: static;
+	transition: none;
+	white-space: normal;
+	width: auto;
+	z-index: auto;
+}
+
+/*
+ * A toggle's label is the setting's name and reads at body size, not at the 12px
+ * `_acf-boxes.scss` gives a field label sitting above an input. It is the row.
+ */
+@include in-flow(".acf-field-true-false .acf-label label") {
+	color: var(--herd-ink);
+	font-size: 13px;
+	font-weight: 400;
+}
+
+/* A label above an input keeps its own weight; it is not a row of its own. */
+@include in-flow(".acf-field:not(.acf-field-true-false) > .acf-label label") {
+	color: var(--herd-ink);
+	font-size: 12px;
+	font-weight: 500;
+}
+
+/* ---------- a repeater in the rail ---------- */
+
+/*
+ * The repeater header is a five-item flex row — title, count, spacer, Collapse
+ * all, Add link — which is fine across a block form and impossible here. In the
+ * rail, indented inside a section and again inside a green rule, that row has
+ * about 230px to place two buttons, and the title is what gives: "Custom Nav
+ * Items" came out one word per line beside a vertical "3 items", and Links came
+ * out as "Li / nk / s".
+ *
+ * Nothing is rebuilt for this. The field's own label goes back above the card
+ * list, where a repeater's name belongs and where it has the full width, and the
+ * header is sent to the foot of the box with `order` — which is where the count
+ * and the add button sit in the mockup anyway. The DOM src/ui/acf/repeater.js
+ * builds is untouched, so the block form is unaffected.
+ */
+@include boxes.in-rail(".acf-field-repeater:has(.herd-repeater) > .acf-label") {
+	display: block;
+	margin: 0 0 6px;
+}
+
+@include boxes.in-rail(".herd-repeater") {
+	display: flex;
+	flex-direction: column;
+}
+
+@include boxes.in-rail(".herd-repeater__head") {
+	background: var(--herd-tint);
+	border-bottom: 0;
+	border-top: 1px solid var(--herd-line);
+	gap: 8px;
+	/* Past the table, which takes the default 0. */
+	order: 1;
+	padding: 8px 10px;
+}
+
+/* The field label above says what this is; saying it twice costs the row's width. */
+@include boxes.in-rail(".herd-repeater__title") {
+	display: none;
+}
+
+@include boxes.in-rail(".herd-repeater__count") {
+	flex: 1;
+	min-width: 0;
+}
+
+/*
+ * A card row in the rail has roughly 230px to place a grip, a name, its flags
+ * and three tools — a block form gives the same row three times that. The flags
+ * are what has to give: `.herd-cardrow__badges` is `flex: none` everywhere else,
+ * so two of them (PRIMARY CTA, INFO-CIRCLE) took their full width and the name
+ * beside them collapsed to zero. Request Info rendered as a row of badges
+ * belonging to no link.
+ *
+ * The tools stay put. They are visible by choice — _acf-repeater.scss argues the
+ * case — and a row you cannot delete without hovering to find out how is a worse
+ * trade than a truncated flag.
+ */
+@include boxes.in-rail(".herd-cardrow__badges") {
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+}
+
+@include boxes.in-rail(".herd-cardrow__badges .herd-badge") {
+	max-width: 72px;
+}
+
+/* And the name keeps a floor, so it is never the thing that reaches zero. */
+@include boxes.in-rail(".herd-cardrow__main") {
+	flex: 1 1 auto;
+	min-width: 80px;
+}

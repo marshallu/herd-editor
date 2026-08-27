@@ -109,15 +109,56 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 
 /* ---------- message field ---------- */
 
-@include on-fields(".acf-field-message > .acf-input .acf-notice, .acf-field-message > .acf-input > p") {
+/*
+ * One notice, whatever it holds.
+ *
+ * A message field with `new_lines` set to `wpautop` -- which is ACF's default,
+ * and what the Page with Sidebar note uses -- emits one `<p>` per paragraph
+ * directly into `.acf-input`. Boxing the paragraphs meant a two-sentence note
+ * came out as two stacked cards, which reads as two notices rather than one.
+ * The box belongs to the input; the paragraphs inside it are text.
+ *
+ * Grey, not red: "warnings and empty-state flags use gray, not amber" and red is
+ * reserved for validation and destructive hover. A note is information.
+ */
+@include on-fields(".acf-field-message > .acf-input") {
 	background: var(--herd-canvas);
 	border: 1px solid var(--herd-line);
+	border-left: 3px solid var(--herd-ink-3);
 	border-radius: var(--herd-r);
 	color: var(--herd-ink-2);
+	display: flex;
+	flex-direction: column;
 	font-size: 12px;
+	gap: 6px;
 	line-height: 1.5;
-	margin: 0;
 	padding: 8px 10px;
+}
+
+/*
+ * The container owns the rhythm, the same delegation a group body and a
+ * flexible-content layout body already make. Stated as `gap` rather than a
+ * margin on the children: a margin here is the one thing an admin reset is
+ * likely to have already claimed.
+ */
+@include on-fields(".acf-field-message > .acf-input > p, .acf-field-message > .acf-input > .acf-notice") {
+	background: none;
+	border: 0;
+	color: inherit;
+	font-size: inherit;
+	line-height: inherit;
+	margin: 0;
+	padding: 0;
+}
+
+/* Two weights, 400 and 500. ACF's `<strong>` lands at 700 against admin chrome. */
+@include on-fields(".acf-field-message > .acf-input strong, .acf-field-message > .acf-input b") {
+	color: var(--herd-ink);
+	font-weight: 500;
+}
+
+@include on-fields(".acf-field-message > .acf-input a") {
+	color: var(--herd-green-ink);
 }
 
 /* ---------- checkbox and radio lists ---------- */

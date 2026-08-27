@@ -17,7 +17,7 @@ const el = createElement;
  * The bridge mounts on open and disposes on close, so several panels can be open
  * at once without leaving ACF instances behind.
  */
-export function AcfForm( { block, ancestors, config, generation, onAttributes } ) {
+export function AcfForm( { block, ancestors, config, generation, validationErrors = [], onAttributes } ) {
 	const host = useRef();
 	const [ state, setState ] = useState( 'loading' );
 	const [ error, setError ] = useState( '' );
@@ -49,13 +49,17 @@ export function AcfForm( { block, ancestors, config, generation, onAttributes } 
 		};
 	}, [ block.clientId, generation, retry ] );
 
-	return el( 'div', { className: 'herd-editor__field-host', 'aria-live': 'polite' },
+	return el( 'div', {
+		className: `herd-editor__field-host${ state === 'mounted' ? ' herd-editor__field-host--ready' : '' }`,
+		'aria-live': 'polite',
+	},
+		validationErrors.length > 0 && el( Notice, { status: 'error' }, validationErrors.map( ( error, index ) => el( 'p', { key: `${ error.field }-${ index }` }, error.message ) ) ),
 		state === 'loading' && el( 'p', { className: 'herd-loading' }, el( Spinner ), 'Loading fields…' ),
 		state === 'empty' && el( Notice, { status: 'info' }, 'This block has no editable ACF fields.' ),
 		state === 'failed' && el( Notice, { status: 'error' },
 			el( 'p', null, error ),
 			el( 'button', { type: 'button', className: 'herd-btn', onClick: () => setRetry( ( value ) => value + 1 ) }, 'Retry' ) ),
-		el( 'div', { ref: host } ) );
+		el( 'div', { ref: host, className: 'herd-editor__form' } ) );
 }
 
 /** Focused editors for the four supported core blocks. */

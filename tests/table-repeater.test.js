@@ -2,11 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { normalizeTableRepeaters } from '../src/ui/acf/table-repeater.js';
+import { applyWidths } from '../src/ui/acf/widths.js';
 
 /*
  * ACF's real `-table` output, reduced to the parts the transform touches. Taken
  * from the Billboard block's `links` repeater: labels hoisted into a <thead>,
  * one <td class="acf-field"> per sub-field, and no <td class="acf-fields">.
+ *
+ * Both sub-fields are authored at 50%, and the <th> is the only place that says
+ * so: `acf_render_field_wrap()` skips `data-width` for a `td` wrapper, so the
+ * cells below carry no width at all.
  */
 const TABLE_REPEATER = `
 <div class="acf-field acf-field-repeater" data-name="links" data-type="repeater" data-key="field_rep">
@@ -18,11 +23,11 @@ const TABLE_REPEATER = `
         <thead>
           <tr>
             <th class="acf-row-handle"></th>
-            <th class="acf-th" data-name="link_icon" data-type="select" data-key="field_icon">
+            <th class="acf-th" data-name="link_icon" data-type="select" data-key="field_icon" data-width="50" style="width: 50%;">
               <label>Link Icon <span class="acf-required">*</span></label>
               <p class="description">Pick one</p>
             </th>
-            <th class="acf-th" data-name="link" data-type="link" data-key="field_link">
+            <th class="acf-th" data-name="link" data-type="link" data-key="field_link" data-width="50" style="width: 50%;">
               <label>Link <span class="acf-required">*</span></label>
             </th>
             <th class="acf-row-handle"></th>
@@ -98,6 +103,41 @@ test( 'carries every attribute onto the replacement field', () => {
 	assert.equal( field.dataset.required, '1' );
 	assert.ok( field.classList.contains( 'is-required' ) );
 	assert.ok( field.classList.contains( 'acf-field' ) );
+} );
+
+test( 'carries the authored width off the thead, which is the only place ACF put it', () => {
+	const form = build();
+	// The cell itself never had one: `acf_render_field_wrap()` skips `data-width`
+	// for a `td`, and this is the whole reason a 50/50 row came out stacked.
+	assert.equal( form.querySelector( 'tr[data-id="row-0"] td.acf-field-select' ).getAttribute( 'data-width' ), null );
+
+	normalizeTableRepeaters( form );
+
+	for ( const id of [ 'row-0', 'acfcloneindex' ] ) {
+		const row = form.querySelector( `tr[data-id="${ id }"]` );
+		assert.equal( row.querySelector( '.acf-field-select' ).getAttribute( 'data-width' ), '50' );
+		assert.equal( row.querySelector( '.acf-field-link' ).getAttribute( 'data-width' ), '50' );
+	}
+} );
+
+test( 'and turns it into the span the stylesheet reads', () => {
+	const form = build();
+	normalizeTableRepeaters( form );
+	// The order layoutBlockForm uses: normalise, then publish.
+	applyWidths( form );
+	const row = form.querySelector( 'tr[data-id="row-0"]' );
+	assert.equal( row.querySelector( '.acf-field-select' ).getAttribute( 'data-herd-width' ), '50' );
+	assert.equal( row.querySelector( '.acf-field-link' ).getAttribute( 'data-herd-width' ), '50' );
+} );
+
+test( 'invents no width for a sub-field the field group never sized', () => {
+	const form = build( TABLE_REPEATER.replace( / data-width="50" style="width: 50%;"/g, '' ) );
+	normalizeTableRepeaters( form );
+	const field = form.querySelector( 'tr[data-id="row-0"] .acf-field-select' );
+	assert.equal( field.getAttribute( 'data-width' ), null );
+	applyWidths( form );
+	// No attribute at all is how a field asks for the whole row.
+	assert.equal( field.getAttribute( 'data-herd-width' ), null );
 } );
 
 test( 'moves inputs rather than recreating them, so nothing about saving changes', () => {

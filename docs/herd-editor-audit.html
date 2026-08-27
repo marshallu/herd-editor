@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="en" class="antialiased">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>Herd Editor audit report</title>
+  <style>
+    :root {
+      --ink: #181713;
+      --muted: #625f56;
+      --quiet: #827e73;
+      --paper: #fbfaf6;
+      --surface: #ffffff;
+      --well: #f2f0e8;
+      --line: rgb(24 23 19 / 12%);
+      --accent: #006c58;
+      --accent-soft: #e1f2ec;
+      --warn: #8a4b08;
+      --warn-soft: #fff1d6;
+      --low: #56534b;
+      --low-soft: #eceae3;
+      --pass: #176a45;
+      --pass-soft: #e2f3e9;
+      --radius: 18px;
+      --pad: 6px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--paper);
+      font-family: InterVariable, Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.75;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11", "ss01", "ss03";
+    }
+    a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+    a:hover { text-decoration-thickness: 2px; }
+    a:focus-visible { outline: 3px solid rgb(0 108 88 / 28%); outline-offset: 3px; border-radius: 3px; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em; overflow-wrap: anywhere; }
+    .page { isolation: isolate; }
+    .wrap { width: min(1180px, 100%); margin-inline: auto; padding-inline: clamp(20px, 5vw, 64px); }
+    .masthead { padding-block: clamp(52px, 9vw, 112px) clamp(42px, 7vw, 80px); border-bottom: 1px solid var(--line); }
+    .eyebrow { margin: 0 0 18px; color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .78rem; letter-spacing: .09em; text-transform: uppercase; }
+    h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -.035em; text-wrap: balance; }
+    h1 { max-width: 15ch; font-size: clamp(2.7rem, 7vw, 5.6rem); line-height: 1.02; }
+    h2 { font-size: clamp(1.75rem, 3.6vw, 2.7rem); line-height: 1.12; }
+    h3 { font-size: clamp(1.2rem, 2.3vw, 1.5rem); line-height: 1.25; }
+    p { text-wrap: pretty; }
+    .dek { max-width: 66ch; margin: 26px 0 0; color: var(--muted); font-size: clamp(1.05rem, 1.8vw, 1.25rem); }
+    .verdict { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 32px; align-items: end; margin-top: 42px; padding-top: 30px; border-top: 1px solid var(--line); }
+    .verdict-label { margin: 0 0 6px; color: var(--muted); font-size: .92rem; }
+    .verdict-text { margin: 0; max-width: 38ch; font-size: clamp(1.35rem, 2.7vw, 2.05rem); line-height: 1.35; font-weight: 560; }
+    .release { align-self: center; padding: 12px 18px; border-radius: 999px; color: var(--pass); background: var(--pass-soft); font-weight: 650; white-space: nowrap; }
+    .metrics { padding-block: 30px; border-bottom: 1px solid var(--line); }
+    .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .metric { min-width: 0; padding-inline: 24px; border-left: 1px solid var(--line); }
+    .metric:first-child { padding-left: 0; border-left: 0; }
+    .metric:last-child { padding-right: 0; }
+    .metric dt { color: var(--muted); font-size: .9rem; font-weight: 560; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .metric dd { margin: 2px 0 0; font-size: clamp(1.6rem, 4vw, 2.35rem); line-height: 1.2; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .section { padding-block: clamp(48px, 7vw, 82px); border-bottom: 1px solid var(--line); }
+    .section-head { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(0, 2fr); gap: 36px; align-items: start; margin-bottom: 36px; }
+    .section-intro { margin: 2px 0 0; max-width: 62ch; color: var(--muted); }
+    .findings { border-top: 1px solid var(--line); }
+    .finding { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 28px; padding-block: 32px; border-bottom: 1px solid var(--line); }
+    .finding:last-child { border-bottom: 0; }
+    .badge { display: inline-flex; align-items: center; width: fit-content; padding: 4px 10px; border-radius: 999px; font-size: .82rem; line-height: 1.4; font-weight: 650; }
+    .badge.high { color: #8b1e1e; background: #fbe5e5; }
+    .badge.medium { color: var(--warn); background: var(--warn-soft); }
+    .badge.low { color: var(--low); background: var(--low-soft); }
+    .badge.pass { color: var(--pass); background: var(--pass-soft); }
+    .category { display: block; margin-top: 10px; color: var(--quiet); font-size: .88rem; }
+    .finding-body { min-width: 0; }
+    .finding-body p { margin: 12px 0 0; color: var(--muted); }
+    .finding-body .impact { color: var(--ink); }
+    .refs { margin-top: 15px; font-size: .92rem; }
+    .refs a { margin-right: 14px; overflow-wrap: anywhere; }
+    .checks { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 38px; border-top: 1px solid var(--line); }
+    .check { padding-block: 25px; border-bottom: 1px solid var(--line); }
+    .check h3 { font-size: 1.08rem; letter-spacing: -.015em; }
+    .check p { margin: 7px 0 0; color: var(--muted); }
+    .recommendations { margin: 0; padding: 0; list-style: none; counter-reset: item; border-top: 1px solid var(--line); }
+    .recommendations li { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 18px; padding-block: 24px; border-bottom: 1px solid var(--line); }
+    .recommendations li::before { counter-increment: item; content: counter(item, decimal-leading-zero); color: var(--accent); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 650; }
+    .recommendations strong { display: block; font-weight: 650; }
+    .recommendations p { margin: 4px 0 0; color: var(--muted); }
+    .evidence-wrap { overflow-x: auto; margin-inline: -20px; padding-inline: 20px; }
+    table { width: 100%; border-collapse: collapse; min-width: 650px; font-size: .95rem; }
+    th { padding: 0 18px 13px 0; color: var(--muted); text-align: left; font-weight: 560; white-space: nowrap; }
+    td { padding: 17px 18px 17px 0; border-top: 1px solid var(--line); vertical-align: top; }
+    td:last-child, th:last-child { padding-right: 0; }
+    .result { color: var(--pass); font-weight: 650; }
+    .limitations { background: var(--well); }
+    .limitation-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; }
+    .limitation { padding-top: 18px; border-top: 2px solid rgb(24 23 19 / 18%); }
+    .limitation h3 { font-size: 1rem; letter-spacing: 0; }
+    .limitation p { margin: 7px 0 0; color: var(--muted); }
+    footer { padding-block: 34px; color: var(--muted); font-size: .9rem; }
+    footer p { margin: 0; }
+    @media (max-width: 760px) {
+      body { line-height: 1.8; }
+      .verdict, .section-head, .finding { grid-template-columns: 1fr; gap: 18px; }
+      .release { justify-self: start; }
+      .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 0; }
+      .metric { padding-inline: 18px; }
+      .metric:nth-child(3) { padding-left: 0; border-left: 0; }
+      .checks, .limitation-grid { grid-template-columns: 1fr; }
+      .section-head { margin-bottom: 26px; }
+      .finding { padding-block: 27px; }
+      .category { display: inline; margin: 0 0 0 9px; }
+    }
+    @media (max-width: 420px) {
+      .metric-grid { grid-template-columns: 1fr; gap: 0; }
+      .metric, .metric:nth-child(3) { padding: 18px 0; border-left: 0; border-top: 1px solid var(--line); }
+      .metric:first-child { padding-top: 0; border-top: 0; }
+      .recommendations li { grid-template-columns: 40px minmax(0, 1fr); }
+    }
+    @media print {
+      :root { --paper: #fff; --well: #f5f5f2; }
+      body { font-size: 10pt; line-height: 1.5; }
+      .wrap { width: 100%; padding-inline: 0; }
+      .masthead { padding-block: 26pt 20pt; }
+      .section { padding-block: 24pt; break-inside: auto; }
+      .finding, .check, .limitation, tr { break-inside: avoid; }
+      .metrics { padding-block: 16pt; }
+      h1 { font-size: 34pt; }
+      h2 { font-size: 20pt; }
+      a { color: inherit; text-decoration: none; }
+      a[href]::after { content: " (" attr(href) ")"; color: var(--muted); font-size: .8em; overflow-wrap: anywhere; }
+      .release, .badge { border: 1px solid currentColor; background: transparent !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="masthead">
+      <div class="wrap">
+        <p class="eyebrow">Code audit · August 27, 2026</p>
+        <h1>Herd Editor audit report</h1>
+        <p class="dek">A read-only review of the current Herd Editor working tree, focused on security, field integrity, content preservation, performance, and editor experience.</p>
+        <div class="verdict">
+          <div>
+            <p class="verdict-label">Overall verdict</p>
+            <p class="verdict-text">Do not roll out for production editing yet. Missing WordPress post locking permits stale overwrites, and changed block attributes are not encoded with WordPress’s required comment-safe serializer.</p>
+          </div>
+          <div class="release">Hold for integrity fixes</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="metrics" aria-label="Audit summary">
+      <div class="wrap">
+        <div class="metric-grid">
+          <dl class="metric"><dt>Critical findings</dt><dd>0</dd></dl>
+          <dl class="metric"><dt>High findings</dt><dd>2</dd></dl>
+          <dl class="metric"><dt>Medium findings</dt><dd>9</dd></dl>
+          <dl class="metric"><dt>Automated tests passed</dt><dd>254</dd></dl>
+        </div>
+      </div>
+    </section>
+
+    <main>
+      <section class="section" id="findings">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Prioritized findings</h2>
+            <p class="section-intro">The first finding is a release-blocking content-integrity gap. The remaining findings are risks and maintainability defects discovered by static review; they still require live WordPress and ACF validation.</p>
+          </div>
+          <div class="findings">
+            <article class="finding">
+              <div><span class="badge high">High</span><span class="category">Content integrity</span></div>
+              <div class="finding-body">
+                <h3>Herd does not acquire or refresh WordPress post locks</h3>
+                <p class="impact">Two people—or Herd and Gutenberg in separate sessions—can edit the same post concurrently. Because Herd submits the complete title, slug, content document, and rendered meta-box fields, the later stale submission can overwrite newer work without warning.</p>
+                <p>No use of <code>wp_check_post_lock()</code>, <code>wp_set_post_lock()</code>, Heartbeat, <code>wp-refresh-post-lock</code>, <code>_edit_lock</code>, or lock-loss handling exists in the reviewed plugin. The browser’s <code>beforeunload</code> warning only detects unsaved local changes; it cannot detect another user’s save. Herd should use WordPress’s shared lock, show an existing-lock/takeover screen, refresh ownership through Heartbeat, disable editing immediately on lock loss, and verify ownership or a freshness token on the server immediately before accepting a save.</p>
+                <p class="refs"><a href="../herd-editor.php#L453">Screen entry</a><a href="../includes/herd-editor-screen.php#L53">Full post form</a><a href="../src/ui/App.js#L46">Local-only unload guard</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge high">High</span><span class="category">Content integrity</span></div>
+              <div class="finding-body">
+                <h3>Changed block attributes bypass WordPress’s required comment escaping</h3>
+                <p class="impact">Any edited or newly inserted block is serialized with raw <code>JSON.stringify()</code>. Field values containing backslashes, double hyphens, angle brackets, ampersands, or escaped quotes therefore produce block comments that differ from WordPress’s canonical and HTML-safe representation. This can cause invalid HTML comments, parser disagreement, Gutenberg block-recovery prompts, or content corruption during an editor round trip.</p>
+                <p>WordPress’s <code>serialize_block_attributes()</code> deliberately converts those sequences to Unicode escapes and states that its PHP output must remain synchronized with the JavaScript block editor. Herd preserves untouched comments byte-for-byte, but the first field change regenerates that block’s opening comment without those protections. Replace the custom encoding with WordPress-equivalent serialization and add adversarial round-trip fixtures containing <code>--&gt;</code>, <code>--</code>, HTML, ampersands, backslashes, quotes, Unicode, and nested repeater values.</p>
+                <p class="refs"><a href="../src/document.js#L102">Non-canonical serializer</a><a href="../../../../wp-includes/blocks.php#L1705">WordPress serializer contract</a><a href="../tests/document.test.js#L6">Current limited fixtures</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Content integrity</span></div>
+              <div class="finding-body">
+                <h3>Editing one ACF field can discard legacy data that the current form does not render</h3>
+                <p class="impact">If a block comment still contains values for a renamed, removed, unavailable, or conditionally non-rendered field, the first change to any rendered field replaces the complete <code>data</code> object with ACF’s current form serialization. Keys absent from that serialization are lost on save.</p>
+                <p>This is not an invented-field problem: the visible controls come from the real ACF form. It is a preservation problem at the serialization boundary. The bridge emits <code>{ data }</code>, and the application merges that as the block’s new, whole <code>data</code> attribute. Add an explicit preservation policy: merge serialized keys into existing data while deliberately deleting only keys ACF proves belong to fields removed by the user, or confirm with live ACF tests that every supported hidden/disabled field is always serialized. At minimum, detect omitted pre-existing keys and warn before save.</p>
+                <p class="refs"><a href="../src/acf/bridge.js#L65">Whole-form serialization</a><a href="../src/ui/App.js#L201">Attribute update</a><a href="../src/document.js#L133">Data replacement through merge</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Content integrity</span></div>
+              <div class="finding-body">
+                <h3>Save, redirect, and starter-content behavior lacks WordPress integration coverage</h3>
+                <p class="impact">A regression in the new default-editor redirect, auto-draft seeding, revision message carry-through, or post.php round trip could escape the JavaScript suite and affect authored content or editor routing.</p>
+                <p>The logic is careful and capability-gated, but it depends on WordPress request order, Classic Editor hooks, post templates, ACF field-key lookup, and redirect query arguments. Those behaviors cannot be established by syntax checks alone.</p>
+                <p class="refs"><a href="../includes/herd-editor-default.php#L329">Default-editor redirect</a><a href="../herd-editor.php#L426">Auto-draft seed</a><a href="../includes/herd-editor-saved.php#L37">Save-message carry</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Recovery</span></div>
+              <div class="finding-body">
+                <h3>There is no autosave or crash-recovery path for Herd changes</h3>
+                <p class="impact">A browser crash, expired login, network interruption, tab termination, or long-session failure can lose every change since the last manual Update. The in-memory undo history disappears with the page.</p>
+                <p>The editor tracks dirty state and keeps up to 50 in-memory history states, but it does not send WordPress autosaves, create per-user autosave revisions, recover a newer autosave, refresh long-lived nonces, or provide a local recovery draft. At minimum, implement WordPress-compatible autosave/recovery and test ACF block data plus native meta boxes. Autosave must respect the same post lock so it cannot become another stale writer.</p>
+                <p class="refs"><a href="../src/controller.js#L3">Memory-only history</a><a href="../src/ui/App.js#L46">Dirty-state handling</a><a href="../herd-editor.php#L515">Enqueued editor assets</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Validation</span></div>
+              <div class="finding-body">
+                <h3>Collapsed ACF blocks are absent from form-level validation</h3>
+                <p class="impact">Herd only fetches and mounts an ACF form while its panel is open. ACF’s classic form validator scans the fields currently inside <code>form#post</code>; unopened or collapsed blocks have no field nodes to validate. A post can therefore be submitted while required or custom-validated fields in those blocks are invalid.</p>
+                <p>Gutenberg’s ACF integration separately walks its registered block instances during save. Herd does not reproduce that whole-document validation and explicitly requests no validation response when fetching a block form. Before publish, validate every ACF block’s serialized data against its actual field group on the server, return block-addressable errors, open the affected panel, and focus the first invalid field. Draft policy should be decided explicitly rather than inherited accidentally.</p>
+                <p class="refs"><a href="../src/ui/panels.js#L20">Mount-on-open lifecycle</a><a href="../src/acf/helpers.js#L23">Fetch requests disable validation</a><a href="../../../plugins/advanced-custom-fields-pro/pro/blocks.php#L1691">ACF block validation API</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">WordPress policy</span></div>
+              <div class="finding-body">
+                <h3>The inserter and structural controls bypass block eligibility and locking policy</h3>
+                <p class="impact">Herd catalogs every registered ACF block and checks only registration plus <code>supports.multiple</code>. It does not apply <code>allowed_block_types_all</code>, inserter support, parent/ancestor constraints, post/editor context, template locks, or per-block lock attributes. Editors can be offered blocks or structural operations that Gutenberg intentionally forbids.</p>
+                <p>This is active on the reviewed site: the theme has an explicit allowed-block list and comments out <code>acf/slate-form</code>, while Herd’s grouping includes it and its registry-driven catalog can offer it when registered. New-post template serialization also explicitly removes the <code>lock</code> attribute, and existing locked ACF blocks are still given duplicate/delete/reorder controls. Build the catalog from WordPress block-editor settings for the current post and enforce every rule in mutation code as well as in the UI.</p>
+                <p class="refs"><a href="../herd-editor.php#L251">All registered blocks cataloged</a><a href="../src/adapters.js#L22">Eligibility check</a><a href="../includes/herd-editor-default.php#L444">Template lock removed</a><a href="../../../themes/herdpress/inc/blocks.php#L14">Site allowed-block policy</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">ACF compatibility</span></div>
+              <div class="finding-body">
+                <h3>ACF’s post-meta block storage mode is neither supported nor rejected</h3>
+                <p class="impact">ACF blocks configured with <code>usePostMeta</code> load and save values through post meta rather than ordinary block-comment <code>data</code>. Herd assumes every ACF block’s authoritative values live in the comment and would serialize edits there without implementing the corresponding post-meta update path.</p>
+                <p>No reviewed HerdPress block currently declares this mode, so this is a compatibility trap rather than active loss on the present block set. Publish the storage mode in block metadata and make those blocks read-only until Herd implements and integration-tests ACF’s native persistence path. The same defensive rule should apply to future ACF storage features Herd does not recognize.</p>
+                <p class="refs"><a href="../src/acf/helpers.js#L23">Comment-data request model</a><a href="../src/acf/bridge.js#L65">Comment-data update model</a><a href="../../../plugins/advanced-custom-fields-pro/pro/blocks.php#L1843">ACF post-meta mode</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Plugin removal</span></div>
+              <div class="finding-body">
+                <h3>“Plugin disappears safely” depends on an orderly, uninterrupted deactivation</h3>
+                <p class="impact">The Spacer fallback is not intrinsically inert without Herd. Database-backed spacers are rewritten to Message fields only when WordPress runs the deactivation hook; direct file removal, a failed deployment, or an interrupted bulk conversion can leave unknown field types. Local JSON/PHP field groups cannot be converted at all and can be changed to Text fields if re-saved without Herd.</p>
+                <p>The code documents much of this limitation, but it weakens the architectural guarantee. The conversion also updates fields one at a time without checking results, recording progress, or providing a transaction/rollback report. Prefer an ACF-native layout type if one can represent the spacer, or ship a separate always-available compatibility shim for the field type. At minimum, add preflight inventory, idempotent logged migration state, result checking, WP-CLI verification, and an operational removal procedure that is tested in deployment—not only through the Plugins screen.</p>
+                <p class="refs"><a href="../includes/herd-editor-spacer.php#L351">Deactivation conversion</a><a href="../includes/herd-editor-spacer.php#L376">Unchecked per-field updates</a><a href="../README.md#L88">Documented local-group limitation</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Field integrity</span></div>
+              <div class="finding-body">
+                <h3>DOM-preserving ACF adaptations remain coupled to upstream markup</h3>
+                <p class="impact">An ACF markup or event-hook change could leave controls visually present but disconnected, particularly in table repeaters, flexible layouts, cloned rows, media fields, and nested groups.</p>
+                <p>The implementation deliberately moves existing inputs and preserves ACF data attributes rather than recreating controls. The 254-test suite exercises these contracts well, but fixtures model expected ACF output and are not a substitute for smoke tests against the installed ACF Pro version.</p>
+                <p class="refs"><a href="../src/ui/acf/layout.js#L185">Layout pipeline</a><a href="../src/ui/acf/repeater.js#L135">Clone reset</a><a href="../src/ui/acf/table-repeater.js#L1">Table normalization</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge medium">Medium</span><span class="category">Performance</span></div>
+              <div class="finding-body">
+                <h3>The editor payload and observer-heavy UI need measurement on long pages</h3>
+                <p class="impact">Pages with many blocks, repeaters, or flexible layouts may show slower mount, typing, cloning, or expand-all behavior even though functional tests pass.</p>
+                <p>The built assets total 597,546 bytes uncompressed and approximately 122,841 bytes gzip-compressed. The UI also installs scoped mutation observers and multiple input/change listeners. Their implementations avoid full-form rescans in key paths, but no timing, memory, or large-document benchmark was present.</p>
+                <p class="refs"><a href="../src/ui/acf/flexible.js#L319">Flexible observer</a><a href="../src/ui/acf/repeater.js#L313">Repeater observer</a><a href="../herd-editor.php#L542">Expand warning threshold</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge low">Low</span><span class="category">Security</span></div>
+              <div class="finding-body">
+                <h3>The theme icon set reaches <code>innerHTML</code> without the block-icon allowlist</h3>
+                <p class="impact">Markup returned by <code>mu_icons()</code> or altered through <code>herd_editor_icons</code> is published without sanitization and inserted with <code>innerHTML</code>. A compromised or unexpectedly data-driven icon provider could execute admin-side markup.</p>
+                <p>Registered block icons follow a narrow server-side SVG allowlist, but the named icon-picker set does not. Apply the same allowlist to every icon in <code>herd_editor_icon_set()</code>, discard empty results, and add hostile fixtures for scripts, event handlers, external references, foreign objects, and malformed SVG. The present source appears theme-authored, so this is defense in depth rather than evidence of an exploitable untrusted input today.</p>
+                <p class="refs"><a href="../herd-editor.php#L638">Unsanitized icon-set publication</a><a href="../src/ui/acf/icons.js#L60">Icon markup lookup</a><a href="../src/ui/acf/icons.js#L99">innerHTML sink</a><a href="../herd-editor.php#L561">Existing block-icon allowlist</a></p>
+              </div>
+            </article>
+
+            <article class="finding">
+              <div><span class="badge low">Low</span><span class="category">UX / maintainability</span></div>
+              <div class="finding-body">
+                <h3>Repeater add-button normalization can damage intentional capitalization</h3>
+                <p class="impact">Labels containing acronyms or proper names are rewritten with <code>toLowerCase()</code>, so “Add FAQ” becomes “Add faq” and a field-group author’s intended wording is lost.</p>
+                <p>Preserve the authored label and only normalize the first character when it is lowercase, or make sentence-case transformation an explicit profile choice.</p>
+                <p class="refs"><a href="../src/ui/acf/repeater.js#L127">Button-label rewrite</a></p>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="passed-checks">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Passed checks</h2>
+            <p class="section-intro">These controls were confirmed by code inspection or automated execution. A pass means the reviewed implementation contains the control; it does not expand the audit beyond the limitations below.</p>
+          </div>
+          <div class="checks">
+            <article class="check"><h3>Authorization is post-specific</h3><p>Access requires both <code>manage_options</code> and <code>edit_post</code> by default, with unsupported post types rejected at render time.</p></article>
+            <article class="check"><h3>Form submissions retain core authorization protection</h3><p>The editor posts to WordPress <code>post.php</code> with the standard update-post nonce and original fields. That protects authorization and CSRF; it does not prevent stale concurrent writes.</p></article>
+            <article class="check"><h3>Profile settings validate intent</h3><p>User-level editor preferences verify a dedicated nonce, capability, and a strict three-value allowlist.</p></article>
+            <article class="check"><h3>Most output paths are escaped</h3><p>Titles, URLs, labels, attributes, notices, and registered block SVGs use context-appropriate escaping or explicit allowlists. The separate theme icon-set exception is documented above.</p></article>
+            <article class="check"><h3>Field nodes are preserved</h3><p>DOM decorators move existing ACF controls and retain the selectors and data attributes used by upstream event delegation and serialization.</p></article>
+            <article class="check"><h3>Untouched document regions are byte-conscious</h3><p>Tests cover nested round trips, immutable movement, history, and preservation of malformed or freeform content. Regenerated attribute comments have the core-escaping defect documented above.</p></article>
+            <article class="check"><h3>Progressive failure is considered</h3><p>Controls that require JavaScript ship hidden or fall back to native ACF behavior, limiting dead affordances when the bundle fails.</p></article>
+            <article class="check"><h3>No remote runtime dependency</h3><p>The plugin assets and this report are local; the report contains embedded CSS only and no scripts, iframes, forms, or remote resources.</p></article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="recommendations">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Recommendations</h2>
+            <p class="section-intro">Post locking and stale-save prevention are required before rollout. Autosave/recovery and the remaining work materially improve content safety and maintainability.</p>
+          </div>
+          <ol class="recommendations">
+            <li><div><strong>Implement native post locking and server-side stale-save rejection.</strong><p>Use WordPress’s shared lock across Herd, Gutenberg, and Classic; add Heartbeat refresh, lock-owner and takeover UI, immediate lock-loss handling, and a final server-side ownership/freshness check before saving.</p></div></li>
+            <li><div><strong>Adopt WordPress’s block-attribute serializer exactly.</strong><p>Match the core JavaScript/PHP escaping contract and test hostile comment sequences before allowing edited block data to reach <code>post_content</code>.</p></div></li>
+            <li><div><strong>Validate the complete ACF block document before publish.</strong><p>Validate serialized data for mounted and unmounted blocks on the server, map errors back to block rows, and prevent the final write when any applicable field rule fails.</p></div></li>
+            <li><div><strong>Honor WordPress block eligibility and locks.</strong><p>Build the inserter from current editor settings and enforce allowed types, context, inserter support, parent/ancestor constraints, multiplicity, template locking, and per-block movement/removal locks in the mutation layer.</p></div></li>
+            <li><div><strong>Reject unsupported ACF persistence modes.</strong><p>Identify <code>usePostMeta</code> and future unrecognized storage modes in server metadata and keep affected blocks read-only until their native save behavior is implemented and tested.</p></div></li>
+            <li><div><strong>Make Spacer removal operationally verifiable.</strong><p>Add inventory, checked/idempotent conversion reporting, WP-CLI verification, and a tested deployment-removal runbook; consider a compatibility shim that survives removal of the editor UI.</p></div></li>
+            <li><div><strong>Add autosave and recovery.</strong><p>Persist recoverable per-user drafts for the complete Herd document and supported meta, surface newer autosaves on reopen, refresh required nonces, and ensure autosave respects the active lock.</p></div></li>
+            <li><div><strong>Add a WordPress integration matrix.</strong><p>Exercise two-user and two-editor races first, followed by existing posts, new auto-drafts, publish/update/schedule/revision/autosave/preview flows, direct native-editor links, site defaults, per-user overrides, and Classic Editor installed or absent.</p></div></li>
+            <li><div><strong>Define and test legacy ACF-key preservation.</strong><p>Seed blocks with active fields plus removed, renamed, conditionally hidden, disabled, and unknown keys. Change one visible value, save, reload, and assert exactly which keys may disappear. Warn or preserve when the form omits pre-existing data unexpectedly.</p></div></li>
+            <li><div><strong>Run live ACF smoke tests against supported versions.</strong><p>Create, duplicate, reorder, collapse, edit, and delete nested repeater and flexible-content rows; save, reload, and compare stored block markup and field values.</p></div></li>
+            <li><div><strong>Benchmark representative long documents.</strong><p>Record mount time, expand-all time, keystroke responsiveness, mutation counts, and memory on realistic high-row pages; set a regression budget.</p></div></li>
+            <li><div><strong>Sanitize both SVG sources and harden the test corpus.</strong><p>Pass the theme icon map through the existing server allowlist, then prove that scripts, event attributes, external URLs, foreign objects, and malformed SVG cannot survive either rendering path.</p></div></li>
+            <li><div><strong>Preserve authored button labels.</strong><p>Avoid lowercasing the full repeater add label; retain acronyms and proper names supplied by the field-group author.</p></div></li>
+          </ol>
+        </div>
+      </section>
+
+      <section class="section" id="test-evidence">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Test evidence</h2>
+            <p class="section-intro">Commands were run from the plugin root against the working tree reviewed on August 27, 2026.</p>
+          </div>
+          <div class="evidence-wrap">
+            <table>
+              <thead><tr><th scope="col">Check</th><th scope="col">Result</th><th scope="col">Evidence</th></tr></thead>
+              <tbody>
+                <tr><td><code>npm test</code></td><td class="result">Passed</td><td>254 passed, 0 failed, 0 skipped, 0 cancelled.</td></tr>
+                <tr><td><code>php -l</code></td><td class="result">Passed</td><td>12 PHP files checked; no syntax errors detected.</td></tr>
+                <tr><td>Built asset size</td><td>Measured</td><td>597,546 bytes raw; approximately 122,841 bytes gzip-compressed across the three editor CSS/JS assets.</td></tr>
+                <tr><td>Static security review</td><td class="result">Passed with note</td><td>Capability checks, nonce handling, output escaping, redirect construction, uninstall cleanup, and SVG allowlisting reviewed.</td></tr>
+                <tr><td>Report active-content scan</td><td class="result">Passed</td><td>No script, iframe, object, embed, form, external stylesheet, remote font, image, or network URL.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section limitations" id="limitations">
+        <div class="wrap">
+          <div class="section-head">
+            <h2>Audit limitations</h2>
+            <p class="section-intro">This audit was read-only. No plugin source, theme source, field-group JSON, build artifact, database row, setting, or user preference was modified during the audit.</p>
+          </div>
+          <div class="limitation-grid">
+            <article class="limitation"><h3>No authenticated browser session</h3><p>The WordPress admin editor was not exercised with a real user, live ACF forms, third-party meta boxes, or media-library interactions.</p></article>
+            <article class="limitation"><h3>No persistence comparison</h3><p>No production-like database snapshot was saved and reloaded, so source-level preservation claims rely on unit fixtures and implementation review.</p></article>
+            <article class="limitation"><h3>No load or compatibility lab</h3><p>No multi-browser, assistive-technology, plugin-conflict, PHP-version, WordPress-version, ACF-version, or large-document performance matrix was run.</p></article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap"><p>Herd Editor audit · Standalone report · Generated August 27, 2026.</p></div>
+    </footer>
+  </div>
+</body>
+</html>

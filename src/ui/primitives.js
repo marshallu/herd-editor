@@ -22,6 +22,24 @@ export function Dashicon( { icon, className = '' } ) {
 	return el( 'span', { className: `dashicons dashicons-${ icon || 'block-default' } ${ className }`.trim(), 'aria-hidden': true } );
 }
 
+/**
+ * A block type's own icon: a dashicon slug, or the SVG its block.json declared.
+ *
+ * The markup is inlined rather than parsed. It arrives from the block registry
+ * already run through an allowlist in PHP, the same trust `window.HerdEditor.icons`
+ * already carries for the theme's icon set.
+ */
+export function BlockIcon( { icon, className = '' } ) {
+	if ( icon?.svg ) {
+		return el( 'span', {
+			className: `herd-icon ${ className }`.trim(),
+			'aria-hidden': true,
+			dangerouslySetInnerHTML: { __html: icon.svg },
+		} );
+	}
+	return el( Dashicon, { icon: icon?.slug, className } );
+}
+
 /** Drag handle glyph (Lucide grip-vertical). */
 export function GripIcon() {
 	return el( 'svg', {

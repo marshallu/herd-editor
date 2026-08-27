@@ -20,6 +20,12 @@
 	--herd-surface: #fff;
 	--herd-canvas: #f0f0f1;
 	/*
+	 * The tint a header sits on — a repeater's, a group's, an open row's. Lighter
+	 * than the canvas, which is what a thumbnail and a hovered tool are drawn on:
+	 * a header the same grey as the boxes inside it flattens both.
+	 */
+	--herd-tint: #f6f7f7;
+	/*
 	 * One red, two meanings, both "this needs your attention": destructive hover
 	 * and validation. The tint and line are for surfaces that carry the state at
 	 * rest — an incomplete group's header, its badge.
@@ -44,9 +50,14 @@
 	/* The height every text input, select and segmented control lands on. */
 	--herd-control-h: 31px;
 	/*
-	 * The height a collapsible's header lands on — repeater and group alike. It
-	 * was whatever a .herd-btn plus 7px of padding happened to come to, which the
-	 * group header, carrying no button, had no way to arrive at.
+	 * The height a collapsible's header lands on — repeater, group and repeater
+	 * row alike. It was whatever a .herd-btn plus 7px of padding happened to come
+	 * to, which the group header, carrying no button, had no way to arrive at.
+	 *
+	 * A row's header needs it stated most of all: the grip that flanks it is a
+	 * separate table cell and cannot measure the header to match it, so the two
+	 * are told the same number or the rule they share comes out as two rules at
+	 * different heights.
 	 */
 	--herd-header-h: 46px;
 	/*
@@ -68,5 +79,11 @@
 	--herd-disabled: .45;
 
 	--herd-bar-top: var(--wp-admin--admin-bar--height, 32px);
+	/*
+	 * How tall the command bar stands. The rail sticks below it and cannot ask
+	 * CSS for a sibling's height, so the number is named here rather than buried
+	 * in a calc(). It follows the title: a caption, a 24px input and the slug.
+	 */
+	--herd-bar-h: 90px;
 	--herd-rail-w: clamp(300px, 24vw, 340px);
 }

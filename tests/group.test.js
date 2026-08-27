@@ -9,6 +9,15 @@ import { badgeFor, describeGroup, hasValue, opensByDefault, subLabel } from '../
  * markup through a handful of selectors, so the fake answers those and nothing
  * else, which keeps the suite free of a DOM implementation.
  */
+/**
+ * One `tr.acf-row`, answering only what `rowHasValue` reaches for: the row's
+ * `td.acf-fields` and the one field inside it.
+ */
+function repeaterRow( holdsSomething ) {
+	const cell = { children: [ field( { type: 'text', value: holdsSomething ? 'Campus tour' : '' } ) ] };
+	return { querySelector: ( selector ) => ( selector.includes( 'td.acf-fields' ) ? cell : null ) };
+}
+
 function field( {
 	type,
 	name = '',
@@ -18,6 +27,7 @@ function field( {
 	linkTitle = null,
 	checked = false,
 	rows = 0,
+	filled = null,
 	required = false,
 	hidden = false,
 } ) {
@@ -33,7 +43,9 @@ function field( {
 		style: { display: hidden ? 'none' : '' },
 		classList: { contains: ( token ) => classes.includes( token ) },
 		querySelectorAll: ( selector ) =>
-			selector.includes( 'tr.acf-row' ) ? Array.from( { length: rows }, () => ( {} ) ) : [],
+			selector.includes( 'tr.acf-row' )
+				? Array.from( { length: rows }, ( _, i ) => repeaterRow( i < ( filled === null ? rows : filled ) ) )
+				: [],
 		querySelector: ( selector ) => {
 			if ( selector.includes( '.acf-label label' ) ) return label === null ? null : { textContent: label };
 			if ( selector.includes( 'input.input-url' ) ) return { value: linkUrl };
@@ -115,6 +127,11 @@ test( 'reads the value of the types a summary has nothing to say about', () => {
 	assert.equal( hasValue( field( { type: 'true-false', checked: false } ) ), false );
 	assert.equal( hasValue( field( { type: 'repeater', rows: 2 } ) ), true );
 	assert.equal( hasValue( field( { type: 'repeater', rows: 0 } ) ), false );
+	// Rows are not content. ACF pads a repeater to its `min` with empty rows
+	// server-side, so a four-slot photo grid arrives with four rows in it and
+	// nothing chosen — counting rows would badge that group complete.
+	assert.equal( hasValue( field( { type: 'repeater', rows: 4, filled: 0 } ) ), false );
+	assert.equal( hasValue( field( { type: 'repeater', rows: 4, filled: 1 } ) ), true );
 	// A link with a title but no url is not a link.
 	assert.equal( hasValue( field( { type: 'link', linkTitle: 'Visit', linkUrl: '' } ) ), false );
 	assert.equal( hasValue( field( { type: 'link', linkTitle: 'Visit', linkUrl: 'https://x.test' } ) ), true );

@@ -1,7 +1,7 @@
 /** One accordion card in the block list. */
 
 import { createElement } from '@wordpress/element';
-import { Dashicon, GripIcon, IconButton } from './primitives.js';
+import { BlockIcon, Dashicon, GripIcon, IconButton } from './primitives.js';
 
 const el = createElement;
 
@@ -22,6 +22,7 @@ export function BlockRow( {
 	dropEdge,
 	structural,
 	duplicateDisabled,
+	deleteDisabled,
 	tabIndex,
 	registerRef,
 	onFocus,
@@ -88,10 +89,10 @@ export function BlockRow( {
 			onKeyDown,
 			'aria-expanded': isOpen,
 		},
-		el( 'span', { className: 'herd-block__icon' }, el( Dashicon, { icon } ) ),
+		el( 'span', { className: 'herd-block__icon' }, el( BlockIcon, { icon } ) ),
 		el( 'span', { className: 'herd-block__main' },
 			el( 'span', { className: 'herd-block__name' },
-				title,
+				el( 'span', { className: 'herd-block__title' }, title ),
 				hidden && el( 'span', { className: 'herd-badge herd-badge--muted' }, 'Hidden' ),
 				badge && el( 'span', { className: 'herd-badge' }, badge ) ),
 			summary && el( 'span', { className: 'herd-block__summary' }, summary ) ),
@@ -109,6 +110,7 @@ export function BlockRow( {
 				icon: 'trash',
 				label: `Delete ${ title }`,
 				className: 'herd-block__tool is-destructive',
+				disabled: deleteDisabled,
 				onClick: onDelete,
 			} ) ) ),
 

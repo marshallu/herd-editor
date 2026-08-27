@@ -50,9 +50,9 @@ test( 'publishes a snapped width for the stylesheet to read', () => {
 	assert.deepEqual( widths( root ), [ '50', '50', '25' ] );
 } );
 
-test( 'leaves an unsized field alone so its role still decides', () => {
-	// Writing 100 here would promote every compact control to its own line, which
-	// is the layout Herd has today for every field group that never set a width.
+test( 'writes no attribute for an unsized field', () => {
+	// Full width is what every container already does, so a field with nothing
+	// authored needs nothing published — and `$spans` has no rule for 100.
 	const root = form( field() + field( 50 ) );
 	applyWidths( root );
 	assert.deepEqual( widths( root ), [ null, '50' ] );

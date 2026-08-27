@@ -1,79 +1,208 @@
-# Herd Editor — implementation record and production rollout
+# Herd Editor — release record and production rollout
 
-## Release status (phases 5–7)
+**Version 1.0.0.** Requires WordPress 7.1+, PHP 7.4+, ACF Pro 6.0+.
 
-Phases 5 and 6 and the code portion of phase 7 are implemented. The release remains **pilot-blocked** until the signed-in browser matrix below passes. The current automation environment reported no connected browser on August 26, 2026, so no browser result is implied by the unit and build results.
+## Release status
 
-### Completed foundation
+The code is release-ready. Both release-blocking findings from the August 27, 2026
+code audit are closed, along with every medium and low finding that could be
+settled by static work. **The remaining gate is the signed-in browser matrix at
+the end of this document**, which no automation environment available so far has
+been able to run. Nothing below implies a browser result.
 
-- A registry dispatches ACF, Paragraph, Heading, Custom HTML, Shortcode, and fallback adapters.
-- The document controller supports byte-preserving round trips, body replacement, merged and exact attribute replacement, recursive cloning with fresh client IDs, insertion, deletion, movement, and bounded undo/redo history.
-- Untouched nodes retain their original source bytes. Unknown, malformed, nested, and unsupported content is not rewritten unless an explicitly supported adapter edits it.
-- JavaScript receives the complete server-side block registry with title, icon, category, registration state, context declarations, and `supports.multiple`.
+### Audit disposition
 
-### Adapter inventory
+The audit (`docs/herd-editor-audit.html`) recorded 0 critical, 2 high, 9 medium,
+and 2 low findings against a 254-test tree. That report is now historical; this
+table is authoritative.
 
-| Adapter | Existing content | Creation | Structure | Notes |
-| --- | --- | --- | --- | --- |
-| ACF (`acf/*`) | Editable | Yes | Top-level move, duplicate, delete | One active ACF form is mounted at a time. |
-| Paragraph | Editable | No | No | Rich text; preserves the paragraph wrapper and unrelated attributes. |
-| Heading | Editable | No | No | Rich text plus levels 1–6; preserves unrelated wrapper attributes. |
-| Custom HTML | Editable | No | No | Focused code textarea. |
-| Shortcode | Editable | No | No | Focused text textarea. |
-| Fallback | Read only | No | No | Links to the corresponding Block Editor path. |
+| # | Sev | Finding | Status |
+| --- | --- | --- | --- |
+| 1 | High | No WordPress post locking; stale overwrites possible | **Closed** |
+| 2 | High | Block attributes bypass core comment escaping | **Closed** |
+| 3 | Med | Editing one field discards legacy ACF keys | **Closed** |
+| 4 | Med | Collapsed ACF blocks escape form validation | **Closed** |
+| 5 | Med | Inserter bypasses block eligibility and locking policy | **Closed** |
+| 6 | Med | ACF `usePostMeta` storage neither supported nor rejected | **Closed** |
+| 7 | Med | Spacer removal not operationally verifiable | **Closed** |
+| 8 | Med | No autosave or crash recovery | **Closed**, needs browser check |
+| 9 | Med | Save/redirect/starter-content lacks integration coverage | **Open — manual** |
+| 10 | Med | DOM adaptations coupled to upstream ACF markup | **Open — by design** |
+| 11 | Med | Editor payload and observer cost unmeasured | **Open — manual** |
+| 12 | Low | Theme icon set reaches `innerHTML` unsanitized | **Closed** |
+| 13 | Low | Repeater add-button normalization damages capitalization | **Closed** |
 
-### ACF structural editing
+### How the closed findings were closed
 
-- The searchable inserter lists every registered ACF block and creates normal self-closing block markup with `name` and empty `data` attributes.
-- Move up/down, duplicate, and confirmed delete are available only for top-level ACF blocks.
-- `supports.multiple: false` is enforced across the complete document for insertion and duplication. On the current site this applies to Hero and Page with Sidebar.
-- Field and structural mutations share Herd history. Destructive actions announce their result and restore focus to a surviving row where possible.
+**1 — Post locking.** Herd uses WordPress's own shared lock, so it interlocks with
+Gutenberg and Classic rather than running a parallel scheme.
+`herd_editor_active_post_lock()` issues a token only when no other user holds one;
+`herd_editor_handle_post_lock_takeover()` serves the nonce-checked takeover route
+and returns to Herd rather than to `post.php`; `src/post-lock.js` refreshes
+ownership over core's `wp-refresh-post-lock` Heartbeat and, on loss, disables every
+control in the form, blocks submit, suspends core autosave, and shows the native
+takeover dialog. `herd_editor_validate_post_lock_before_save()` then re-checks the
+submitted token against `_edit_lock` with `hash_equals()` on `admin_init` and
+`wp_die()`s with 409 before `post.php` can write. That last check is deliberately
+stricter than core's, which reports only *other* users: it also stops an old tab
+belonging to the same user from overwriting a newer session.
 
-### Hardening completed in code
+**2 — Attribute escaping.** `serializeBlockAttributes()` in `src/document.js` mirrors
+core's `serialize_block_attributes()` exactly, converting `--`, `<`, `>`, `&`, and
+escaped quotes to Unicode escapes. `tests/document.test.js` asserts the output for a
+fixture containing comment terminators, HTML, ampersands, backslashes, quotes,
+emoji, and nested repeater values. Untouched blocks still round-trip byte-for-byte.
 
-- ACF private APIs remain isolated in the form bridge. Pending requests are aborted and late responses are ignored when selection changes; disposal runs ACF's remove lifecycle.
-- Document content is synchronized before form submit and preview-related clicks. Native form inputs and block edits both drive dirty state and unload protection; canceled submits retain protection.
-- The native WordPress post form remains the only persistence endpoint.
-- `herd_editor_user_can_access( bool $allowed, WP_User $user, WP_Post $post ): bool` defaults to administrators who can edit the post. Sites can opt pilot editors in through the filter.
-- The existing `herd_editor_post_types` filter remains unchanged.
-- Rows retain roving keyboard navigation, accessible action labels, status announcements, retryable ACF errors, confirmed deletion, and responsive structural controls.
+**3 — Legacy ACF keys.** `mergeAcfBlockData()` in `src/acf/helpers.js` merges ACF's
+serialization over the stored data rather than replacing it, so a field that was
+renamed, removed from the group, or hidden by conditional logic keeps its stored
+value when an unrelated field is edited.
+
+A plain merge would be wrong on its own, because deleting a repeater row also omits
+that row's keys and a merge would resurrect them the moment the field grew back to
+that length. So an omitted key is dropped when — and only when — it addresses a row
+the submitted value no longer has: ACF names sub-values `<field>_<index>_<subfield>`,
+and the submitted row count (or, for flexible content, the layout list) decides
+whether that index still exists. An index the field still has means the omission is
+conditional logic and the value is kept. A field that merely shares a prefix
+(`cards_footnote` beside `cards`) is never treated as a row. When the length cannot
+be read the key is preserved, because losing a value is worse than carrying a stale
+one.
+
+**4 — Whole-document validation.** `herd_editor_validate_document_acf()` walks the
+parsed tree and validates every ACF block's serialized data against its field group
+on the server, including blocks Herd never mounted, and maps errors back to block
+rows.
+
+**5 — Block eligibility.** `herd_editor_block_metadata()` publishes `allowed`
+(from `herd_editor_allowed_block_types()`, which honours the site's
+`allowed_block_types_all` policy), `inserter`, `parent`, `ancestor`, `multiple`,
+and the post type's `templateLock`. `canAddBlock()` in `src/adapters.js` enforces
+all of it in the mutation layer, not only in the UI.
+
+**6 — ACF storage mode.** `herd_editor_acf_storage_mode()` reports `comment`,
+`post_meta`, or `unknown`, and `readOnly` is set for any `acf/*` block that is not
+`comment`. Unknown is treated as unsupported, so a future ACF storage feature Herd
+does not recognize degrades to read-only instead of being silently mis-saved.
+
+**7 — Spacer removal.** `tools/migrate-spacer.php` provides `--dry-run` inventory, a
+resumable migration that records completed fields in an option, and `--verify`.
+The procedure is written up in `docs/spacer-removal.md`. The shim is deliberately
+independent of the editing screen, so turning off the screen never rewrites field
+groups.
+
+**8 — Autosave.** Herd enqueues core's `autosave`, which owns its per-user revision
+and session-storage recovery. `src/post-lock.js` suspends it the instant ownership
+is lost, so autosave cannot become a second stale writer. This is code-complete but
+is exactly the kind of behaviour that has to be confirmed in a browser.
+
+**12 — Icon set.** `herd_editor_icon_set()` now passes every icon through the same
+`wp_kses()` SVG allowlist used for registered block icons and drops anything that
+survives as an empty string, rather than trusting markup because it came from the
+theme. The `herd_editor_icons` filter is a supported way in, so the set is only as
+safe as whatever last wrote to it.
+
+**13 — Add-button label.** The repeater add button now raises only the first
+character and leaves the rest of the authored label alone, so a field group's
+"Add FAQ" stays "Add FAQ".
+
+### Open items and accepted risks
+
+- **9 — Save, redirect, and starter-content integration.** The default-editor
+  redirect, auto-draft seeding, revision message carry-through, and `post.php`
+  round trip depend on WordPress request order and Classic Editor hooks. They
+  cannot be established by unit tests. Covered by the matrix below.
+- **10 — Coupling to ACF markup.** Herd deliberately moves ACF's own inputs and
+  preserves its data attributes rather than recreating controls, so an ACF markup
+  or event-hook change could leave controls present but disconnected — most likely
+  in table repeaters, flexible layouts, cloned rows, media fields, and nested
+  groups. The suite models expected ACF output; it is not a substitute for a smoke
+  test against the installed ACF Pro. **Re-run the matrix after any ACF Pro
+  upgrade.**
+- **11 — Performance.** The built bundle is 377 KiB uncompressed
+  (`herd-editor.js` 88.5 KiB, CSS 144 KiB, RTL CSS 144 KiB); webpack warns on the
+  entrypoint size. The UI also installs scoped mutation observers. No timing or
+  memory benchmark on a long page has been taken. Measure during the pilot.
 
 ## Compatibility matrix
 
-| Area | Implementation status | Browser release status |
+| Area | Implementation | Browser status |
 | --- | --- | --- |
-| All registered ACF blocks | Cataloged and handled by generic bridge | Inventory sweep required |
-| Paragraph, Heading, Custom HTML, Shortcode | Adapter and unit coverage complete | Save/reload check required |
+| All registered ACF blocks | Generic bridge, eligibility-gated | Inventory sweep required |
+| Paragraph, Heading, Custom HTML, Shortcode | Adapters and unit coverage complete | Save/reload check required |
 | Other registered/unknown blocks | Preserved read only | Round-trip check required |
+| ACF `usePostMeta` / unknown storage | Forced read only | Confirm the badge appears |
 | Block and Classic Editor interoperability | Standard `post_content` retained | Fixture comparison required |
+| Post locking and takeover | Core lock, Heartbeat, server-side recheck | **Two-user race required** |
+| Autosave and recovery | Core autosave, suspended on lock loss | Signed-in verification required |
 | Draft/update/revisions/preview | Native post form retained | Signed-in verification required |
 | Schedule/private posts | Native publish box retained | Signed-in verification required |
 | Featured media/page attributes/templates | Native meta boxes retained | Signed-in verification required |
 | Page-level ACF fields | Native ACF post boxes retained | Deep-field verification required |
-| ACF unavailable / plugin deactivation | Herd access disabled; content stays standard | Deactivation check required |
+| ACF unavailable / plugin deactivation | Herd declines; content stays standard | Deactivation check required |
 
 ## Known exclusions
 
-- Autosave and local draft recovery.
 - Creation of core or unsupported blocks.
-- Arbitrary nesting, template manipulation, reusable/synced-pattern structure, and structural changes to core or fallback blocks.
+- Arbitrary nesting, template manipulation, reusable/synced-pattern structure, and
+  structural changes to core or fallback blocks.
 - A visual frontend canvas inside Herd Editor.
-- A claim of universal support for every block WordPress can register; support targets all registered HerdPress ACF blocks plus the four named core adapters.
+- A claim of universal support for every block WordPress can register. Support
+  targets all registered HerdPress ACF blocks plus the four named core adapters.
 
 ## Pilot and release checklist
 
-- [ ] Connect a signed-in browser to the local WordPress site.
-- [ ] Create disposable drafts and insert/mount every registered ACF block; confirm no failed or leaking form host.
-- [ ] Deep-test Page with Sidebar, Hero, and Moments across TinyMCE, flexible content, repeaters, media/file, groups, conditional logic, taxonomy, links, numbers, and selects.
+Run in order. The first group is what the audit called for first.
+
+- [ ] Connect a signed-in browser to the WordPress site.
+- [ ] **Two-user race:** open the same post in Herd and in Gutenberg as different
+      users. Confirm the second is refused the lock, the takeover screen appears,
+      taking over returns to the editor that was chosen, and the losing session
+      disables immediately on the next heartbeat.
+- [ ] **Same-user stale tab:** leave a Herd tab open, edit and save the post
+      elsewhere, then save the stale tab. Confirm the 409 refusal, not a silent
+      overwrite.
+- [ ] **Hostile round trip:** author field values containing `-->`, `--`, `<`, `&`,
+      `"`, backslashes, and emoji. Save, reload, and open in Gutenberg. Confirm no
+      block-recovery prompt and no corruption.
+- [ ] **Legacy key preservation:** seed a block with active fields plus removed,
+      renamed, conditionally hidden, and unknown keys. Change one visible value,
+      save, reload, and assert exactly which keys survived. Then delete a repeater
+      row, save, and confirm the row's keys are gone and do not return when a new
+      row is added.
+- [ ] Create disposable drafts and insert/mount every registered ACF block; confirm
+      no failed or leaking form host.
+- [ ] Deep-test Page with Sidebar, Hero, and Moments across TinyMCE, flexible
+      content, repeaters, media/file, groups, conditional logic, taxonomy, links,
+      numbers, and selects.
+- [ ] Confirm a block excluded by the site's allowed-block policy is not offered,
+      and that a locked block offers no duplicate/delete/reorder control.
 - [ ] Save/reload Paragraph, Heading levels, Custom HTML, and Shortcode.
-- [ ] Verify insert, duplicate, reorder, delete confirmation, undo/redo, single-instance restrictions, keyboard flow, announcements, and large-page responsiveness/performance.
-- [ ] Round-trip identical fixtures through Herd, Block Editor, and Classic Editor; compare serialized content and frontend output.
-- [ ] Verify update, preview, revisions, scheduling, privacy, featured image, parent/template, page-level ACF, pilot/non-pilot roles, ACF unavailable behavior, and Herd deactivation.
-- [ ] Record WordPress, ACF Pro, Classic Editor, Herd SEO, theme, browser, and device versions used for sign-off.
+- [ ] Verify insert, duplicate, reorder, delete confirmation, undo/redo,
+      single-instance restrictions, keyboard flow, announcements, and large-page
+      responsiveness. **Record timings for the performance item above.**
+- [ ] Submit a post with an invalid required field inside a collapsed ACF block;
+      confirm the save is refused and the affected row opens and focuses.
+- [ ] Round-trip identical fixtures through Herd, Block Editor, and Classic Editor;
+      compare serialized content and frontend output.
+- [ ] Verify update, preview, revisions, autosave recovery, scheduling, privacy,
+      featured image, parent/template, page-level ACF, pilot/non-pilot roles, ACF
+      unavailable behavior, and Herd deactivation.
+- [ ] Dry-run `tools/migrate-spacer.php`, then deactivate Herd and confirm spacers
+      became Message fields and reactivation restores them.
+- [ ] Record WordPress, ACF Pro, Classic Editor, Herd SEO, theme, browser, and
+      device versions used for sign-off.
 
 ## Automated verification
 
-As of August 26, 2026, `npm test` passes 18 tests, `npm run build` succeeds, and both PHP entry files pass `php -l`. Automated coverage includes all adapters, body and exact-attribute replacement, cloning/client IDs, unsupported preservation, history behavior, and single-instance restrictions.
+As of August 27, 2026: `npm test` passes **321 tests**, `npm run build` succeeds
+(two webpack size warnings, no errors), and every PHP file passes `php -l`.
+Coverage includes all adapters, core-equivalent attribute serialization with
+hostile fixtures, ACF data merge and row-deletion semantics, body and
+exact-attribute replacement, cloning and client IDs, unsupported-content
+preservation, history behavior, single-instance restrictions, the post-lock
+client, and the ACF layout, repeater, flexible, media, link, group, and
+conditional-logic decorators.
 
 ## Historical phase 1 record
 

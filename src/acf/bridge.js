@@ -1,4 +1,4 @@
-import { buildFetchBlockPayload, dataAttributesFromForm } from './helpers.js';
+import { buildFetchBlockPayload, dataAttributesFromForm, mergeAcfBlockData } from './helpers.js';
 
 /**
  * Compatibility boundary for ACF internals. No UI component should use acf.ajax,
@@ -64,7 +64,8 @@ export class AcfBlockFormBridge {
 
 	handleChange() {
 		if ( ! this.form ) return;
-		const data = dataAttributesFromForm( this.form, this.block.clientId, window.acf );
+		const submitted = dataAttributesFromForm( this.form, this.block.clientId, window.acf );
+		const data = mergeAcfBlockData( this.block.attributes?.data, submitted );
 		const serialized = JSON.stringify( data );
 		if ( serialized === this.lastSerialized ) return;
 		this.lastSerialized = serialized;

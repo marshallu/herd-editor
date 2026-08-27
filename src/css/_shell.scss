@@ -1,5 +1,7 @@
 /* Screen shell: command bar, mode switcher, two-column grid, shared controls. */
 
+@use './field';
+
 .herd-editor-screen {
 	color: var(--herd-ink);
 	margin: 0;
@@ -48,6 +50,20 @@
 	margin: 0;
 }
 
+/*
+ * The caption over the title, and the one thing on this screen that says the
+ * heading is a field. It is the treatment the rail's box headings already use
+ * (_rail.scss, .postbox .hndle), so the two read as the same kind of label.
+ */
+.herd-bar__label {
+	color: var(--herd-ink-3);
+	display: block;
+	font-size: 11px;
+	font-weight: 600;
+	letter-spacing: .07em;
+	text-transform: uppercase;
+}
+
 .herd-editor-screen #titlediv #title {
 	background: transparent;
 	border: 1px solid transparent;
@@ -55,12 +71,12 @@
 	box-shadow: none;
 	box-sizing: border-box;
 	display: block;
-	font-size: 15px;
+	font-size: 24px;
 	font-weight: 600;
 	height: auto;
-	line-height: 1.4;
+	line-height: 1.3;
 	margin: 0 0 0 -6px;
-	max-width: 420px;
+	max-width: 560px;
 	padding: 2px 6px;
 	width: 100%;
 }
@@ -73,6 +89,40 @@
 	font-size: 11px;
 	gap: 2px;
 	min-width: 0;
+}
+
+.herd-bar__slug-text {
+	color: var(--herd-ink-2);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	max-width: 240px;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-bar__slug-text[hidden],
+.herd-editor-screen #post_name[hidden] {
+	display: none;
+}
+
+.herd-bar__slug-edit {
+	background: none;
+	border: 0;
+	color: var(--herd-green-ink);
+	cursor: pointer;
+	font: inherit;
+	font-size: 11px;
+	/* The slug and its prefix sit 2px apart; the action needs to read as separate. */
+	padding: 0 2px 0 6px;
+}
+
+.herd-bar__slug-edit[hidden] {
+	display: none;
+}
+
+.herd-bar__slug-edit:hover {
+	color: var(--herd-green-ink-hover);
+	text-decoration: underline;
 }
 
 .herd-editor-screen #post_name {
@@ -155,6 +205,32 @@
 	color: var(--herd-ink-2);
 }
 
+/*
+ * Where the page actually lives. Only rendered for a post that has somewhere to
+ * live -- for a draft the native Preview button beside it is the whole answer.
+ */
+.herd-bar__view {
+	align-items: center;
+	color: var(--herd-green-ink);
+	display: flex;
+	font-size: 12px;
+	gap: 2px;
+	text-decoration: none;
+	white-space: nowrap;
+}
+
+.herd-bar__view:hover,
+.herd-bar__view:focus {
+	color: var(--herd-green-ink-hover);
+	text-decoration: underline;
+}
+
+.herd-bar__view .dashicons {
+	font-size: 14px;
+	height: 14px;
+	width: 14px;
+}
+
 /* Native #preview-action / #publishing-action relocated into the bar. */
 .herd-bar__native {
 	align-items: center;
@@ -194,55 +270,6 @@
 	background: var(--herd-green-ink-hover);
 	border-color: var(--herd-green-ink-hover);
 	color: #fff;
-}
-
-/* ---------- mode switcher ---------- */
-
-.herd-mode {
-	align-items: center;
-	background: var(--herd-surface);
-	border-bottom: 1px solid var(--herd-line);
-	color: var(--herd-ink-3);
-	display: flex;
-	flex-wrap: wrap;
-	font-size: 12px;
-	gap: 8px;
-	padding: 0 20px 9px;
-}
-
-.herd-seg {
-	border: 1px solid var(--herd-line);
-	border-radius: var(--herd-r);
-	display: inline-flex;
-	overflow: hidden;
-}
-
-.herd-seg > * {
-	background: var(--herd-surface);
-	border: 0;
-	border-right: 1px solid var(--herd-line);
-	color: var(--herd-ink-2);
-	font-size: 12px;
-	line-height: 1.4;
-	padding: 4px 10px;
-	text-decoration: none;
-}
-
-.herd-seg > *:last-child {
-	border-right: 0;
-}
-
-.herd-seg > a:hover,
-.herd-seg > a:focus {
-	background: var(--herd-canvas);
-	color: var(--herd-ink);
-	text-decoration: none;
-}
-
-.herd-seg [aria-current="page"] {
-	background: var(--herd-ink);
-	color: #fff;
-	font-weight: 600;
 }
 
 /* ---------- columns ---------- */
@@ -387,15 +414,11 @@
 .herd-f input[type="search"],
 .herd-f select,
 .herd-f textarea {
-	background: var(--herd-surface);
-	border: 1px solid var(--herd-line);
-	border-radius: var(--herd-r);
-	box-shadow: none;
-	box-sizing: border-box;
-	font-size: 13px;
-	margin: 0;
-	padding: 7px 9px;
-	width: 100%;
+	@include field.control;
+}
+
+.herd-f select {
+	@include field.select;
 }
 
 .herd-f textarea {
@@ -406,9 +429,7 @@
 .herd-f input:focus,
 .herd-f select:focus,
 .herd-f textarea:focus {
-	border-color: var(--herd-green);
-	box-shadow: 0 0 0 3px var(--herd-green-tint);
-	outline: none;
+	@include field.control-focus;
 }
 
 .herd-notice {
@@ -439,6 +460,72 @@
 
 .herd-notice.is-error {
 	border-left-color: var(--herd-danger);
+}
+
+/*
+ * The post-save confirmation. It sits between the sticky bar and the columns,
+ * so it takes .herd-cols' gutter and content width rather than running the
+ * width of the admin body and leaving the block list indented under it.
+ */
+.herd-saved {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	margin: 20px 20px 0;
+	max-width: 1400px;
+}
+
+.herd-saved__text {
+	margin: 0;
+}
+
+.herd-saved__link {
+	align-items: center;
+	color: var(--herd-green-ink);
+	display: flex;
+	gap: 2px;
+	text-decoration: none;
+}
+
+.herd-saved__link:hover,
+.herd-saved__link:focus {
+	color: var(--herd-green-ink-hover);
+	text-decoration: underline;
+}
+
+.herd-saved__link .dashicons {
+	font-size: 14px;
+	height: 14px;
+	width: 14px;
+}
+
+/*
+ * Dismiss is unbordered. It is the quietest thing in the notice -- a bordered
+ * button here would read as the action the notice is asking for, which is the
+ * link, not this.
+ */
+.herd-saved__dismiss {
+	align-items: center;
+	background: none;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	display: flex;
+	margin-left: auto;
+	padding: 2px;
+}
+
+.herd-saved__dismiss:hover {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-saved__dismiss .dashicons {
+	font-size: 16px;
+	height: 16px;
+	width: 16px;
 }
 
 .herd-spinner {
@@ -472,16 +559,16 @@
 		width: 100%;
 	}
 
-	.herd-mode {
-		padding: 0 12px 9px;
-	}
-
 	.herd-cols {
 		padding: 12px;
 	}
 
+	.herd-saved {
+		margin: 12px 12px 0;
+	}
+
 	.herd-editor-screen #title {
-		font-size: 16px;
+		font-size: 20px;
 		max-width: none;
 	}
 }

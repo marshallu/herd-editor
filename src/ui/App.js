@@ -1,14 +1,14 @@
 /** Herd Editor application shell: block list, structural editing, command bar. */
 
 import { createElement, createPortal, useEffect, useMemo, useRef, useState } from '@wordpress/element';
-import { adapterFor, createAcfBlock } from '../adapters.js';
+import { adapterFor, blockMutationPolicy, canAddBlock, createAcfBlock } from '../adapters.js';
 import { DocumentController } from '../controller.js';
 import { parseDocument } from '../document.js';
 import { BarTools } from './CommandBar.js';
 import { BlockRow } from './BlockRow.js';
 import { InsertPoint } from './InsertPoint.js';
 import { AcfForm, CoreEditor, FallbackPanel } from './panels.js';
-import { blockCounts, bodyFor, collectBlocks, isHidden, titleFor, visibleRows } from './blocks.js';
+import { blockCounts, bodyFor, collectBlocks, iconOf, isHidden, titleFor, visibleRows } from './blocks.js';
 import { dropSlot, insertPositionForSlot, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
 import { blockSummary } from './summary.js';
 import { Notice } from './primitives.js';
@@ -28,6 +28,7 @@ export function HerdEditorApp( { config } ) {
 	const [ nativeDirty, setNativeDirty ] = useState( false );
 	const [ announcement, setAnnouncement ] = useState( '' );
 	const [ openGap, setOpenGap ] = useState( null );
+	const [ validationErrors, setValidationErrors ] = useState( [] );
 
 	const rowRefs = useRef( new Map() );
 	const rows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
@@ -49,8 +50,32 @@ export function HerdEditorApp( { config } ) {
 		const changed = ( event ) => {
 			if ( event.target?.id !== 'content' && ! event.target?.closest?.( '#herd-editor-root' ) ) setNativeDirty( true );
 		};
+		const isPublishTransition = ( submitter ) => /publish|schedule/i.test( submitter?.id || submitter?.name || '' );
+		const validate = async () => {
+			const body = new URLSearchParams( { action: 'herd_editor_validate_document', nonce: config.validationNonce || '', postId: String( config.postId ), content: controller.serialize() } );
+			const ids = collectBlocks( controller.blocks ).filter( ( block ) => block.name?.startsWith( 'acf/' ) ).map( ( block ) => block.clientId );
+			ids.forEach( ( id ) => body.append( 'clientIds[]', id ) );
+			const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body } );
+			const payload = await response.json();
+			return payload?.success ? payload.data.errors || [] : [ { message: 'Validation could not be completed.' } ];
+		};
 		const submit = ( event ) => {
 			syncContent();
+			if ( isPublishTransition( event.submitter ) && form?.dataset.herdValidated !== '1' ) {
+				event.preventDefault();
+				validate().then( ( errors ) => {
+					if ( errors.length ) {
+						setValidationErrors( errors );
+						const first = errors[ 0 ];
+						if ( first.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
+						setAnnouncement( `Publishing blocked: ${ errors.length } ACF validation ${ errors.length === 1 ? 'error' : 'errors' } need attention.` );
+						return;
+					}
+					form.dataset.herdValidated = '1'; form.requestSubmit( event.submitter );
+				} ).catch( () => setAnnouncement( 'Publishing blocked because validation could not be completed.' ) );
+				return;
+			}
+			if ( form ) delete form.dataset.herdValidated;
 			submitting = true;
 			queueMicrotask( () => {
 				if ( event.defaultPrevented ) submitting = false;
@@ -75,7 +100,7 @@ export function HerdEditorApp( { config } ) {
 			form?.removeEventListener( 'click', click, true );
 			window.removeEventListener( 'beforeunload', unload );
 		};
-	}, [ nativeDirty ] );
+		}, [ nativeDirty ] );
 
 	const toggleIn = ( setter ) => ( id ) => setter( ( current ) => {
 		const next = new Set( current );
@@ -105,6 +130,7 @@ export function HerdEditorApp( { config } ) {
 
 	/** Move a top-level block to a slot among its named siblings. */
 	const moveToSlot = ( block, toSlot ) => {
+		if ( ! blockMutationPolicy( block, config.templateLock ).move ) return false;
 		const index = moveTargetIndex( controller.blocks, block.clientId, toSlot );
 		if ( index === null ) return false;
 		controller.moveBlock( block.clientId, null, index );
@@ -115,6 +141,7 @@ export function HerdEditorApp( { config } ) {
 
 	/** Add a new block at a slot among the named top-level blocks. */
 	const insertAt = ( slot, name ) => {
+		if ( ! blockMutationPolicy( null, config.templateLock ).insert || ! canAddBlock( name, config.blockTypes[ name ], counts ) ) return;
 		const block = createAcfBlock( name );
 		const index = insertPositionForSlot( controller.blocks, slot );
 		setOpenGap( null );
@@ -205,6 +232,7 @@ export function HerdEditorApp( { config } ) {
 				ancestors: row.ancestors,
 				config,
 				generation: formGeneration,
+				validationErrors: validationErrors.filter( ( error ) => error.blockId === row.block.clientId ),
 				onAttributes: ( attributes ) => {
 					controller.replaceAttributes( row.block.clientId, attributes );
 					refresh();
@@ -257,7 +285,8 @@ export function HerdEditorApp( { config } ) {
 			const metadata = config.blockTypes[ block.name ] || {};
 			const adapter = adapterFor( block, metadata );
 			const slot = row.ancestors.length ? -1 : topLevelSlot( controller.blocks, block.clientId );
-			const structural = adapter.structural && slot >= 0;
+			const policy = blockMutationPolicy( block, config.templateLock );
+			const structural = adapter.structural && slot >= 0 && ( policy.move || policy.remove || policy.insert );
 			const title = nameOf( block );
 
 			const blockRow = el( BlockRow, {
@@ -266,18 +295,19 @@ export function HerdEditorApp( { config } ) {
 				depth: row.ancestors.length,
 				title,
 				summary: blockSummary( block, adapter.id, bodyFor( block ) ),
-				icon: metadata.icon,
-				badge: adapter.editable ? null : ( metadata.registered ? 'Read only' : 'Unsupported' ),
+				icon: iconOf( metadata ),
+				badge: adapter.editable ? null : ( metadata.readOnly ? 'Open in Block Editor' : ( metadata.registered ? 'Read only' : 'Unsupported' ) ),
 				hidden: isHidden( block ),
 				isOpen: openPanels.has( block.clientId ),
 				childrenExpanded: expandedChildren.has( block.clientId ),
 				hasChildren: block.innerBlocks.length > 0,
-				canReorder: structural && named.length > 1,
+				canReorder: structural && policy.move && named.length > 1,
 				isLifted: liftedId === block.clientId,
 				isDragging: drag?.id === block.clientId,
 				dropEdge: drag && drag.overId === block.clientId && drag.id !== block.clientId ? ( drag.after ? 'after' : 'before' ) : null,
 				structural,
-				duplicateDisabled: metadata.multiple === false && counts[ block.name ] > 0,
+				duplicateDisabled: ! policy.insert || metadata.multiple === false && counts[ block.name ] > 0,
+				deleteDisabled: ! policy.remove,
 				tabIndex: focusedId === null ? ( index === 0 ? 0 : -1 ) : ( focusedId === block.clientId ? 0 : -1 ),
 				registerRef: ( node ) => node ? rowRefs.current.set( block.clientId, node ) : rowRefs.current.delete( block.clientId ),
 				onFocus: () => setFocusedId( block.clientId ),
@@ -315,6 +345,7 @@ export function HerdEditorApp( { config } ) {
 					moveToSlot( source, dropSlot( fromSlot, slot, drag.after ) );
 				},
 				onDuplicate: () => {
+					if ( ! policy.insert ) return;
 					const before = new Set( controller.blocks.map( ( candidate ) => candidate.clientId ) );
 					controller.duplicateBlock( block.clientId );
 					const clone = controller.blocks.find( ( candidate ) => ! before.has( candidate.clientId ) );
@@ -327,6 +358,7 @@ export function HerdEditorApp( { config } ) {
 					}
 				},
 				onDelete: () => {
+					if ( ! policy.remove ) return;
 					if ( ! window.confirm( `Delete ${ title }? You can undo this action.` ) ) return;
 					const fallback = named[ slot + 1 ] || named[ slot - 1 ];
 					setOpenPanels( ( current ) => {
@@ -340,10 +372,15 @@ export function HerdEditorApp( { config } ) {
 
 			// Only top-level rows carry an insertion point; an expanded child row
 			// sits inside its parent, where there is no slot to insert into.
-			return slot >= 0
+			return slot >= 0 && blockMutationPolicy( null, config.templateLock ).insert
 				? [ el( InsertPoint, insertPointFor( slot, titleAt( slot - 1 ) ) ), blockRow ]
 				: [ blockRow ];
-		} ).concat( el( InsertPoint, insertPointFor( named.length, titleAt( named.length - 1 ) ) ) ) ),
+		} ).concat( el( InsertPoint, {
+			...insertPointFor( named.length, titleAt( named.length - 1 ) ),
+			// The final insertion point sits immediately above the persistent tail
+			// control, so keep its menu with the document rather than over it.
+			forceAbove: true,
+		} ) ) ),
 
 		el( 'button', {
 			type: 'button',

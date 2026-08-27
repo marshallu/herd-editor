@@ -197,3 +197,53 @@ function herd_editor_width_control( $field ) {
 	return $field;
 }
 add_filter( 'acf/prepare_field/name=width', 'herd_editor_width_control' );
+
+/**
+ * Give the segmented control the room ACF's own row does not have.
+ *
+ * ACF renders the wrapper `class` and `id` settings *before* `width`, each
+ * carrying `data-append => wrapper`, and its field group script folds them into
+ * the width field's `.acf-input`: the input is wrapped in a `ul.acf-hl`, each
+ * appended setting becomes another `li`, and `data-cols` is set to the count.
+ * `acf-global.css` then pins every `li` to a third of the row.
+ *
+ * That third was measured for the sixty pixel number spinner ACF ships. A
+ * segmented control over six presets is several times wider and cannot shrink —
+ * its labels are `white-space: nowrap` and `flex: 1` floors at min-content — so
+ * it overflowed its column and painted over the `class` input beside it. What
+ * that looked like was a seventh, empty width, which is the one thing it was
+ * not.
+ *
+ * So the row is given a wrap and the control is given the line. Scoped to
+ * `herd-width`, the class `herd_editor_width_control()` puts on the wrapper, so
+ * a screen where the swap did not happen is left exactly as ACF ships it.
+ *
+ * Inline rather than a build entry: this is a dozen lines that exist only to
+ * repair the control the function above creates, and they belong beside it
+ * rather than in a stylesheet the editor screen never loads.
+ *
+ * @return void
+ */
+function herd_editor_width_styles() {
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+	if ( ! $screen || 'acf-field-group' !== $screen->post_type || 'post' !== $screen->base ) {
+		return;
+	}
+
+	$row = '.acf-field-setting-wrapper.herd-width > .acf-input > ul.acf-hl[data-cols]';
+
+	wp_register_style( 'herd-editor-width', false, array(), HERD_EDITOR_VERSION );
+	wp_enqueue_style( 'herd-editor-width' );
+	wp_add_inline_style(
+		'herd-editor-width',
+		"{$row} { flex-wrap: wrap; }\n" .
+		// ACF's thirds; the widths are what the control cannot live inside.
+		"{$row} > li { width: auto; }\n" .
+		// The control owns its line; `class` and `id` share the one under it.
+		"{$row} > li:first-child { flex: 0 0 100%; padding-bottom: 10px; }\n" .
+		"{$row} > li ~ li { flex: 1 1 0; min-width: 0; }\n" .
+		// Six presets need about this much and never the whole settings column.
+		".acf-field-setting-wrapper.herd-width .acf-button-group { max-width: 520px; }\n"
+	);
+}
+add_action( 'admin_enqueue_scripts', 'herd_editor_width_styles' );

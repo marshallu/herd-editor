@@ -1,0 +1,70 @@
+/*
+ * The two surfaces that hold native WordPress postboxes.
+ *
+ * WordPress renders every meta box once, and src/rail.js distributes the
+ * resulting .postbox nodes into the rail tabs -- or, where the
+ * herd_editor_rail_tabs filter says so, back into the main column below the
+ * block list. A rule that dresses what is inside a postbox has to reach both,
+ * so both are named here rather than in each file that needs them.
+ */
+
+@use "sass:list";
+
+$boxes: ".herd-editor-screen .herd-main__boxes", ".herd-editor-screen .herd-rail__panel";
+
+@mixin in-boxes($sel) {
+	@each $scope in $boxes {
+		// Nested rather than interpolated as `#{$scope} #{$sel}`: when $sel is a
+		// comma list, interpolation scopes only the first selector in it and
+		// leaves the rest global. Silent, because a loud comment inside a mixin
+		// body is emitted once per include per scope -- with $sel interpolated
+		// into it, which is how it read before this file existed.
+		#{$scope} {
+			#{$sel} {
+				@content;
+			}
+		}
+	}
+}
+
+/*
+ * The postbox surfaces plus the block form host -- every surface in the editor
+ * that holds an ACF field.
+ *
+ * A field type whose whole treatment is Herd's own -- the link chip, say -- is
+ * the same control wherever it renders, so its rules are written once and
+ * emitted for all three rather than duplicated per surface. Chrome the two
+ * surfaces only partly share stays split between _acf.scss and _acf-boxes.scss;
+ * this is for the components that are whole.
+ */
+$surfaces: list.join(".herd-editor__field-host", $boxes, $separator: comma);
+
+@mixin in-surfaces($sel) {
+	@each $scope in $surfaces {
+		// Nested rather than interpolated, for the reason in-boxes() gives above.
+		#{$scope} {
+			#{$sel} {
+				@content;
+			}
+		}
+	}
+}
+
+/*
+ * The rail alone.
+ *
+ * `$boxes` covers both postbox surfaces, and most chrome belongs on both. A
+ * handful of rules do not: they exist because the rail is a single ~300px
+ * column, and `.herd-main__boxes` is the escape hatch a field group is routed
+ * to precisely when it is too wide for that. Stretching a setting row across
+ * 900px of main column, or folding a repeater header into a footer there, would
+ * be solving a problem that surface does not have.
+ */
+@mixin in-rail($sel) {
+	// Nested rather than interpolated, for the reason in-boxes() gives above.
+	.herd-editor-screen .herd-rail__panel {
+		#{$sel} {
+			@content;
+		}
+	}
+}
