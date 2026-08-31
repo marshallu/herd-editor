@@ -103,6 +103,34 @@ $herd_saved       = herd_editor_saved_notice( $post );
 
 		<?php
 		/*
+		 * ACF's own hidden inputs, without which nothing in the rail is saved.
+		 *
+		 * ACF_Form_Post::save_post() opens with acf_verify_nonce( 'post' ) and
+		 * returns -- silently, writing nothing -- when it fails. The nonce it reads
+		 * comes from acf_form_data(), and on a post screen the only thing that calls
+		 * that is ACF_Form_Post::edit_form_after_title(), hooked to
+		 * `edit_form_after_title`. That hook is fired by wp-admin's
+		 * edit-form-advanced.php, which this screen replaces, so it never ran here:
+		 * every ACF field in a relocated meta box has been posting its value to a
+		 * handler that threw it away. Block fields were unaffected -- they travel in
+		 * the document, through src/acf/bridge.js, and never go near this path.
+		 *
+		 * `validation` is ACF's *client-side* AJAX validation, and it is off on
+		 * purpose. Turning it on would hang acf.validation's own submit handler off
+		 * this form, and the form already has one: src/ui/App.js intercepts,
+		 * preflights the lock, validates the document and re-submits. Two
+		 * interceptors re-entering each other is not a thing to introduce for a
+		 * round trip Herd already makes. The server still validates on its own --
+		 * save_post() calls acf_validate_save_post() for a published post whatever
+		 * this says.
+		 */
+		if ( function_exists( 'acf_form_data' ) ) {
+			acf_form_data( array( 'screen' => 'post', 'post_id' => $post->ID, 'validation' => false ) );
+		}
+		?>
+
+		<?php
+		/*
 		 * The form's default button: the one a browser clicks when Return is
 		 * pressed in a text field.
 		 *
