@@ -393,8 +393,10 @@ export function HerdEditorApp( { config } ) {
 		} ).concat( el( InsertPoint, {
 			...insertPointFor( named.length, titleAt( named.length - 1 ) ),
 			// The final insertion point sits immediately above the persistent tail
-			// control, so keep its menu with the document rather than over it.
-			forceAbove: true,
+			// control, so keep its menu with the document rather than over it —
+			// unless the document is short enough that above is where the room
+			// runs out, in which case InsertPoint drops it back down.
+			preferAbove: true,
 		} ) ) ),
 
 		el( 'button', {

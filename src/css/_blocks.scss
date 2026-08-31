@@ -422,9 +422,9 @@
 /* ---------- inserter ---------- */
 
 /*
- * The panel is positioned by the gap it belongs to, and flips above it when
- * there is not enough room below. .herd-main sets no overflow, so it is free to
- * overlap the rows underneath.
+ * The panel is positioned by the gap it belongs to, and opens on whichever side
+ * has the room — InsertPoint measures that and sets --herd-inserter-h to match.
+ * .herd-main sets no overflow, so it is free to overlap the rows underneath.
  */
 .herd-gap__panel {
 	left: 0;
@@ -441,6 +441,10 @@
 	bottom: calc(100% + 4px);
 }
 
+/*
+ * The height is whatever the gap measured as free between the button and the
+ * viewport edge; the results list takes the slack under the fixed search box.
+ */
 .herd-inserter {
 	background: var(--herd-surface);
 	border: 1px solid var(--herd-line);
@@ -448,6 +452,7 @@
 	box-shadow: 0 6px 20px rgba(0, 0, 0, .13);
 	display: flex;
 	flex-direction: column;
+	max-height: var(--herd-inserter-h, 340px);
 	overflow: hidden;
 }
 
@@ -475,7 +480,8 @@
 }
 
 .herd-inserter__body {
-	max-height: 296px;
+	flex: 1 1 auto;
+	min-height: 0;
 	overflow-y: auto;
 	padding: 4px 0;
 }
