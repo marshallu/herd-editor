@@ -164,29 +164,25 @@ test( 'the clone row is left alone, so rows added later decorate themselves', ()
 	assert.equal( clone.classList.contains( 'herd-link' ), false );
 } );
 
-test( 'a table-layout repeater is normalised, so one shape reaches the CSS', () => {
+test( 'a table-layout repeater keeps ACF’s native DOM for reliable saving', () => {
 	const doc = build();
 	enhanceBoxes( fakeAcf() );
 
 	const footer = doc.querySelector( '[data-name="footer_cta"] .acf-repeater' );
-	assert.equal( footer.classList.contains( '-table' ), false );
-	assert.equal( footer.classList.contains( '-block' ), true );
-	assert.equal( footer.querySelector( 'thead' ), null );
-	// The label the `<thead>` was holding is now on the field, where the rail's
-	// stacked layout can find it.
-	const cell = footer.querySelector( 'tr.acf-row > td.acf-fields' );
-	assert.ok( cell );
-	assert.equal( cell.querySelector( '.acf-field > .acf-label label' ).textContent, 'Link' );
+	assert.equal( footer.classList.contains( '-table' ), true );
+	assert.equal( footer.classList.contains( '-block' ), false );
+	assert.ok( footer.querySelector( 'thead' ) );
+	assert.ok( footer.querySelector( 'tr.acf-row > td.acf-field' ) );
+	assert.equal( footer.classList.contains( 'herd-repeater' ), false );
 } );
 
-test( 'a rail repeater collapses to card rows, whatever its authored layout', () => {
+test( 'a block-layout rail repeater collapses to card rows', () => {
 	const doc = build();
 	enhanceBoxes( fakeAcf() );
 
-	doc.querySelectorAll( '.herd-rail__panel .acf-repeater' ).forEach( ( repeater ) => {
-		assert.equal( repeater.classList.contains( 'herd-repeater' ), true );
-		assert.ok( repeater.querySelector( ':scope > .herd-repeater__head' ), 'no header' );
-	} );
+	const repeater = doc.querySelector( '[data-name="custom_nav_items"] .acf-repeater' );
+	assert.equal( repeater.classList.contains( 'herd-repeater' ), true );
+	assert.ok( repeater.querySelector( ':scope > .herd-repeater__head' ), 'no header' );
 
 	const row = doc.querySelector( '[data-name="custom_nav_items"] tr.acf-row:not(.acf-clone)' );
 	assert.equal( row.classList.contains( 'herd-card' ), true );

@@ -25,9 +25,9 @@
  *
  * Timing: herd-editor.php enqueues the bundle in the footer with no defer, so
  * this runs synchronously before jQuery's `ready` — which is when ACF initialises
- * a postbox's fields. That is the same window `prepare` gives the block form, and
- * `normalizeTableRepeaters` needs it: it moves nodes, and moving an initialised
- * field tears down what ACF built on it.
+ * a postbox's fields. The rail decorates the stable controls ACF renders, but
+ * deliberately does not rebuild table-layout repeaters: their Link controls own
+ * several hidden inputs which must remain in ACF's original DOM for saving.
  */
 
 import { decorateAccordions } from './accordion.js';
@@ -35,7 +35,6 @@ import { decorateDeps } from './dep.js';
 import { applyWidths } from './widths.js';
 import { decorateLinks, resetLinks } from './link.js';
 import { decorateRepeaters } from './repeater.js';
-import { normalizeTableRepeaters } from './table-repeater.js';
 
 /** The two surfaces src/rail.js puts postboxes on; see src/css/_boxes.scss. */
 export const BOX_SURFACES = '.herd-rail__panel, .herd-main__boxes';
@@ -72,10 +71,6 @@ function decorateRow( row ) {
  */
 export function enhanceBoxes( acf ) {
 	const stops = [];
-	document.querySelectorAll( RAIL ).forEach( ( panel ) => {
-		// First, and before ACF initialises: it moves nodes.
-		normalizeTableRepeaters( panel );
-	} );
 	// Links outside a repeater get the chip and nothing else; there is no row for
 	// them to collapse into.
 	document.querySelectorAll( BOX_SURFACES ).forEach( decorateLinks );

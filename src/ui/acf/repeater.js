@@ -227,6 +227,19 @@ function resetDecoration( row ) {
 function decorateRepeater( field, onRow ) {
 	const repeater = field.querySelector( ':scope > .acf-input > .acf-repeater' );
 	if ( ! repeater || repeater.classList.contains( 'herd-repeater' ) ) return null;
+	/*
+	 * A page-level table repeater is ACF's own persistence surface. In particular,
+	 * the On This Page Navigation field contains Link controls, whose modal writes
+	 * several hidden inputs into each table cell. Rebuilding those cells to look
+	 * like block-layout rows before ACF has initialised them can leave the visible
+	 * link intact while the values submitted by the native repeater are lost.
+	 *
+	 * Block forms are normalised in layout.js before their ACF lifecycle starts.
+	 * Rail postboxes have a different lifecycle, so keep table repeaters native
+	 * here. They retain ACF's table presentation, but their added links now save
+	 * through the exact DOM ACF rendered.
+	 */
+	if ( repeater.classList.contains( '-table' ) ) return null;
 	repeater.classList.add( 'herd-repeater' );
 
 	/*
