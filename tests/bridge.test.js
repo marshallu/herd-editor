@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { JSDOM } from 'jsdom';
 import { AcfBlockFormBridge } from '../src/acf/bridge.js';
 import { mergeAcfBlockData } from '../src/acf/helpers.js';
 
@@ -10,6 +11,28 @@ function fakeHost() {
 		removeEventListener: ( name ) => listeners.delete( name ),
 	};
 	return { host: { innerHTML: '', querySelector: () => form, replaceChildren() { this.innerHTML = ''; }, }, form, listeners };
+}
+
+/*
+ * A real form, and a jQuery stub that records what was bound to it.
+ *
+ * ACF sets a media or link value with acf.val(), which announces it with
+ * jQuery's .trigger( 'change' ) -- a walk of jQuery's own handler list, not a
+ * DOM event. The stub's `on` therefore stands in for the only channel those
+ * values travel on, and the assertions below are about what reaches the DOM's.
+ */
+function jqueryHost() {
+	const dom = new JSDOM( '<div id="host"></div>' );
+	const host = dom.window.document.getElementById( 'host' );
+	const bound = [];
+	const jquery = () => ( {
+		on: ( name, handler ) => bound.push( { name, handler } ),
+		off: ( name, handler ) => {
+			const index = bound.findIndex( ( entry ) => entry.name === name && entry.handler === handler );
+			if ( index > -1 ) bound.splice( index, 1 );
+		},
+	} );
+	return { dom, host, bound, jquery, trigger: ( name, event ) => bound.filter( ( entry ) => entry.name === name ).forEach( ( entry ) => entry.handler( event ) ) };
 }
 
 test( 'accepts a fieldless response', async () => {
@@ -179,4 +202,58 @@ test( 'preserves a row key when the field length cannot be read', () => {
 		mergeAcfBlockData( { cards_0_title: 'A' }, { title: 'New' } ),
 		{ title: 'New', cards_0_title: 'A' }
 	);
+} );
+
+test( 'a value ACF set with jQuery reaches the block data', async () => {
+	const { host, jquery, trigger } = jqueryHost();
+	const commits = [];
+	let input = null;
+	global.window = {
+		jQuery: jquery,
+		acf: { doAction() {}, serialize: () => ( { image: input.value } ) },
+	};
+	const bridge = new AcfBlockFormBridge( { block: { clientId: 'one', attributes: { data: { image: '' } } }, postId: 1, onAttributes: ( value ) => commits.push( value ) } );
+	bridge.fetchForm = async () => '<div class="acf-block-fields"><input type="hidden" name="acf[field_i]" value=""></div>';
+	await bridge.mount( host );
+	input = host.querySelector( 'input' );
+
+	// What choosing an image in ACF's media popup does: the value, then a
+	// jQuery-only announcement of it.
+	input.value = '42';
+	trigger( 'change', { target: input } );
+
+	assert.deepEqual( commits, [ { data: { image: '42' } } ] );
+	bridge.dispose();
+} );
+
+test( 'a native change relayed by jQuery is not dispatched a second time', async () => {
+	const { host, jquery, trigger } = jqueryHost();
+	global.window = { jQuery: jquery, acf: { doAction() {}, serialize: () => ( {} ) } };
+	const bridge = new AcfBlockFormBridge( { block: { clientId: 'one' }, postId: 1, onAttributes() {} } );
+	bridge.fetchForm = async () => '<div class="acf-block-fields"><input type="text" name="acf[field_t]"></div>';
+	await bridge.mount( host );
+	const form = host.querySelector( '.acf-block-fields' );
+	const input = form.querySelector( 'input' );
+	let seen = 0;
+	form.addEventListener( 'change', () => { seen += 1; } );
+
+	// jQuery hands its handlers every native event too. Re-dispatching one would
+	// be an event this form has already had, and each pass would make another.
+	trigger( 'change', { target: input, originalEvent: {} } );
+	assert.equal( seen, 0 );
+
+	trigger( 'change', { target: input } );
+	assert.equal( seen, 1 );
+	bridge.dispose();
+} );
+
+test( 'the jQuery relay is unbound with the form', async () => {
+	const { host, jquery, bound } = jqueryHost();
+	global.window = { jQuery: jquery, acf: { doAction() {}, serialize: () => ( {} ) } };
+	const bridge = new AcfBlockFormBridge( { block: { clientId: 'one' }, postId: 1, onAttributes() {} } );
+	bridge.fetchForm = async () => '<div class="acf-block-fields"></div>';
+	await bridge.mount( host );
+	assert.equal( bound.length, 1 );
+	bridge.dispose();
+	assert.equal( bound.length, 0 );
 } );

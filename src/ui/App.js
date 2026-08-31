@@ -271,6 +271,11 @@ export function HerdEditorApp( { config } ) {
 				 * would otherwise start a whole parallel submission of its own. */
 				if ( document.querySelector( '[data-herd-busy]' ) ) return;
 				markSaving( event.submitter );
+				/* The document the sweep and the recovery record are about to read is
+				 * this one, so the open panel's values have to be in it first. An edit
+				 * that reached the DOM without an event the bridge heard would
+				 * otherwise be validated as the value it replaced. */
+				flushAcfForms();
 				syncContent();
 				const pressed = performance.now();
 				/*
@@ -518,6 +523,12 @@ export function HerdEditorApp( { config } ) {
 				onBridgeMount: registerAcfForm,
 				onAttributes: ( attributes ) => {
 					controller.replaceAttributes( row.block.clientId, attributes );
+					/* The sweep's verdict was about the values this edit has just
+					 * replaced. Left on screen beside a field that now holds an image,
+					 * it goes on saying the field is empty. */
+					setValidationErrors( ( current ) => current.some( ( error ) => error.blockId === row.block.clientId )
+						? current.filter( ( error ) => error.blockId !== row.block.clientId )
+						: current );
 					refresh();
 				},
 			} );

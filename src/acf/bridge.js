@@ -19,6 +19,8 @@ export class AcfBlockFormBridge {
 		this.host = null;
 		this.form = null;
 		this.changeHandler = this.handleChange.bind( this );
+		this.jqueryChangeHandler = this.handleJqueryChange.bind( this );
+		this.$form = null;
 		this.lastSerialized = null;
 		this.request = null;
 		this.disposed = false;
@@ -62,6 +64,8 @@ export class AcfBlockFormBridge {
 		if ( this.enhance ) this.teardown = this.enhance( this.form ) || null;
 		this.form.addEventListener( 'change', this.changeHandler );
 		this.form.addEventListener( 'input', this.changeHandler );
+		this.$form = window.jQuery( this.form );
+		this.$form?.on?.( 'change', this.jqueryChangeHandler );
 		return { status: 'mounted' };
 	}
 
@@ -79,6 +83,35 @@ export class AcfBlockFormBridge {
 		this.flush();
 	}
 
+	/**
+	 * Put a value ACF set itself back on the DOM's own channel.
+	 *
+	 * Choosing an image, a file or a link never reaches a native listener. ACF
+	 * writes the value with acf.val(), which announces it with jQuery's
+	 * .trigger( 'change' ) -- and that walks jQuery's own handler list rather
+	 * than dispatching a DOM event, so nothing bound with addEventListener hears
+	 * it. The block's data therefore kept whatever it was opened with: an image
+	 * added to a block was still missing when the pre-publish sweep read the
+	 * document, which reported the field required with the picture on screen.
+	 *
+	 * Re-dispatching here rather than flushing here is deliberate. This bridge is
+	 * not the only listener that was deaf to those values -- the media row's own
+	 * repaint and every summary in the rail listen for `change` too -- and one
+	 * real event feeds all of them.
+	 *
+	 * @param {Object} event jQuery's event object.
+	 */
+	handleJqueryChange( event ) {
+		// A native event jQuery merely relayed is already on that channel; only a
+		// .trigger() call arrives with no original event behind it.
+		if ( ! event || event.originalEvent ) return;
+		const target = event.target;
+		if ( ! target || ! this.form?.contains?.( target ) ) return;
+		const view = target.ownerDocument?.defaultView;
+		if ( ! view ) return;
+		target.dispatchEvent( new view.Event( 'change', { bubbles: true } ) );
+	}
+
 	dispose() {
 		this.disposed = true;
 		if ( this.request && typeof this.request.abort === 'function' ) this.request.abort();
@@ -88,6 +121,7 @@ export class AcfBlockFormBridge {
 		if ( this.form ) {
 			this.form.removeEventListener( 'change', this.changeHandler );
 			this.form.removeEventListener( 'input', this.changeHandler );
+			this.$form?.off?.( 'change', this.jqueryChangeHandler );
 			window.acf.doAction( 'remove', window.jQuery( this.form ) );
 		}
 		if ( this.host ) this.host.replaceChildren();
