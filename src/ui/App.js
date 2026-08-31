@@ -14,6 +14,7 @@ import { dropSlot, insertPositionForSlot, moveTargetIndex, topLevelPositions, to
 import { blockSummary } from './summary.js';
 import { Notice } from './primitives.js';
 import { beginSave, endSave, guardBusyClicks, watchRestore } from '../save-progress.js';
+import { applySaveResult, buildSaveRequest } from '../save-request.js';
 import { decryptRecovery, deleteRecovery, downloadRecovery, encryptionKey, nativeFormValues, readRecovery, recoveryRecordId, restoreNativeFormValues, writeRecovery, encryptRecovery } from '../recovery.js';
 
 const el = createElement;
@@ -224,119 +225,184 @@ export function HerdEditorApp( { config } ) {
 
 	useEffect( () => {
 		const form = document.getElementById( 'post' );
-		let submitting = false;
 		const changed = ( event ) => {
 			if ( event.target?.id !== 'content' && ! event.target?.closest?.( '#herd-editor-root' ) ) {
 				setNativeDirty( true );
 				setNativeVersion( ( value ) => value + 1 );
 			}
 		};
-		const isPublishTransition = ( submitter ) => /publish|schedule/i.test( submitter?.id || submitter?.name || '' );
-		const validate = async () => {
-			const body = new URLSearchParams( { action: 'herd_editor_validate_document', nonce: config.validationNonce || '', postId: String( config.postId ), content: controller.serialize() } );
-			const ids = collectBlocks( controller.blocks ).filter( ( block ) => block.name?.startsWith( 'acf/' ) ).map( ( block ) => block.clientId );
-			ids.forEach( ( id ) => body.append( 'clientIds[]', id ) );
-			const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body } );
-			const payload = await response.json();
-			return payload?.success ? payload.data.errors || [] : [ { message: 'Validation could not be completed.' } ];
-		};
-		const preflight = async () => {
-			const token = document.getElementById( 'active_post_lock' )?.value || '';
-			const body = new URLSearchParams( { action: 'herd_editor_check_post_lock', nonce: config.lockPreflightNonce || '', postId: String( config.postId ), lock: token } );
-			const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body } );
-			const result = await response.json();
-			return result?.success && result.data?.valid ? null : ( result?.data?.reason || 'connection' );
-		};
 		/*
 		 * Where the wait goes, so the next person to ask does not have to guess.
 		 *
-		 * Nothing here changes what is saved. A publish costs four round trips
-		 * before the editor is usable again -- the lock check, the validation, the
-		 * post to post.php and a full reload of this screen -- and reading the
-		 * validator was not enough to say which of them owns the minute, because it
-		 * is a loop over ACF's in-memory store with no query in it. Same shape as
-		 * post-lock.js's diagnostics: an event, for anything that wants to listen.
+		 * Nothing here changes what is saved. A publish used to cost three
+		 * sequential admin bootstraps -- the lock and validation preflight, the
+		 * post to post.php, then the full render of the screen it redirected to --
+		 * and only the last of those was ever the point. It is one now. Same shape
+		 * as post-lock.js's diagnostics: an event, for anything that wants to listen.
 		 */
 		const report = ( step, started ) => window.dispatchEvent( new CustomEvent( 'herd:save-timing', { detail: { step, ms: Math.round( performance.now() - started ) } } ) );
-		const timed = ( step, work ) => {
-			const started = performance.now();
-			return Promise.resolve( work() ).finally( () => report( step, started ) );
-		};
-		const submit = ( event ) => {
-			// A prior native listener (invalid date, lost lock) has rejected this
-			// submission. It must not start another preflight or a saving treatment.
-			if ( event.defaultPrevented ) return;
-			if ( form?.dataset.herdPreflight !== '1' ) {
-				/* Before the first round trip, not after the last one. The wait this
-				 * reports is almost entirely the two round trips below, and an
-				 * indicator that appeared once those had finished would be on screen
-				 * only for the part that was never slow. */
-				event.preventDefault();
-				/* A second press during the round trips is the thing this is for, and
-				 * it is any second press: Save draft while a publish is in flight
-				 * would otherwise start a whole parallel submission of its own. */
-				if ( document.querySelector( '[data-herd-busy]' ) ) return;
-				markSaving( event.submitter );
-				/* The document the sweep and the recovery record are about to read is
-				 * this one, so the open panel's values have to be in it first. An edit
-				 * that reached the DOM without an event the bridge heard would
-				 * otherwise be validated as the value it replaced. */
-				flushAcfForms();
-				syncContent();
-				const pressed = performance.now();
-				/*
-				 * Two independent questions -- does this browser still hold the lock,
-				 * and do the values pass -- so they are asked at once rather than one
-				 * after the other. They used to be separate passes of this handler,
-				 * which meant a publish paid for two complete admin bootstraps end to
-				 * end before the form was even posted.
-				 */
-				const checked = isPublishTransition( event.submitter ) ? timed( 'validate', validate ) : Promise.resolve( [] );
-				Promise.allSettled( [ timed( 'lock', () => timed( 'recovery', persistRecovery ).then( preflight ) ), checked ] ).then( ( [ lock, values ] ) => {
-					report( 'checks', pressed );
-					/* A lost lock outranks a failed field. The save cannot happen at
-					 * all, so there is nothing useful to say about its contents. */
-					if ( 'rejected' === lock.status ) { endSave(); setLockFailure( 'connection' ); return; }
-					if ( lock.value ) {
-						endSave();
-						setLockFailure( lock.value );
-						window.dispatchEvent( new CustomEvent( 'herd:lock-lost', { detail: { reason: lock.value } } ) );
-						return;
-					}
-					if ( 'rejected' === values.status ) { endSave(); setAnnouncement( 'Publishing blocked because validation could not be completed.' ); return; }
-					const errors = values.value;
-					if ( errors.length ) {
-						endSave();
-						setValidationErrors( errors );
-						const first = errors[ 0 ];
-						if ( first.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
-						setAnnouncement( `Publishing blocked: ${ errors.length } ACF validation ${ errors.length === 1 ? 'error' : 'errors' } need attention.` );
-						return;
-					}
-					form.dataset.herdPreflight = '1'; form.requestSubmit( event.submitter );
-				} );
-				return;
-			}
-			delete form.dataset.herdPreflight;
-			// This is the one path the browser will submit natively. Flush forms
-			// synchronously, then write the complete controller document to #content.
-			const flushing = performance.now();
+
+		/*
+		 * A save, without leaving the page it was made on.
+		 *
+		 * The lock check, the ACF validation and the write are one request now
+		 * (herd_editor_ajax_save_post), so this reads the three answers off one
+		 * reply rather than racing two round trips in front of a third. The
+		 * branches they land in are the same ones they always had.
+		 */
+		const save = async ( submitter ) => {
+			/* The document the sweep and the recovery record are about to read is
+			 * this one, so the open panel's values have to be in it first. An edit
+			 * that reached the DOM without an event the bridge heard would
+			 * otherwise be saved as the value it replaced. */
 			flushAcfForms();
 			syncContent();
-			report( 'flush', flushing );
-			submitting = true;
-			queueMicrotask( () => {
-				if ( event.defaultPrevented ) {
-					submitting = false;
-					// Let every native submit listener finish first: an intercepted
-					// submission must never be left wearing its saving state.
-					endSave();
-				}
+			/*
+			 * The baseline for "clean", captured now rather than when the reply
+			 * lands. What is being saved is this, and an edit made while the
+			 * request is in flight has not been saved and must still read as
+			 * dirty afterwards. Comparing against a fresh serialize() on success
+			 * would quietly call that edit saved and lose it.
+			 */
+			const snapshot = controller.serialize();
+			await persistRecovery();
+
+			const pressed = performance.now();
+			const ids = collectBlocks( controller.blocks ).filter( ( block ) => block.name?.startsWith( 'acf/' ) ).map( ( block ) => block.clientId );
+			let payload;
+			try {
+				/* No Content-Type header: FormData has to set its own, boundary
+				 * and all, and naming one here produces a body nothing can parse. */
+				const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', body: buildSaveRequest( form, submitter, ids ) } );
+				payload = await response.json();
+			} catch ( error ) {
+				/*
+				 * A dropped connection, or a body that is not JSON -- which is what
+				 * an unanticipated wp_die() on the far side looks like from here.
+				 * The document stays dirty and the recovery record stays written;
+				 * this is exactly the case it exists for.
+				 */
+				report( 'save', pressed );
+				endSave();
+				setAnnouncement( 'The save did not complete. Your changes are still here and have been backed up in this browser.' );
+				return;
+			}
+			report( 'save', pressed );
+
+			if ( ! payload?.success ) {
+				endSave();
+				setAnnouncement( payload?.data?.message || 'The save did not complete.' );
+				return;
+			}
+
+			const result = payload.data || {};
+			/* A lost lock outranks a failed field. The save cannot happen at all,
+			 * so there is nothing useful to say about its contents. */
+			if ( result.lock ) {
+				endSave();
+				setLockFailure( result.lock );
+				window.dispatchEvent( new CustomEvent( 'herd:lock-lost', { detail: { reason: result.lock } } ) );
+				return;
+			}
+			if ( result.errors?.length ) {
+				endSave();
+				setValidationErrors( result.errors );
+				const first = result.errors[ 0 ];
+				if ( first.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
+				setAnnouncement( `Publishing blocked: ${ result.errors.length } ACF validation ${ result.errors.length === 1 ? 'error' : 'errors' } need attention.` );
+				return;
+			}
+			if ( ! result.ok ) {
+				/* _wp_translate_postdata() refusing the post data: an impossible
+				 * publish date, or a publish by somebody without the capability. */
+				endSave();
+				setAnnouncement( result.message || 'The save did not complete.' );
+				return;
+			}
+
+			setValidationErrors( [] );
+			controller.cleanSource = snapshot;
+			setNativeDirty( false );
+			applySaveResult( result );
+			/*
+			 * The boot blob is what the command bar and the recovery comparison
+			 * read, and it was written for a screen that would be thrown away
+			 * before any of it went stale. It does not get thrown away now.
+			 */
+			Object.assign( config, {
+				postId: result.postId,
+				saveMarker: result.saveMarker,
+				statusLabel: result.statusLabel,
+				modifiedHuman: result.modifiedHuman,
+				isPublished: result.isPublished,
+				viewUrl: result.viewUrl,
+				permalink: result.permalink,
+			} );
+			/* What config.successfulSave used to do on the way back in. The record
+			 * is deleted only on a save the server has confirmed -- doing it in a
+			 * finally, or before the reply, would throw away the copy that exists
+			 * precisely because a save can fail. */
+			try {
+				await deleteRecovery( recoveryRecordId( config.currentUserId, result.postId ) );
+			} catch ( error ) {
+				// A backup that outlives its save is harmless; it is compared by date.
+			}
+			/* The publish box, the saved notice and the lock watchdog are all
+			 * wired outside this component. Importing them would drag them into
+			 * the bundle graph and cost them the plain-node tests they are written
+			 * to have, so they hear about a save the same way they hear about a
+			 * lost lock. */
+			window.dispatchEvent( new CustomEvent( 'herd:saved', { detail: result } ) );
+			endSave();
+			setSaveState( 'saved' );
+			window.clearTimeout( savedTimer.current );
+			savedTimer.current = window.setTimeout( () => setSaveState( 'idle' ), 1000 );
+			refresh();
+		};
+
+		const submit = ( event ) => {
+			// A prior native listener (invalid date, lost lock) has rejected this
+			// submission. It must not start another save or a saving treatment.
+			if ( event.defaultPrevented ) return;
+			/*
+			 * Always. There is no pass that reaches the browser's own submission
+			 * any more -- the form is posted by fetch and the page stays where it
+			 * is, which is the whole point of this.
+			 */
+			event.preventDefault();
+			/* A second press while one is running is the thing this is for, and it
+			 * is any second press: Save draft while a publish is in flight would
+			 * otherwise start a whole parallel save of its own. */
+			if ( document.querySelector( '[data-herd-busy]' ) ) return;
+			/* Before the request, not after it. An indicator that appeared once the
+			 * reply had landed would be on screen only for the part that was never
+			 * slow -- and markSaving() has to run before buildSaveRequest(), because
+			 * the hidden marker it leaves behind is what carries the pressed
+			 * button's name into a FormData that would not otherwise have it. */
+			markSaving( event.submitter );
+			/*
+			 * Nothing above returns a promise anybody waits on, so a rejection
+			 * that escaped save() would be silent -- and the visible half of that
+			 * is a button left reading "Publishing…" with no save behind it and no
+			 * second press possible, because guardBusyClicks() swallows those. The
+			 * treatment has to come off whatever happened.
+			 */
+			save( event.submitter ).catch( ( error ) => {
+				endSave();
+				setAnnouncement( 'The save did not complete. Your changes are still here.' );
+				window.dispatchEvent( new CustomEvent( 'herd:recovery-diagnostic', { detail: { type: 'save-failed', error: String( error ) } } ) );
 			} );
 		};
 		const click = () => syncContent();
+		/*
+		 * No exemption for a save in progress any more. A save used to be a
+		 * navigation this guard had to be told to let through; now it never
+		 * leaves the page, and the only thing left that unloads a dirty document
+		 * is somebody going somewhere -- Preview, Trash, the editor switcher, the
+		 * back arrow -- which is precisely what should be asked about.
+		 */
 		const unload = ( event ) => {
-			if ( ( controller.dirty || nativeDirty ) && ! submitting ) {
+			if ( controller.dirty || nativeDirty ) {
 				event.preventDefault();
 				event.returnValue = '';
 			}

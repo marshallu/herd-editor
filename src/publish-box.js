@@ -65,15 +65,15 @@ export function wirePublishBox() {
 	 * missing; it differs only in reporting an auto-draft as a draft, which none
 	 * of the comparisons below can tell apart.
 	 */
-	const savedStatus = ( byId( 'original_post_status' ) || byId( 'hidden_post_status' ) )?.value || '';
+	const savedStatus = () => ( byId( 'original_post_status' ) || byId( 'hidden_post_status' ) )?.value || '';
 
 	/*
 	 * What the summary lines said when the page was rendered, kept so Cancel --
 	 * and a date edited back to where it started -- can put them back exactly.
 	 * The stamp is nodes rather than text because core prints the date in a <b>.
 	 */
-	const originalStamp = stamp ? Array.from( stamp.childNodes ).map( ( node ) => node.cloneNode( true ) ) : [];
-	const originalVisibility = visibilityDisplay ? visibilityDisplay.textContent : '';
+	let originalStamp = stamp ? Array.from( stamp.childNodes ).map( ( node ) => node.cloneNode( true ) ) : [];
+	let originalVisibility = visibilityDisplay ? visibilityDisplay.textContent : '';
 
 	/*
 	 * Core's panels ship hidden under `hide-if-js` and post.js slides them open,
@@ -95,6 +95,25 @@ export function wirePublishBox() {
 		if ( ! trigger ) return;
 		trigger.style.display = '';
 		trigger.focus();
+	};
+
+	/**
+	 * Core's date sentence: "Published on: <b>Aug 31, 2026 at 15:54</b>".
+	 *
+	 * Shared by the editing path and the after-a-save path so a date the editor
+	 * has just set and one the server has just confirmed are written by the same
+	 * code, and cannot drift into two spellings of the same minute.
+	 *
+	 * @param {string} publishOn The label before the date, with its colon.
+	 * @param {object} parts     The five values core's touch_time() posts.
+	 * @return {void}
+	 */
+	const writeStamp = ( publishOn, { aa, mm, jj, hh, mn } ) => {
+		if ( ! stamp ) return;
+		const month = byId( 'mm' )?.querySelector( `option[value="${ mm }"]` )?.dataset.text || mm;
+		const when = document.createElement( 'b' );
+		when.textContent = `${ month } ${ parseInt( jj, 10 ) }, ${ aa } at ${ pad( hh ) }:${ pad( mn ) }`;
+		stamp.replaceChildren( document.createTextNode( `${ publishOn } ` ), when );
 	};
 
 	/**
@@ -131,7 +150,7 @@ export function wirePublishBox() {
 		if ( attempted > now ) {
 			publishOn = 'Schedule for:';
 			setButton( 'Schedule' );
-		} else if ( savedStatus !== 'publish' ) {
+		} else if ( savedStatus() !== 'publish' ) {
 			publishOn = 'Publish on:';
 			setButton( 'Publish' );
 		} else {
@@ -145,12 +164,31 @@ export function wirePublishBox() {
 			// including "Publish immediately", which no date can be rewritten into.
 			stamp.replaceChildren( ...originalStamp.map( ( node ) => node.cloneNode( true ) ) );
 		} else {
-			const month = byId( 'mm' )?.querySelector( `option[value="${ mm }"]` )?.dataset.text || mm;
-			const when = document.createElement( 'b' );
-			when.textContent = `${ month } ${ parseInt( jj, 10 ) }, ${ aa } at ${ pad( hh ) }:${ pad( mn ) }`;
-			stamp.replaceChildren( document.createTextNode( `${ publishOn } ` ), when );
+			writeStamp( publishOn, { aa, mm, jj, hh, mn } );
 		}
 		return true;
+	};
+
+	/*
+	 * Core prints the status select with an option for every state the post has
+	 * reached and none for the ones it has not: a draft's select has no
+	 * "Published" in it at all. That used to be settled by the reload -- a
+	 * published post came back with a freshly rendered select -- and a save that
+	 * does not reload has to add the option itself, or the status line goes blank
+	 * and Cancel has nothing to restore to.
+	 *
+	 * Prepended, because that is where core puts it.
+	 */
+	const ensureStatusOption = ( value, label ) => {
+		if ( ! statusSelect ) return null;
+		let option = statusSelect.querySelector( `option[value="${ value }"]` );
+		if ( ! option ) {
+			option = document.createElement( 'option' );
+			option.value = value;
+			statusSelect.prepend( option );
+		}
+		option.textContent = label;
+		return option;
 	};
 
 	/** The status line, the Published option, and whether Save Draft applies. */
@@ -165,26 +203,19 @@ export function wirePublishBox() {
 			 * loses its Edit link because there is no longer a choice to make there.
 			 */
 			setButton( 'Update' );
-			if ( publishOption ) {
-				publishOption.textContent = 'Privately Published';
-			} else {
-				const option = document.createElement( 'option' );
-				option.value = 'publish';
-				option.textContent = 'Privately Published';
-				statusSelect.append( option );
-			}
+			ensureStatusOption( 'publish', 'Privately Published' );
 			statusSelect.value = 'publish';
 			if ( statusEdit ) statusEdit.style.display = 'none';
 		} else {
-			if ( savedStatus === 'future' || savedStatus === 'draft' ) {
+			if ( savedStatus() === 'future' || savedStatus() === 'draft' ) {
 				// Nothing has been published yet, so an option saying so was Private's
 				// doing and goes back out with it.
 				if ( publishOption ) {
 					publishOption.remove();
-					statusSelect.value = byId( 'hidden_post_status' )?.value || savedStatus;
+					statusSelect.value = byId( 'hidden_post_status' )?.value || savedStatus();
 				}
-			} else if ( publishOption ) {
-				publishOption.textContent = 'Published';
+			} else {
+				ensureStatusOption( 'publish', 'Published' );
 			}
 			// Give the link back only when the panel it opens is closed, or it and
 			// the open panel would both be on screen.
@@ -329,14 +360,88 @@ export function wirePublishBox() {
 		if ( panel?.hidden ) byId( `herd-tab-${ panel.dataset.panel }` )?.click();
 		open( datePanel, dateEdit );
 		/*
-		 * A date can be made impossible after the press: the editor stays live while
-		 * the lock preflight and the document validation run, so this rejection can
-		 * arrive with the button already saying "Publishing…". In practice this
-		 * listener is bound before the app's -- assembleRail() runs ahead of
-		 * render() in herd-editor.js -- so it usually stops the submission before
-		 * anything is dressed. Usually is not a thing to rest correctness on, and
-		 * the treatment has exactly one place it comes off.
+		 * A date can be made impossible after the press: the editor stays live
+		 * while the save request is in flight, so this rejection can arrive with
+		 * the button already saying "Publishing…". In practice this listener is
+		 * bound before the app's -- assembleRail() runs ahead of render() in
+		 * herd-editor.js -- so it usually stops the submission before anything is
+		 * dressed. Usually is not a thing to rest correctness on, and the
+		 * treatment has exactly one place it comes off.
 		 */
 		endSave();
 	} );
+
+	/*
+	 * What a page load used to do for this box.
+	 *
+	 * A save no longer throws the screen away, so everything here that was true
+	 * only of the document as it was rendered is now simply stale: the status the
+	 * post was loaded with, and the four sets of hidden mirror fields core prints
+	 * for Cancel to restore from. Left alone, a draft that was just published
+	 * still offers a Publish button, still says "Publish on", and Cancel on the
+	 * date panel still reverts to a date that is no longer the post's.
+	 *
+	 * The order matters. The mirrors are brought up to date first, and the date
+	 * line is written from the server's answer rather than from the fields on
+	 * screen -- once the mirrors say the date is unchanged, syncDate() restores
+	 * `originalStamp` instead of building a sentence, so that capture has to be
+	 * the new one before refresh() runs.
+	 */
+	const adoptSavedState = ( result ) => {
+		const status = result?.postStatus || savedStatus();
+		const hiddenStatus = byId( 'hidden_post_status' );
+		if ( hiddenStatus ) hiddenStatus.value = status;
+
+		/*
+		 * The select still shows whatever it was rendered with -- pressing Publish
+		 * never touches it, because it is the button that decides, not the select
+		 * (_wp_translate_postdata reads `publish`). So the saved status has to be
+		 * put into it here, with an option to hold it if the screen was built
+		 * before the post had ever been in that state.
+		 *
+		 * Private is the odd one: WordPress stores it as its own post status, but
+		 * core's select expresses it as `publish` alongside a visibility radio.
+		 */
+		if ( statusSelect ) {
+			const [ value, label ] = {
+				publish: [ 'publish', 'Published' ],
+				private: [ 'publish', 'Privately Published' ],
+				future: [ 'future', 'Scheduled' ],
+				pending: [ 'pending', 'Pending Review' ],
+			}[ status ] || [ 'draft', 'Draft' ];
+			ensureStatusOption( value, label );
+			statusSelect.value = value;
+		}
+
+		const parts = result?.dateParts || null;
+		[ 'mm', 'jj', 'aa', 'hh', 'mn' ].forEach( ( unit ) => {
+			const field = byId( unit );
+			const mirror = byId( `hidden_${ unit }` );
+			/* The server's copy is the authority: a draft's date fields hold
+			 * whatever the page was rendered with, which is not when it published. */
+			if ( field && parts?.[ unit ] ) field.value = parts[ unit ];
+			if ( mirror && field ) mirror.value = field.value;
+		} );
+
+		const chosen = chosenVisibility();
+		const hiddenVisibility = byId( 'hidden-post-visibility' );
+		if ( hiddenVisibility && chosen ) hiddenVisibility.value = chosen;
+		const password = byId( 'post_password' );
+		const savedPassword = byId( 'hidden-post-password' );
+		if ( password && savedPassword ) savedPassword.value = password.value;
+		const sticky = byId( 'sticky' );
+		const savedSticky = byId( 'hidden-post-sticky' );
+		if ( sticky && savedSticky ) savedSticky.checked = sticky.checked;
+
+		if ( stamp && parts ) {
+			writeStamp( 'publish' === status ? 'Published on:' : ( 'future' === status ? 'Scheduled for:' : 'Publish on:' ), parts );
+			originalStamp = Array.from( stamp.childNodes ).map( ( node ) => node.cloneNode( true ) );
+		}
+
+		refresh();
+		// Cancel on the visibility panel goes back to what is now on screen.
+		if ( visibilityDisplay ) originalVisibility = visibilityDisplay.textContent;
+	};
+
+	window.addEventListener( 'herd:saved', ( event ) => adoptSavedState( event.detail ) );
 }

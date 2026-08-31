@@ -93,6 +93,22 @@ export function installPostLock( { document: documentObject = document, window: 
 	const present = () => documentObject.visibilityState !== 'hidden' && ( documentObject.hasFocus?.() ?? true );
 	const refocus = () => { lastHeartbeat = Date.now(); };
 	windowObject.addEventListener?.( 'focus', refocus );
+	/*
+	 * A save is the strongest possible evidence of ownership: the server checked
+	 * this browser's token and then wrote the post with it, and it renewed the
+	 * lock in the same request. So a save resets the watchdog exactly as a
+	 * heartbeat does -- otherwise a save made late in a throttled interval could
+	 * be followed, seconds later, by this deciding the lock had gone stale.
+	 *
+	 * The token itself is already in the form by the time this runs: it is
+	 * applySaveResult() that writes it, and send() reads #active_post_lock fresh
+	 * on every beat. Only the diagnostic copy needs catching up.
+	 */
+	const saved = ( event ) => {
+		lastHeartbeat = Date.now();
+		latestToken = event.detail?.lock || lockInput()?.value || latestToken;
+	};
+	windowObject.addEventListener?.( 'herd:saved', saved );
 	const watchdog = windowObject.setInterval?.( () => {
 		if ( lost || ! present() ) return;
 		if ( Date.now() - lastHeartbeat > lockWindow ) disable( 'heartbeat-timeout' );
@@ -101,6 +117,7 @@ export function installPostLock( { document: documentObject = document, window: 
 		$( documentObject ).off( '.herd-post-lock' );
 		form.removeEventListener( 'submit', preventSubmit );
 		windowObject.removeEventListener?.( 'focus', refocus );
+		windowObject.removeEventListener?.( 'herd:saved', saved );
 		if ( watchdog ) windowObject.clearInterval?.( watchdog );
 	};
 }

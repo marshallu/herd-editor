@@ -248,3 +248,47 @@ test( 'a slug actually typed is kept', () => {
 	assert.equal( input.value, 'health' );
 	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'health' );
 } );
+
+/*
+ * A save used to bring back a freshly rendered #post_name. It does not now, so
+ * the slug the server actually settled on arrives with the save instead.
+ */
+const saved = ( win, slug ) => win.dispatchEvent( new win.CustomEvent( 'herd:saved', { detail: { slug } } ) );
+
+test( 'publishing shows the slug WordPress chose, not the one the title implies', () => {
+	const win = build( screen( { slug: '', title: 'About' } ) );
+	wireSlugEditor();
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'about' );
+
+	// A second page called About: only the server knows it had to uniquify.
+	saved( win, 'about-2' );
+
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'about-2' );
+	assert.equal( win.document.getElementById( 'post_name' ).value, 'about-2' );
+} );
+
+test( 'a draft save leaves the slug following the title', () => {
+	const win = build( screen( { slug: '', title: 'About' } ) );
+	wireSlugEditor();
+
+	// An unpublished post has no post_name yet, so the server answers with none.
+	saved( win, '' );
+
+	assert.equal( win.document.getElementById( 'post_name' ).value, '' );
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'about' );
+
+	win.document.getElementById( 'title' ).value = 'About Us';
+	win.document.getElementById( 'title' ).dispatchEvent( new win.Event( 'input', { bubbles: true } ) );
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'about-us' );
+} );
+
+test( 'a save does not reach into a slug being edited at that moment', () => {
+	const win = build( screen( { slug: 'counseling' } ) );
+	wireSlugEditor();
+	win.document.getElementById( 'herd-slug-edit' ).click();
+	win.document.getElementById( 'post_name' ).value = 'half-typed';
+
+	saved( win, 'counseling' );
+
+	assert.equal( win.document.getElementById( 'post_name' ).value, 'half-typed' );
+} );

@@ -217,23 +217,31 @@ $herd_saved       = herd_editor_saved_notice( $post );
 		 * way the slug field ships in its no-JS state. A bundle that never runs
 		 * leaves a notice you have to reload past, not a button that does
 		 * nothing when you press it.
+		 *
+		 * The whole shell is printed whether or not there is anything to say,
+		 * because a Herd save no longer arrives with a fresh document: it comes
+		 * back over AJAX and wireSavedNotice() fills these three nodes in
+		 * place. There has to be something here to fill, on a page that loaded
+		 * without a message and on one whose save produced a link where the
+		 * load had none -- so the anchor ships too, hidden, rather than being
+		 * conditional on this particular page load having had a URL.
+		 *
+		 * `role="status"` for the same reason. A notice that only ever appeared
+		 * on a new page load was read out as part of it; one that appears while
+		 * the page stays put has to announce itself.
 		 */
 		?>
-		<?php if ( $herd_saved ) : ?>
-			<div class="herd-notice is-info herd-saved" id="herd-saved">
-				<p class="herd-saved__text"><?php echo wp_kses( $herd_saved['text'], array( 'strong' => array(), 'em' => array() ) ); ?></p>
-				<?php if ( $herd_saved['url'] ) : ?>
-					<a class="herd-saved__link" href="<?php echo esc_url( $herd_saved['url'] ); ?>" target="_blank" rel="noopener">
-						<?php echo esc_html( $herd_saved['label'] ); ?>
-						<span class="dashicons dashicons-external" aria-hidden="true"></span>
-						<span class="screen-reader-text"><?php esc_html_e( ', opens in a new tab', 'herd-editor' ); ?></span>
-					</a>
-				<?php endif; ?>
-				<button type="button" class="herd-saved__dismiss" id="herd-saved-dismiss" aria-label="<?php esc_attr_e( 'Dismiss this notice', 'herd-editor' ); ?>" hidden>
-					<span class="dashicons dashicons-no-alt" aria-hidden="true"></span>
-				</button>
-			</div>
-		<?php endif; ?>
+		<div class="herd-notice is-info herd-saved" id="herd-saved" role="status"<?php echo $herd_saved ? '' : ' hidden'; ?>>
+			<p class="herd-saved__text"><?php echo $herd_saved ? wp_kses( $herd_saved['text'], array( 'strong' => array(), 'em' => array() ) ) : ''; ?></p>
+			<a class="herd-saved__link" href="<?php echo $herd_saved && $herd_saved['url'] ? esc_url( $herd_saved['url'] ) : '#'; ?>" target="_blank" rel="noopener"<?php echo $herd_saved && $herd_saved['url'] ? '' : ' hidden'; ?>>
+				<span class="herd-saved__link-text"><?php echo $herd_saved ? esc_html( $herd_saved['label'] ) : ''; ?></span>
+				<span class="dashicons dashicons-external" aria-hidden="true"></span>
+				<span class="screen-reader-text"><?php esc_html_e( ', opens in a new tab', 'herd-editor' ); ?></span>
+			</a>
+			<button type="button" class="herd-saved__dismiss" id="herd-saved-dismiss" aria-label="<?php esc_attr_e( 'Dismiss this notice', 'herd-editor' ); ?>" hidden>
+				<span class="dashicons dashicons-no-alt" aria-hidden="true"></span>
+			</button>
+		</div>
 
 		<div class="herd-cols">
 			<main class="herd-main">

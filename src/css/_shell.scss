@@ -726,6 +726,20 @@
 	max-width: 1400px;
 }
 
+/*
+ * Every one of these three is display:flex, which beats the user agent's
+ * [hidden] rule outright -- so each needs its own. The notice ships hidden and
+ * wireSavedNotice() reveals it when a save has something to report; the link
+ * ships hidden because a save can produce one on a page that loaded without
+ * one; and the dismiss button ships hidden so a bundle that never runs leaves a
+ * notice that scrolls away rather than a control that does nothing.
+ */
+.herd-saved[hidden],
+.herd-saved__link[hidden],
+.herd-saved__dismiss[hidden] {
+	display: none;
+}
+
 .herd-saved__text {
 	margin: 0;
 }

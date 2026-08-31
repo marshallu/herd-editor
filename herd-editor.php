@@ -200,31 +200,32 @@ function herd_editor_recovery_key() {
 	return $key;
 }
 
-/** Answer whether the browser's exact post-lock token can still save. */
-function herd_editor_ajax_check_post_lock() {
-	check_ajax_referer( 'herd_editor_check_post_lock', 'nonce' );
-	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0;
-	$token   = isset( $_POST['lock'] ) ? (string) wp_unslash( $_POST['lock'] ) : '';
-	$post    = $post_id ? get_post( $post_id ) : null;
-	if ( ! $post || ! herd_editor_supports_post( $post ) ) {
-		wp_send_json_error( array( 'message' => __( 'You cannot save this post.', 'herd-editor' ) ), 403 );
-	}
+/**
+ * Why the browser's exact post-lock token could not save, if it could not.
+ *
+ * The rules core's own lock check leaves implicit, written out: a token has to
+ * be well formed, belong to this user, be recent enough by the same window the
+ * server judges by, and still match what is stored. herd_editor_ajax_save_post()
+ * asks this before it writes anything, which is the point -- ownership is
+ * confirmed in the same request that saves, not in one before it that a
+ * takeover could slip in behind.
+ *
+ * @param int    $post_id Post being edited.
+ * @param string $token   The `active_post_lock` value the browser holds.
+ * @return string One of missing|malformed|another-user|expired|stale, or '' when the token is good.
+ */
+function herd_editor_post_lock_reason( $post_id, $token ) {
 	$current = (string) get_post_meta( $post_id, '_edit_lock', true );
-	$parts   = explode( ':', $token );
+	$parts   = explode( ':', (string) $token );
 	$window  = (int) apply_filters( 'wp_check_post_lock_window', 150 );
-	$reason  = '';
-	if ( '' === $token ) { $reason = 'missing'; }
-	elseif ( 2 !== count( $parts ) || ! ctype_digit( $parts[0] ) || ! ctype_digit( $parts[1] ) ) { $reason = 'malformed'; }
-	elseif ( (int) $parts[1] !== get_current_user_id() ) { $reason = 'another-user'; }
-	elseif ( (int) $parts[0] <= time() - $window ) { $reason = 'expired'; }
-	elseif ( '' === $current ) { $reason = 'missing'; }
-	elseif ( ! hash_equals( $current, $token ) ) { $reason = 'stale'; }
-	if ( $reason ) {
-		wp_send_json_success( array( 'valid' => false, 'reason' => $reason ) );
-	}
-	wp_send_json_success( array( 'valid' => true ) );
+	if ( '' === (string) $token ) { return 'missing'; }
+	if ( 2 !== count( $parts ) || ! ctype_digit( $parts[0] ) || ! ctype_digit( $parts[1] ) ) { return 'malformed'; }
+	if ( (int) $parts[1] !== get_current_user_id() ) { return 'another-user'; }
+	if ( (int) $parts[0] <= time() - $window ) { return 'expired'; }
+	if ( '' === $current ) { return 'missing'; }
+	if ( ! hash_equals( $current, (string) $token ) ) { return 'stale'; }
+	return '';
 }
-add_action( 'wp_ajax_herd_editor_check_post_lock', 'herd_editor_ajax_check_post_lock' );
 
 /** Flatten a parsed Gutenberg tree in the same order as the browser document. */
 function herd_editor_acf_blocks_from_tree( $blocks, &$result ) {
@@ -531,17 +532,174 @@ function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
 	return $errors;
 }
 
-/** AJAX validation is deliberately separate from saving: drafts stay permissive. */
-function herd_editor_ajax_validate_document() {
-	check_ajax_referer( 'herd_editor_validate_document', 'nonce' );
-	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0;
-	$post = $post_id ? get_post( $post_id ) : null;
-	if ( ! $post || ! herd_editor_supports_post( $post ) ) { wp_send_json_error( array( 'message' => __( 'You cannot validate this post.', 'herd-editor' ) ), 403 ); }
-	$content = isset( $_POST['content'] ) ? wp_unslash( $_POST['content'] ) : '';
-	$ids = isset( $_POST['clientIds'] ) && is_array( $_POST['clientIds'] ) ? wp_unslash( $_POST['clientIds'] ) : array();
-	wp_send_json_success( array( 'errors' => herd_editor_validate_document_acf( $content, $ids ) ) );
+/**
+ * The number redirect_post() would have chosen, without redirecting.
+ *
+ * Core decides what a save is called from the status it ended in and which
+ * button posted -- wp-admin/includes/post.php:2189-2205 -- and then carries the
+ * answer in `?message=`. Herd's save never redirects, so the number has to be
+ * worked out on this side and handed back in the response instead.
+ *
+ * Only core's first branch is reachable from here: `addmeta` and `deletemeta`
+ * belong to the Custom Fields box, which posts its own way and never through
+ * this endpoint. Anything else falls through to 4, exactly as core's does.
+ *
+ * @param int $post_id Post that was just saved.
+ * @return int A key into herd_editor_message_table().
+ */
+function herd_editor_save_message( $post_id ) {
+	// phpcs:ignore WordPress.Security.NonceVerification.Missing -- the endpoint verified the save nonce first.
+	if ( ! isset( $_POST['save'] ) && ! isset( $_POST['publish'] ) ) {
+		return 4;
+	}
+	switch ( get_post_status( $post_id ) ) {
+		case 'pending':
+			return 8;
+		case 'future':
+			return 9;
+		case 'draft':
+			return 10;
+		default:
+			// phpcs:ignore WordPress.Security.NonceVerification.Missing -- as above.
+			return isset( $_POST['publish'] ) ? 6 : 1;
+	}
 }
-add_action( 'wp_ajax_herd_editor_validate_document', 'herd_editor_ajax_validate_document' );
+
+/**
+ * Save the whole screen without navigating away from it.
+ *
+ * This is wp-admin/post.php's `editpost` case with the redirect taken off the
+ * end. That case is only ever check_admin_referer() -> edit_post() ->
+ * redirect_post() -> exit (post.php:236-248), and it is edit_post() that does
+ * the actual work, so calling it here saves the post in precisely the way the
+ * native screen does: the same meta boxes, the same ACF_Form_Post::save_post(),
+ * the same revisions, the same content_save_pre normalisation.
+ *
+ * What it also does is fold in the two questions Herd used to ask first. A
+ * publish used to cost three sequential admin bootstraps -- one for the lock
+ * and validation preflight, one for the POST to post.php, one for the redirect
+ * target it landed on -- and only the last of those saved anything. Asking all
+ * three here costs one.
+ *
+ * The failure shapes are the browser's, not core's: a lost lock and a failed
+ * field are both answers, not errors, because src/ui/App.js has somewhere
+ * useful to put each of them. Only a request that should never have been made
+ * comes back as an error status.
+ */
+function herd_editor_ajax_save_post() {
+	$post_id = isset( $_POST['post_ID'] ) ? absint( $_POST['post_ID'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing -- verified immediately below.
+	$post    = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) {
+		wp_send_json_error( array( 'message' => __( 'You cannot save this post.', 'herd-editor' ) ), 403 );
+	}
+
+	/*
+	 * The form's own nonce, under core's own action, so nothing about what the
+	 * screen posts had to change to reach this endpoint. check_ajax_referer()
+	 * rather than check_admin_referer(): the latter answers a bad nonce with
+	 * wp_nonce_ays(), a full HTML "are you sure" page that fetch() cannot read.
+	 */
+	check_ajax_referer( 'update-post_' . $post_id, '_wpnonce' );
+
+	/*
+	 * edit_post() answers every refusal with wp_die(), and an AJAX wp_die is a
+	 * bare string -- the browser's response.json() would throw on it and the
+	 * save would be reported as a network failure. So every refusal it can
+	 * reach is checked here first, where it can be a sentence instead.
+	 */
+	if ( ! current_user_can( 'edit_post', $post_id ) ) {
+		wp_send_json_error( array( 'message' => __( 'You are not allowed to edit this item.', 'herd-editor' ) ), 403 );
+	}
+
+	$lock = herd_editor_post_lock_reason( $post_id, isset( $_POST['active_post_lock'] ) ? wp_unslash( $_POST['active_post_lock'] ) : '' );
+	if ( $lock ) {
+		wp_send_json_success( array( 'ok' => false, 'lock' => $lock ) );
+	}
+
+	/*
+	 * Whether this is a publish transition is the browser's answer to give.
+	 * Core names the two submit controls inconsistently -- a published post's
+	 * Update button is submit_button( 'Update', ..., 'save', ..., array( 'id'
+	 * => 'publish' ) ), so it posts as `save` while carrying id="publish" --
+	 * and only the name is posted. By name alone an Update of a live page and a
+	 * Save draft are the same request, and the case that most needs validating
+	 * would quietly stop being validated. src/save-request.js reads the id.
+	 */
+	if ( ! empty( $_POST['herd_validate'] ) ) {
+		$content = isset( $_POST['content'] ) ? wp_unslash( $_POST['content'] ) : '';
+		$ids     = isset( $_POST['clientIds'] ) && is_array( $_POST['clientIds'] ) ? wp_unslash( $_POST['clientIds'] ) : array();
+		$errors  = herd_editor_validate_document_acf( $content, $ids );
+		if ( $errors ) {
+			wp_send_json_success( array( 'ok' => false, 'errors' => $errors ) );
+		}
+	}
+
+	/*
+	 * The last of edit_post()'s wp_die()s, and the one a normal editor can
+	 * actually reach: _wp_translate_postdata() rejects an impossible publish
+	 * date, and refuses a publish to anyone without the capability
+	 * (wp-admin/includes/post.php:320-322). Running it here on a copy asks the
+	 * same question in a form that can be answered. It reads capabilities and
+	 * rewrites dates and does nothing else, so edit_post() running it again a
+	 * moment later reaches the same verdict.
+	 */
+	// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- verified above, and handed to core exactly as edit_post() hands it: slashed, unsanitised, for core to translate.
+	$translated = _wp_translate_postdata( true, $_POST );
+	if ( is_wp_error( $translated ) ) {
+		wp_send_json_success( array( 'ok' => false, 'message' => $translated->get_error_message() ) );
+	}
+
+	$saved_id = edit_post();
+	if ( is_wp_error( $saved_id ) || ! $saved_id ) {
+		wp_send_json_error( array( 'message' => __( 'The save did not complete.', 'herd-editor' ) ), 500 );
+	}
+
+	$message = herd_editor_save_message( $saved_id );
+	$post    = get_post( $saved_id );
+
+	/*
+	 * Deliberately the same vocabulary as the boot blob in
+	 * herd_editor_enqueue_assets(), so reconciling on the browser side is
+	 * assignment onto the config it already has rather than a translation.
+	 */
+	wp_send_json_success(
+		array(
+			'ok'            => true,
+			'postId'        => (int) $saved_id,
+			'postStatus'    => $post->post_status,
+			'statusLabel'   => herd_editor_status_label( $post ),
+			'modifiedHuman' => herd_editor_saved_label( $post ),
+			'isPublished'   => 'publish' === $post->post_status,
+			'viewUrl'       => herd_editor_view_url( $post ),
+			'permalink'     => (string) get_permalink( $post ),
+			'slug'          => $post->post_name,
+			/*
+			 * The publish date, in the five parts core's touch_time() prints as
+			 * fields. The publish box rebuilds its own date line out of these
+			 * rather than being handed a sentence, so what it shows after a save
+			 * is formatted by exactly the code that formats it while editing.
+			 * Rebuilding from the fields already on screen would not do: they hold
+			 * what the page was rendered with, and "Publish immediately" on a
+			 * draft left open for an hour is an hour wrong by the time it saves.
+			 */
+			'dateParts'     => array(
+				'aa' => get_post_time( 'Y', false, $post ),
+				'mm' => get_post_time( 'm', false, $post ),
+				'jj' => get_post_time( 'd', false, $post ),
+				'hh' => get_post_time( 'H', false, $post ),
+				'mn' => get_post_time( 'i', false, $post ),
+			),
+			'saveMarker'    => (string) get_post_modified_time( 'U', true, $post ),
+			'notice'        => herd_editor_saved_notice( $post, $message ),
+			'nonce'         => wp_create_nonce( 'update-post_' . $saved_id ),
+			/* The save renewed the lock; hand the new token back so the
+			 * watchdog in src/post-lock.js measures against this one. */
+			'lock'          => herd_editor_active_post_lock( $saved_id ),
+			'editUrl'       => herd_editor_url( $saved_id ),
+		)
+	);
+}
+add_action( 'wp_ajax_herd_editor_save_post', 'herd_editor_ajax_save_post' );
 
 /** Render core's lock dialog while keeping every return path in Herd or its list. */
 function herd_editor_post_lock_dialog( $post, $list_url ) {
@@ -1183,9 +1341,7 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				'singular' => herd_editor_singular_lower( $post ),
 				/** Filter how many ACF blocks Expand all mounts before asking for confirmation. */
 				'expandWarnAt' => (int) apply_filters( 'herd_editor_expand_warn_at', 8 ),
-				'validationNonce' => wp_create_nonce( 'herd_editor_validate_document' ),
 				'recoveryKey' => herd_editor_recovery_key(),
-				'lockPreflightNonce' => wp_create_nonce( 'herd_editor_check_post_lock' ),
 				/* The window the server judges a lock by, so the browser watchdog
 				 * measures against the same number rather than a guess of its own. */
 				'lockWindow' => (int) apply_filters( 'wp_check_post_lock_window', 150 ),

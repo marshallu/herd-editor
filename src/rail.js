@@ -231,6 +231,26 @@ export function wireSlugEditor() {
 		if ( ! wrap.classList.contains( 'is-editing' ) ) value.textContent = shown();
 	} );
 
+	/*
+	 * What the post actually got called.
+	 *
+	 * Until a post is published its post_name is empty -- wp_insert_post() only
+	 * derives one from the title once the status leaves draft -- so a draft save
+	 * answers with '' and the display goes on following the title, which is
+	 * right. A publish answers with the real slug, and the real slug is not
+	 * always the derived one: WordPress uniquifies it, so the second page called
+	 * "About" is about-2 and no amount of deriving in the browser would know it.
+	 *
+	 * Writing it into #post_name pins it, which is the correct outcome from here
+	 * on: a published post's slug does not follow its title either.
+	 */
+	window.addEventListener( 'herd:saved', ( event ) => {
+		const saved = event.detail?.slug;
+		if ( ! saved || wrap.classList.contains( 'is-editing' ) ) return;
+		input.value = saved;
+		value.textContent = shown();
+	} );
+
 	slug.addEventListener( 'click', expand );
 	edit.addEventListener( 'click', expand );
 	input.addEventListener( 'blur', collapse );
@@ -246,10 +266,14 @@ export function wireSlugEditor() {
 /**
  * The post-save notice, and getting rid of it.
  *
- * The confirmation lives in the URL -- it is how a form POST tells the page it
- * came back to what happened -- so dismissing has to take it out of the URL as
- * well as out of the DOM. Leave it there and a reload congratulates you again
- * for a save you made ten minutes ago.
+ * Two ways in. A Herd save answers over AJAX and says what happened in the
+ * reply, which arrives here as herd:saved. A save made anywhere else -- Classic,
+ * a restored revision -- still comes back on a redirect and says it in the URL,
+ * and that one is already on the page by the time this runs.
+ *
+ * Dismissing has to deal with both: hiding the notice, and taking the message
+ * out of the URL. Leave it there and a reload congratulates you again for a save
+ * you made ten minutes ago.
  *
  * The button ships hidden, so a bundle that never runs leaves a notice that
  * scrolls away rather than one with a dead control in it.
@@ -259,9 +283,48 @@ export function wireSavedNotice() {
 	const button = document.getElementById( 'herd-saved-dismiss' );
 	if ( ! notice || ! button ) return;
 
+	/*
+	 * A Herd save does not reload the screen any more, so the notice it earns
+	 * cannot arrive as part of a fresh document: the save endpoint returns the
+	 * same { text, label, url } that herd_editor_saved_notice() prints, and the
+	 * shell sitting here hidden is filled in from it.
+	 *
+	 * The nodes are filled rather than rebuilt because the anchor carries a
+	 * dashicon and a screen-reader-text span that have nothing to do with which
+	 * save this is -- replacing its innerHTML would throw both away.
+	 */
+	const show = ( saved ) => {
+		if ( ! saved?.text ) return;
+		const text = notice.querySelector( '.herd-saved__text' );
+		if ( text ) text.textContent = saved.text;
+		const link = notice.querySelector( '.herd-saved__link' );
+		if ( link ) {
+			const label = link.querySelector( '.herd-saved__link-text' );
+			if ( label ) label.textContent = saved.label || '';
+			if ( saved.url && saved.label ) {
+				link.href = saved.url;
+				link.hidden = false;
+			} else {
+				link.hidden = true;
+			}
+		}
+		/* Re-inserted rather than merely unhidden, so role="status" announces a
+		 * second save as well as the first: an assistive technology reports what
+		 * changes inside a live region, and a notice that was already on screen
+		 * saying "Page updated." does not change when it says it again. */
+		const parent = notice.parentNode;
+		const next = notice.nextSibling;
+		notice.remove();
+		notice.hidden = false;
+		parent?.insertBefore( notice, next );
+	};
+	window.addEventListener( 'herd:saved', ( event ) => show( event.detail?.notice ) );
+
 	button.hidden = false;
 	button.addEventListener( 'click', () => {
-		notice.remove();
+		/* Hidden rather than removed: there is another save coming, and a notice
+		 * torn out of the document has nothing left for show() to fill in. */
+		notice.hidden = true;
 		// Dismissing must not drop focus to the body; the back arrow is the
 		// nearest thing above where the notice was.
 		document.querySelector( '.herd-bar__back' )?.focus();

@@ -2,13 +2,18 @@
 /**
  * What a save has to say for itself.
  *
- * Herd posts the whole screen to post.php and comes back on a redirect, the way
- * Classic does, so the confirmation is a page-load artefact rather than
- * something the editor app raises for itself. Core packs the answer into a
- * `message` query arg and unpacks it in wp-admin/edit-form-advanced.php -- a
- * file Herd does not load. Both halves of that are here: the arg is carried
- * through the two redirects that rebuild Herd's URL, and this is where it is
- * turned back into a sentence.
+ * Core packs the answer to a save into a `message` query arg and unpacks it in
+ * wp-admin/edit-form-advanced.php -- a file Herd does not load. This is where it
+ * is turned back into a sentence instead, and where the arg is carried through
+ * the redirects that rebuild Herd's URL.
+ *
+ * There are two ways a save gets here now. A Herd save is an AJAX request that
+ * never leaves the page, and herd_editor_ajax_save_post() works the number out
+ * with herd_editor_save_message() and passes it to herd_editor_saved_notice()
+ * directly. A save made anywhere else -- Classic, a restored revision, a Herd
+ * screen whose bundle never ran -- still posts to post.php and comes back on a
+ * redirect, and that one arrives as `?message=`. Both end up in the same
+ * sentence, which is the point of keeping the message table here.
  *
  * @package herd-editor
  */
@@ -214,12 +219,23 @@ function herd_editor_message_table( $post ) {
  * Anything a `post_updated_messages` filter baked in is therefore stripped, so
  * a notice never ends up with two links to the same page.
  *
- * @param WP_Post|null $post Post being edited.
+ * The number is an argument rather than something read from `$_GET` here,
+ * because a Herd save no longer travels through a redirect to acquire one: the
+ * save endpoint works it out with herd_editor_save_message() and hands the
+ * finished notice back in its response. `$_GET['message']` is still the answer
+ * for every save that did navigate -- one made in Classic, a revision restored
+ * -- so passing nothing keeps the original behaviour.
+ *
+ * @param WP_Post|null $post   Post being edited.
+ * @param int|null     $number The message code, or null to read `?message=`.
  * @return array{text:string,label:string,url:string}|null
  */
-function herd_editor_saved_notice( $post ) {
-	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$number = isset( $_GET['message'] ) ? absint( $_GET['message'] ) : 0;
+function herd_editor_saved_notice( $post, $number = null ) {
+	if ( null === $number ) {
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$number = isset( $_GET['message'] ) ? absint( $_GET['message'] ) : 0;
+	}
+	$number = absint( $number );
 	if ( ! $post || ! $number ) {
 		return null;
 	}

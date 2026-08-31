@@ -315,3 +315,106 @@ test( 'a screen without a publish box is left alone', () => {
 	assert.doesNotThrow( () => wirePublishBox() );
 	assert.equal( win.document.getElementById( 'submitdiv' ), null );
 } );
+
+/*
+ * A save used to be a page load, and everything the box captured at wire time
+ * -- the status the post was loaded with, and the hidden mirror fields Cancel
+ * restores from -- was refreshed by that reload. It is not now.
+ */
+const saved = ( win, detail ) => win.dispatchEvent( new win.CustomEvent( 'herd:saved', { detail } ) );
+
+const published = ( over = {} ) => ( {
+	ok: true,
+	postId: 42,
+	postStatus: 'publish',
+	dateParts: { aa: '2026', mm: '08', jj: '31', hh: '12', mn: '33' },
+	...over,
+} );
+
+test( 'a published draft offers Update rather than Publish', () => {
+	const win = build( screen( { status: 'draft' } ) );
+	wirePublishBox();
+	assert.equal( byId( win, 'publish' ).value, 'Publish' );
+
+	byId( win, 'original_post_status' ).value = 'publish';
+	saved( win, published() );
+
+	assert.equal( byId( win, 'publish' ).value, 'Update' );
+} );
+
+test( 'the date line stops promising and starts reporting', () => {
+	const win = build( screen( { status: 'draft', stamp: 'Publish <b>immediately</b>' } ) );
+	wirePublishBox();
+
+	byId( win, 'original_post_status' ).value = 'publish';
+	saved( win, published() );
+
+	assert.equal( byId( win, 'timestamp' ).textContent, 'Published on: Aug 31, 2026 at 12:33' );
+} );
+
+test( 'the date comes from the server, not from the fields the page was rendered with', () => {
+	const win = build( screen( { status: 'draft' } ) );
+	wirePublishBox();
+
+	byId( win, 'original_post_status' ).value = 'publish';
+	// A draft left open: the fields still say 12:33, but it published at 14:05.
+	saved( win, published( { dateParts: { aa: '2026', mm: '09', jj: '01', hh: '14', mn: '05' } } ) );
+
+	assert.equal( byId( win, 'timestamp' ).textContent, 'Published on: Sep 1, 2026 at 14:05' );
+	assert.equal( byId( win, 'jj' ).value, '01' );
+} );
+
+test( 'Cancel on the date panel goes back to the date that was saved, not the one that was loaded', () => {
+	const win = build( screen( { status: 'draft' } ) );
+	wirePublishBox();
+
+	byId( win, 'original_post_status' ).value = 'publish';
+	saved( win, published( { dateParts: { aa: '2026', mm: '09', jj: '01', hh: '14', mn: '05' } } ) );
+
+	// Now edit the date and change your mind.
+	byId( win, 'jj' ).value = '15';
+	click( win, '.cancel-timestamp' );
+
+	assert.equal( byId( win, 'jj' ).value, '01' );
+	assert.equal( byId( win, 'timestamp' ).textContent, 'Published on: Sep 1, 2026 at 14:05' );
+} );
+
+test( 'Cancel on the status panel goes back to the status that was saved', () => {
+	const win = build( screen( { status: 'draft' } ) );
+	wirePublishBox();
+
+	byId( win, 'original_post_status' ).value = 'publish';
+	saved( win, published() );
+
+	click( win, '.edit-post-status' );
+	byId( win, 'post_status' ).value = 'draft';
+	click( win, '.cancel-post-status' );
+
+	assert.equal( byId( win, 'post_status' ).value, 'publish' );
+} );
+
+test( 'a scheduled post says so', () => {
+	const win = build( screen( { status: 'draft' } ) );
+	wirePublishBox();
+
+	byId( win, 'original_post_status' ).value = 'future';
+	saved( win, published( { postStatus: 'future', dateParts: { aa: '2026', mm: '09', jj: '01', hh: '09', mn: '00' } } ) );
+
+	assert.equal( byId( win, 'timestamp' ).textContent, 'Scheduled for: Sep 1, 2026 at 09:00' );
+} );
+
+test( 'a saved draft is still a draft, and still offers to be published', () => {
+	const win = build( screen( { status: 'draft' } ) );
+	wirePublishBox();
+
+	saved( win, published( { postStatus: 'draft' } ) );
+
+	assert.equal( byId( win, 'publish' ).value, 'Publish' );
+	assert.equal( byId( win, 'hidden_post_status' ).value, 'draft' );
+} );
+
+test( 'a save on a screen with no publish box is not an error', () => {
+	const win = build( '<div class="wrap herd-editor-screen"><form id="post"></form></div>' );
+	wirePublishBox();
+	assert.doesNotThrow( () => saved( win, published() ) );
+} );

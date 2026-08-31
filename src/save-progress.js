@@ -1,19 +1,21 @@
 /**
- * What a save in progress looks like, from the first interception onwards.
+ * What a save in progress looks like, from the press to the answer.
  *
- * Pressing Publish on this screen is not one submission but up to three. App.js
- * intercepts the first, persists a recovery copy and preflights the post lock,
- * then re-submits; intercepts that one, revalidates every ACF block on the
- * server, and re-submits again; only the third reaches post.php. The two round
- * trips in front are where the wait is, so the treatment has to start on the
- * first interception. Starting it on the last would put it on screen only for
- * the part that was never slow -- and that pass runs flushAcfForms() and
- * syncContent() synchronously, so anything written in the same tick as a flush
- * of every mounted TinyMCE may never paint at all.
+ * App.js intercepts the submission, dresses the control that started it, and
+ * posts the form over AJAX; the page stays where it is until the reply lands.
+ * The treatment has to start on the press rather than when the request returns,
+ * which is the part that was never slow -- and the same pass runs
+ * flushAcfForms() and syncContent() synchronously, so anything written in the
+ * same tick as a flush of every mounted TinyMCE may never paint at all.
  *
  * Core's post.js owns this on the block and classic editors, and Herd does not
  * enqueue post.js. Save draft had been given the treatment by hand; Publish, the
  * slower of the two, had none.
+ *
+ * beginSave() also does something the labels do not advertise: the hidden input
+ * it leaves in the form, so the busy label is not what posts, is what carries
+ * the pressed button's name into a FormData that would not otherwise have it.
+ * See buildSaveRequest() in save-request.js.
  *
  * This module is deliberately free of build-time imports, like publish-box.js
  * and post-lock.js, so it can be tested in plain node. App.js cannot: it reaches
