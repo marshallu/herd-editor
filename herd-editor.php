@@ -321,6 +321,164 @@ function herd_editor_field_is_visible( $field, $block_id, $seen = array() ) {
 	return false;
 }
 
+/**
+ * Does `$name` address a repeater or flexible-content row the form no longer has?
+ *
+ * The mirror of `addressesRemovedRow()` in src/acf/helpers.js, and it exists for
+ * the same reason: an omitted key is normally a value worth keeping, but a key
+ * belonging to a row the editor deleted would come back the moment the field
+ * grew to that length again. A repeater stores its row count, flexible content
+ * the list of layouts in play; an index at or past that length is a dead row.
+ *
+ * @param string $name      A meta name, without its leading underscore.
+ * @param array  $converted Meta the form just submitted.
+ * @return bool
+ */
+function herd_editor_data_addresses_removed_row( $name, $converted ) {
+	foreach ( $converted as $field => $value ) {
+		if ( ! is_string( $field ) || '_' === substr( $field, 0, 1 ) ) { continue; }
+		/* ACF names sub-values `<field>_<index>_<subfield>`, so `facts` owns
+		 * `facts_0_number` but not a sibling that merely shares its prefix, like
+		 * `facts_footnote`. */
+		if ( 0 !== strpos( $name, $field . '_' ) || ! preg_match( '/^(\d+)_/', substr( $name, strlen( $field ) + 1 ), $row ) ) { continue; }
+		if ( is_array( $value ) ) {
+			$length = count( $value );
+		} elseif ( is_int( $value ) || ( is_string( $value ) && ctype_digit( $value ) ) ) {
+			$length = (int) $value;
+		} else {
+			// A length that cannot be read decides nothing: losing a value is
+			// worse than carrying a stale one.
+			continue;
+		}
+		if ( (int) $row[1] >= $length ) { return true; }
+	}
+	return false;
+}
+
+/**
+ * Reduce a block's `data` to the one dialect ACF can read it in.
+ *
+ * ACF stores block values two ways. A <form> posts them keyed by field key and
+ * nested — `field_r => [ 'row-0' => [ field_s => '100' ] ]` — while saved block
+ * comments hold them flattened to meta names, `facts => 1, facts_0_number =>
+ * '100', _facts_0_number => field_s`. `ACF_Local_Meta::add()` converts the first
+ * into the second, and decides which it has been handed by looking at the *first
+ * key alone*.
+ *
+ * Herd hands it both at once. `mergeAcfBlockData()` writes what the form
+ * submitted — field keys — over the block's stored data, which after its first
+ * save is flat, and keeps whatever the form omitted so a conditionally hidden
+ * field is not erased by an edit somewhere else on the same block. The result
+ * begins with a field key, so ACF converts the whole thing: it runs
+ * `acf_update_values()` over the flat leftovers too, `acf_get_field()` resolves
+ * a meta name like `heading` or `facts` to the field of that name, and the
+ * stale scalar is written back last and wins. A text field silently reverts to
+ * its previous value; a repeater is worse, because its flat key holds a row
+ * count, and updating a repeater with a scalar empties it. That is a filled
+ * repeater lost on the next Save Draft.
+ *
+ * So the halves are converted apart and merged as meta, which is a dialect ACF
+ * stores verbatim. What the form submitted wins outright for the fields it
+ * rendered; the rest — a hidden field, a retired one, a repeater behind a toggle
+ * nobody turned on — stays flat and untouched, which is the only shape that
+ * survives the round trip.
+ *
+ * @param array $data A block's `data` attribute.
+ * @return array The same values, in meta format.
+ */
+function herd_editor_normalize_acf_block_data( $data ) {
+	if ( ! is_array( $data ) || ! $data || ! function_exists( 'acf_is_field_key' ) || ! function_exists( 'acf_setup_meta' ) ) {
+		return $data;
+	}
+
+	$request = array();
+	$meta    = array();
+	foreach ( $data as $key => $value ) {
+		if ( acf_is_field_key( $key ) ) {
+			$request[ $key ] = $value;
+		} else {
+			$meta[ $key ] = $value;
+		}
+	}
+	// One dialect on its own is already something ACF reads correctly.
+	if ( ! $request || ! $meta ) {
+		return $data;
+	}
+
+	/* ACF caches loaded values under "{$post_id}:{$field_name}", repeater
+	 * sub-values included, and acf_reset_meta() does not clear that store — so
+	 * every block gets an id no earlier block has used. */
+	static $namespace = 0;
+	$scratch   = 'block_herd-editor-normalize-' . ( ++$namespace );
+	$converted = acf_setup_meta( $request, $scratch );
+	acf_reset_meta( $scratch );
+	if ( ! is_array( $converted ) ) {
+		return $data;
+	}
+
+	$kept = array();
+	foreach ( $meta as $key => $value ) {
+		$name = is_string( $key ) ? preg_replace( '/^_/', '', $key ) : (string) $key;
+		// The form rendered this field and has just spoken for it.
+		if ( array_key_exists( $name, $converted ) ) { continue; }
+		if ( herd_editor_data_addresses_removed_row( $name, $converted ) ) { continue; }
+		$kept[ $key ] = $value;
+	}
+
+	// Union rather than array_merge: what the form submitted wins, and neither
+	// half's keys are renumbered on the way through.
+	return $converted + $kept;
+}
+
+/**
+ * Normalise every ACF block in content on its way to the database.
+ *
+ * Runs before `acf_parse_save_blocks()` at 5, so ACF is handed data in a single
+ * dialect and its own conversion becomes a no-op rather than a rewrite.
+ *
+ * @param string $text Post content, slashed.
+ * @return string
+ */
+function herd_editor_normalize_saved_blocks( $text = '' ) {
+	if ( ! function_exists( 'acf_has_block_type' ) ) {
+		return $text;
+	}
+	$raw      = stripslashes( (string) $text );
+	$replaced = preg_replace_callback(
+		'/<!--\s+wp:(?P<name>[\S]+)\s+(?P<attrs>{[\S\s]+?})\s+(?P<void>\/)?-->/',
+		'herd_editor_normalize_saved_blocks_callback',
+		$raw
+	);
+	/* Content nothing here rewrote goes back untouched rather than through a
+	 * slashing round trip, and a pattern that gave up — a backtrack limit on a
+	 * very long document — must never be mistaken for an empty post. */
+	if ( null === $replaced || $replaced === $raw ) {
+		return $text;
+	}
+	return addslashes( $replaced );
+}
+add_filter( 'content_save_pre', 'herd_editor_normalize_saved_blocks', 4, 1 );
+
+/**
+ * Rewrite one block comment's `data`, leaving everything else exactly as found.
+ *
+ * @param array $matches The preg matches.
+ * @return string
+ */
+function herd_editor_normalize_saved_blocks_callback( $matches ) {
+	$name  = isset( $matches['name'] ) ? $matches['name'] : '';
+	$attrs = isset( $matches['attrs'] ) ? json_decode( $matches['attrs'], true ) : null;
+	if ( ! $name || ! is_array( $attrs ) || empty( $attrs['data'] ) || ! is_array( $attrs['data'] ) || ! acf_has_block_type( $name ) ) {
+		return $matches[0];
+	}
+	$normalized = herd_editor_normalize_acf_block_data( $attrs['data'] );
+	if ( $normalized === $attrs['data'] ) {
+		return $matches[0];
+	}
+	$attrs['data'] = $normalized;
+	return '<!-- wp:' . $name . ' ' . acf_serialize_block_attributes( $attrs ) . ' ' . ( isset( $matches['void'] ) ? $matches['void'] : '' ) . '-->';
+}
+
 /** Validate all ACF block values, including forms that Herd has not mounted. */
 function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
 	$blocks = array();
@@ -330,7 +488,11 @@ function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
 		return $errors;
 	}
 	foreach ( $blocks as $index => $block ) {
-		$data   = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? $block['attrs']['data'] : array();
+		/* The document under validation has not been through content_save_pre, so
+		 * its blocks still carry whatever the browser last wrote — for an edited
+		 * block, field keys over the flat data it was loaded with. Handed to ACF
+		 * mixed, a filled repeater reads as empty and reports itself required. */
+		$data   = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? herd_editor_normalize_acf_block_data( $block['attrs']['data'] ) : array();
 		$fields = (array) acf_get_block_fields( array( 'name' => $block['blockName'], 'data' => $data ) );
 		if ( ! $fields ) { continue; }
 		/* ACF caches loaded values under "{$post_id}:{$field_name}", repeater
