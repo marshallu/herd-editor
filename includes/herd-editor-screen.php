@@ -101,6 +101,29 @@ $herd_saved       = herd_editor_saved_notice( $post );
 		<input type="hidden" id="excerpt" name="excerpt" value="<?php echo esc_attr( $post->post_excerpt ); ?>" />
 		<input type="hidden" name="content" id="content" value="<?php echo esc_attr( $post->post_content ); ?>" />
 
+		<?php
+		/*
+		 * The form's default button: the one a browser clicks when Return is
+		 * pressed in a text field.
+		 *
+		 * Core solves this inside post_submit_meta_box(), which opens with a hidden
+		 * Save "so that the browser chooses the right button when form is submitted
+		 * with Return key" (wp-admin/includes/meta-boxes.php). That button still
+		 * exists here -- but the default button is the first submit in tree order,
+		 * and src/rail.js lifts #publishing-action out of the publish box and into
+		 * the command bar below, which is above the rail that core's copy travels
+		 * to. Publish became the default button, and every single-line text field on
+		 * the screen is inside this form: the title, and every ACF field in every
+		 * mounted block panel. Return in any of them published the post.
+		 *
+		 * So core's guarantee is restored where the form now starts, rather than by
+		 * guarding one field at a time. `name` is what matters -- presence is all
+		 * _wp_translate_postdata() reads -- and the id only has to be free, because
+		 * core's own #save is still in the rail.
+		 */
+		?>
+		<div style="display:none;"><input type="submit" name="save" id="herd-default-save" value="<?php esc_attr_e( 'Save', 'herd-editor' ); ?>" /></div>
+
 		<header class="herd-bar">
 			<a class="herd-bar__back" href="<?php echo esc_url( $herd_list_url ); ?>" aria-label="<?php esc_attr_e( 'Back to the post list', 'herd-editor' ); ?>">&larr;</a>
 

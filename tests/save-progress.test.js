@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { JSDOM } from 'jsdom';
 import { beginSave, endSave, guardBusyClicks, submitIntent, watchRestore } from '../src/save-progress.js';
 
@@ -217,4 +218,38 @@ test( 'a page that was never saving is left alone', () => {
 
 	assert.equal( ended, 0 );
 	assert.equal( byId( win, 'publish' ).value, 'Publish' );
+} );
+
+/* ---------- the form's default button ---------- */
+
+/*
+ * The control a browser clicks when Return is pressed in a text field is the
+ * first submit in tree order, and every single-line field on this screen -- the
+ * title, and every ACF field in every mounted block panel -- is inside form#post.
+ *
+ * Core keeps that safe with a hidden Save at the top of post_submit_meta_box().
+ * src/rail.js lifts #publishing-action into the command bar, which is above the
+ * rail core's copy travels to, so Publish took the position and Return published
+ * the post. herd-editor-screen.php restores the guarantee where the form starts.
+ *
+ * Read off the template rather than a fixture, because a fixture written here
+ * would only be asserting against itself -- the thing that can regress is the
+ * order of the real thing.
+ */
+test( 'the screen puts a default Save ahead of the lifted publish button', () => {
+	const screenTemplate = readFileSync( new URL( '../includes/herd-editor-screen.php', import.meta.url ), 'utf8' );
+	const fallback = screenTemplate.indexOf( 'id="herd-default-save"' );
+	const bar = screenTemplate.indexOf( 'id="herd-bar-native"' );
+
+	assert.notEqual( fallback, -1, 'the default submit button is gone' );
+	assert.ok( fallback < bar, 'Publish is lifted into #herd-bar-native, so the default Save has to come first' );
+	assert.match( screenTemplate.slice( fallback - 120, fallback ), /type="submit" name="save"/ );
+} );
+
+/* It posts as a draft save, so the bar names it rather than saying nothing. */
+test( 'a Return-key submission is a draft save', () => {
+	assert.deepEqual(
+		submitIntent( { id: 'herd-default-save', name: 'save', value: 'Save' } ),
+		{ label: 'Saving…', saveState: 'saving-draft' }
+	);
 } );
