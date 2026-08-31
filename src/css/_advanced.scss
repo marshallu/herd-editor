@@ -1,0 +1,103 @@
+/**
+ * The Advanced disclosure at the foot of an open block: WordPress's HTML anchor.
+ *
+ * It sits below the block's fields and has to read as a footnote to them, not as
+ * another field group. Hence the rule above it, the 12px toggle, and a body that
+ * only exists once you have asked for it.
+ */
+
+.herd-advanced {
+	border-top: 1px solid var(--herd-line-soft);
+	margin: 16px -24px -16px;
+	padding: 0 24px;
+}
+
+.herd-advanced__toggle {
+	align-items: center;
+	background: transparent;
+	border: 0;
+	color: var(--herd-ink-2);
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	font-size: 12px;
+	gap: 4px;
+	padding: 10px 0;
+	width: 100%;
+}
+
+.herd-advanced__toggle:hover {
+	color: var(--herd-ink);
+}
+
+.herd-advanced__toggle .dashicons {
+	font-size: 16px;
+	height: 16px;
+	width: 16px;
+}
+
+/*
+ * A closed disclosure still has to say whether there is an anchor under it.
+ * Without this the only way to audit a page's jump links is to open every block.
+ */
+.herd-advanced__peek {
+	background: var(--herd-canvas);
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	margin-left: auto;
+	padding: 2px 6px;
+}
+
+.herd-advanced__body {
+	display: grid;
+	gap: 10px;
+	padding-bottom: 16px;
+}
+
+.herd-advanced__field {
+	max-width: 380px;
+}
+
+.herd-advanced__field > input[type="text"] {
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.herd-advanced__hint {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	margin: 0;
+	max-width: 52ch;
+}
+
+/*
+ * The link and its copy button read as one line: the URL is the thing, the
+ * button is how you take it. It is text rather than an anchor deliberately --
+ * following it would leave the post with the document unsaved.
+ */
+.herd-advanced__link {
+	align-items: center;
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px 8px;
+	margin: 0;
+}
+
+.herd-advanced__url {
+	color: var(--herd-ink-3);
+	font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+	font-size: 11px;
+	overflow-wrap: anywhere;
+}
+
+.herd-advanced__copy {
+	flex: none;
+}
+
+@media (max-width: 782px) {
+	.herd-advanced {
+		margin: 12px -8px -12px;
+		padding: 0 8px;
+	}
+}

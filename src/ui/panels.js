@@ -6,6 +6,7 @@ import { changeHeadingLevel, replaceWrapperContent, wrapperInfo } from '../adapt
 import { AcfBlockFormBridge } from '../acf/bridge.js';
 import { contextForBlock } from '../acf/helpers.js';
 import { enhanceBlockForm, layoutBlockForm } from './acf/layout.js';
+import { anchorOf, normalizeAnchor } from './anchors.js';
 import { bodyFor } from './blocks.js';
 import { Field, Notice, Spinner } from './primitives.js';
 
@@ -108,6 +109,89 @@ export function CoreEditor( { block, adapterId, onBody, onHeading } ) {
 			value: body,
 			onChange: ( event ) => onBody( event.target.value ),
 		} ) );
+}
+
+/**
+ * The block's Advanced disclosure: WordPress's HTML anchor, and nothing else yet.
+ *
+ * The anchor is stored where WordPress stores it -- the block comment's own
+ * `anchor` attribute, not an ACF field -- so it is the same value the Block
+ * Editor and the theme already read, and it survives Herd being switched off.
+ *
+ * Closed by default. An anchor is something you go looking for, and a block that
+ * has none should not spend a row of the form saying so.
+ */
+export function AdvancedPanel( { block, permalink, isDuplicate, onAnchor } ) {
+	const [ open, setOpen ] = useState( false );
+	const [ copied, setCopied ] = useState( false );
+	const urlRef = useRef();
+	const anchor = anchorOf( block );
+	const fieldId = `herd-anchor-${ block.clientId }`;
+	const bodyId = `${ fieldId }-body`;
+	const url = anchor ? `${ permalink || '' }#${ anchor }` : '';
+
+	useEffect( () => {
+		if ( ! copied ) return undefined;
+		const timer = window.setTimeout( () => setCopied( false ), 2000 );
+		return () => window.clearTimeout( timer );
+	}, [ copied ] );
+
+	/* A clipboard write can be refused -- an insecure origin, a permission the
+	 * browser withholds. Selecting the text is the honest fallback: the author
+	 * still gets the link, they just press the keys themselves. */
+	const copy = async () => {
+		try {
+			await navigator.clipboard.writeText( url );
+			setCopied( true );
+		} catch {
+			const node = urlRef.current;
+			if ( ! node ) return;
+			const range = document.createRange();
+			range.selectNodeContents( node );
+			const selection = window.getSelection();
+			selection.removeAllRanges();
+			selection.addRange( range );
+		}
+	};
+
+	return el( 'div', { className: 'herd-advanced' },
+		el( 'button', {
+			type: 'button',
+			className: 'herd-advanced__toggle',
+			'aria-expanded': open,
+			'aria-controls': bodyId,
+			onClick: () => setOpen( ( value ) => ! value ),
+		},
+		el( 'span', { className: `dashicons dashicons-arrow-${ open ? 'down' : 'right' }-alt2`, 'aria-hidden': true } ),
+		'Advanced',
+		// A closed row still has to say whether there is an anchor under it, or
+		// auditing a page's jump links means opening every block on it.
+		! open && anchor ? el( 'code', { className: 'herd-advanced__peek' }, `#${ anchor }` ) : null ),
+
+		open ? el( 'div', { className: 'herd-advanced__body', id: bodyId },
+			isDuplicate ? el( Notice, { status: 'error' },
+				`Another block on this page already uses #${ anchor }. A jump link can only reach the first of them, so give one a different anchor.` ) : null,
+			el( Field, { label: 'HTML anchor', htmlFor: fieldId, className: 'herd-advanced__field' },
+				el( 'input', {
+					id: fieldId,
+					type: 'text',
+					value: anchor,
+					spellCheck: false,
+					autoComplete: 'off',
+					placeholder: 'admissions-deadlines',
+					'aria-describedby': `${ fieldId }-help`,
+					onChange: ( event ) => {
+						const value = normalizeAnchor( event.target.value );
+						onAnchor( value || undefined );
+					},
+				} ) ),
+			anchor
+				? el( 'p', { className: 'herd-advanced__link', id: `${ fieldId }-help` },
+					el( 'code', { ref: urlRef, className: 'herd-advanced__url' }, url ),
+					el( 'button', { type: 'button', className: 'herd-ghost herd-advanced__copy', onClick: copy }, copied ? 'Copied' : 'Copy link' ) )
+				: el( 'p', { className: 'herd-advanced__hint', id: `${ fieldId }-help` },
+					'Name this block and it becomes a jump link — a web address that scrolls straight to it. Leave it blank for no link.' ) )
+			: null );
 }
 
 /** Unsupported blocks are preserved untouched and handed to the Block Editor. */

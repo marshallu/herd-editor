@@ -611,6 +611,17 @@
 	color: var(--herd-ink-2);
 }
 
+/*
+ * Validation red at rest, which is the one sense that earns a resting tint: two
+ * blocks claiming the same anchor is a fault in the document, not a state of
+ * this block, and it has to be visible on a collapsed row.
+ */
+.herd-badge--danger {
+	background: var(--herd-danger-tint);
+	box-shadow: inset 0 0 0 1px var(--herd-danger-line);
+	color: var(--herd-danger);
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.herd-gap::before,
 	.herd-gap__btn {

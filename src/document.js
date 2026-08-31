@@ -150,8 +150,20 @@ function mapTree( blocks, clientId, transform ) {
 	return { blocks: result, found };
 }
 
+/**
+ * Merge attributes into a block, where `undefined` means remove.
+ *
+ * Removal has to be real rather than left to JSON.stringify dropping the value:
+ * generatedOpening() decides whether to write a JSON payload at all by counting
+ * the keys, so a block left holding `{ anchor: undefined }` would serialize as
+ * `<!-- wp:paragraph {} -->` instead of `<!-- wp:paragraph -->`.
+ */
 export function replaceAttributes( blocks, clientId, attributes ) {
-	return mapTree( blocks, clientId, ( block ) => ( { ...block, attributes: { ...block.attributes, ...attributes }, changed: true, attributesChanged: true } ) ).blocks;
+	return mapTree( blocks, clientId, ( block ) => {
+		const merged = { ...block.attributes, ...attributes };
+		for ( const key of Object.keys( attributes ) ) if ( attributes[ key ] === undefined ) delete merged[ key ];
+		return { ...block, attributes: merged, changed: true, attributesChanged: true };
+	} ).blocks;
 }
 
 export function replaceAttributesExact( blocks, clientId, attributes ) {
@@ -165,12 +177,32 @@ export function replaceBlockBody( blocks, clientId, body ) {
 	} ).blocks;
 }
 
+/**
+ * Copy a block, minus its anchor.
+ *
+ * WordPress carries the anchor into a duplicate, which puts the same `id` on two
+ * elements and leaves the second jump link dead. An anchor is a unique address by
+ * definition, so a copy starts without one and the author names it deliberately.
+ *
+ * The `changed` flag is only raised when there was an anchor to drop. A clone that
+ * is otherwise untouched still re-serializes byte-for-byte from `source`, which is
+ * what keeps duplicating a block from quietly rewriting its markup.
+ */
 export function cloneBlock( block ) {
+	const attributes = structuredClone( block.attributes || {} );
+	const hadAnchor = 'anchor' in attributes;
+	delete attributes.anchor;
+	const innerBlocks = ( block.innerBlocks || [] ).map( cloneBlock );
+	// A parent that re-serializes from `source` would put a child's anchor back,
+	// so a drop anywhere below has to reach every ancestor of it.
+	const droppedBelow = innerBlocks.some( ( child, index ) => child.changed && ! block.innerBlocks[ index ].changed );
 	return {
 		...block,
 		clientId: createClientId(),
-		attributes: structuredClone( block.attributes || {} ),
-		innerBlocks: ( block.innerBlocks || [] ).map( cloneBlock ),
+		attributes,
+		innerBlocks,
+		changed: block.changed || hadAnchor || droppedBelow,
+		attributesChanged: block.attributesChanged || hadAnchor,
 	};
 }
 

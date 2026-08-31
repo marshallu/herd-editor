@@ -12,6 +12,7 @@ export function BlockRow( {
 	summary,
 	icon,
 	badge,
+	warning,
 	hidden,
 	isOpen,
 	childrenExpanded,
@@ -94,7 +95,10 @@ export function BlockRow( {
 			el( 'span', { className: 'herd-block__name' },
 				el( 'span', { className: 'herd-block__title' }, title ),
 				hidden && el( 'span', { className: 'herd-badge herd-badge--muted' }, 'Hidden' ),
-				badge && el( 'span', { className: 'herd-badge' }, badge ) ),
+				badge && el( 'span', { className: 'herd-badge' }, badge ),
+				// The one pill that is a problem rather than a state, so it is the one
+				// that carries the validation red.
+				warning && el( 'span', { className: 'herd-badge herd-badge--danger' }, warning ) ),
 			summary && el( 'span', { className: 'herd-block__summary' }, summary ) ),
 		el( Dashicon, { icon: 'arrow-down-alt2', className: 'herd-block__chev' } ) ),
 

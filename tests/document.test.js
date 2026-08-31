@@ -151,3 +151,40 @@ test( 'undoing an insert reports nothing, because the block is simply gone', () 
 	assert.deepEqual( changedAttributeIds( before, controller.blocks ), [] );
 	assert.deepEqual( changedAttributeIds( controller.blocks, controller.redo() ), [] );
 } );
+
+test( 'an undefined attribute is removed rather than written as null', () => {
+	const blocks = parseDocument( '<!-- wp:acf/card {"name":"acf/card","anchor":"apply","data":{}} /-->' );
+	const cleared = replaceAttributes( blocks, blocks[ 0 ].clientId, { anchor: undefined } );
+	assert.equal( 'anchor' in cleared[ 0 ].attributes, false );
+	assert.equal( serializeDocument( cleared ), '<!-- wp:acf/card {"name":"acf/card","data":{}} /-->' );
+} );
+
+test( 'a block emptied of every attribute serializes without a JSON payload', () => {
+	const blocks = parseDocument( '<!-- wp:paragraph {"anchor":"intro"} --><p>Hi</p><!-- /wp:paragraph -->' );
+	const cleared = replaceAttributes( blocks, blocks[ 0 ].clientId, { anchor: undefined } );
+	assert.equal( serializeDocument( cleared ), '<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->' );
+} );
+
+test( 'duplicating a block drops its anchor and leaves the original alone', () => {
+	const blocks = parseDocument( '<!-- wp:acf/card {"name":"acf/card","anchor":"apply","data":{"title":"A"}} /-->' );
+	const clone = cloneBlock( blocks[ 0 ] );
+	assert.equal( 'anchor' in clone.attributes, false );
+	assert.deepEqual( clone.attributes.data, { title: 'A' } );
+	assert.equal( blocks[ 0 ].attributes.anchor, 'apply' );
+	assert.equal( serializeDocument( [ clone ] ), '<!-- wp:acf/card {"name":"acf/card","data":{"title":"A"}} /-->' );
+} );
+
+test( 'a duplicate with no anchor still re-serializes byte for byte', () => {
+	const original = '<!-- wp:acf/card { "name" : "acf/card" ,  "data":{} } /-->';
+	const clone = cloneBlock( parseDocument( original )[ 0 ] );
+	assert.equal( clone.changed, false );
+	assert.equal( serializeDocument( [ clone ] ), original );
+} );
+
+test( 'a nested anchor is dropped and its ancestors regenerate to prove it', () => {
+	const original = '<!-- wp:group --><!-- wp:acf/card {"name":"acf/card","anchor":"deep","data":{}} /--><!-- /wp:group -->';
+	const clone = cloneBlock( parseDocument( original )[ 0 ] );
+	assert.equal( clone.changed, true );
+	assert.equal( serializeDocument( [ clone ] ).includes( 'anchor' ), false );
+	assert.equal( serializeDocument( [ clone ] ), '<!-- wp:group --><!-- wp:acf/card {"name":"acf/card","data":{}} /--><!-- /wp:group -->' );
+} );

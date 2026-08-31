@@ -610,6 +610,7 @@ function herd_editor_block_metadata( $content, $post = null ) {
 			'group'            => isset( $groups[ $name ] ) ? $groups[ $name ] : $fallback,
 			'registered'       => (bool) $type,
 			'multiple'         => ! $type || ! isset( $type->supports['multiple'] ) || false !== $type->supports['multiple'],
+			'anchor'           => (bool) $type && isset( $type->supports['anchor'] ) && false !== $type->supports['anchor'],
 			'inserter'         => ! in_array( $name, $hidden_inserter_blocks, true ) && ( ! $type || ! isset( $type->supports['inserter'] ) || false !== $type->supports['inserter'] ),
 			'allowed'          => $allowed_here,
 			'parent'           => $type ? array_values( (array) $type->parent ) : array(),
@@ -1011,6 +1012,12 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				 * broken; herd_editor_view_url() is the one place that decides.
 				 */
 				'viewUrl' => herd_editor_view_url( $post ),
+				/*
+				 * The base a block anchor is copied against. Unlike viewUrl this is
+				 * present for a draft too -- as the ?page_id= form -- because a jump
+				 * link is worth copying before the page is public.
+				 */
+				'permalink' => (string) get_permalink( $post ),
 				'singular' => herd_editor_singular_lower( $post ),
 				/** Filter how many ACF blocks Expand all mounts before asking for confirmation. */
 				'expandWarnAt' => (int) apply_filters( 'herd_editor_expand_warn_at', 8 ),

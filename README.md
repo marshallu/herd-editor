@@ -33,6 +33,26 @@ The stylesheet has a rule per preset, keyed on a twelve-column grid. A preset th
 
 ---
 
+## Anchors and jump links
+
+Every block panel ends in an **Advanced** disclosure holding one field: **HTML anchor**. Give a block an anchor and it becomes a jump link — `/apply#admissions-deadlines` scrolls straight to it. Leave it blank, which is the default, and the block renders exactly as it did.
+
+The setting is **WordPress's own**, not Herd's: it is the `anchor` block attribute, stored on the block comment, which is where the Block Editor's Advanced panel has always put it and where the theme already reads it from. An anchor set in Herd is editable in Gutenberg and survives Herd being deactivated or deleted. One set in Gutenberg is preserved by Herd whether or not you ever open the block.
+
+Only blocks whose block type declares `supports.anchor` are offered the field. Every HerdPress block does; among the core blocks Herd edits, Paragraph and Heading do and HTML and Shortcode do not.
+
+Whitespace and `#` become hyphens as you type, because those are the two characters that break a fragment link. Nothing else is touched: case, accents, dots and underscores are all legal in an `id`, and quietly slugifying them would break an anchor that had already been published.
+
+Clearing the field **removes the attribute** rather than storing an empty one, so a block you set an anchor on and then changed your mind about is byte-for-byte a block that never had one.
+
+### Duplicates
+
+Two blocks with the same anchor is not an error a browser reports — every jump link silently goes to the first one, and the second block is simply unreachable. Herd says so in two places: a **Duplicate anchor** pill on each affected row, visible without opening anything, and a notice in the Advanced panel of both.
+
+**Duplicating a block clears its anchor.** This is the one place Herd deliberately does not match the Block Editor, which copies the anchor and hands you the dead second link. An anchor is a unique address by definition, so a copy starts without one.
+
+---
+
 ## The Spacer field
 
 A field type that holds no data and exists only to consume horizontal space, so the fields around it land where you want them. It is in the field type picker under **Layout**, next to Message, Tab and Accordion.

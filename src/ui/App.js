@@ -7,7 +7,8 @@ import { changedAttributeIds, parseDocument } from '../document.js';
 import { BarTools } from './CommandBar.js';
 import { BlockRow } from './BlockRow.js';
 import { InsertPoint } from './InsertPoint.js';
-import { AcfForm, CoreEditor, FallbackPanel } from './panels.js';
+import { AcfForm, AdvancedPanel, CoreEditor, FallbackPanel } from './panels.js';
+import { anchorOf, duplicateAnchors } from './anchors.js';
 import { blockCounts, bodyFor, collectBlocks, iconOf, isHidden, titleFor, visibleRows } from './blocks.js';
 import { dropSlot, insertPositionForSlot, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
 import { blockSummary } from './summary.js';
@@ -49,6 +50,9 @@ export function HerdEditorApp( { config } ) {
 	const dirty = controller.dirty || nativeDirty;
 	const counts = blockCounts( controller.blocks );
 	const named = topLevelPositions( controller.blocks );
+	/* Whole-document, because a clash is only visible from outside the two blocks
+	 * that have it: neither one can tell it is the second. */
+	const duplicateIds = useMemo( () => duplicateAnchors( controller.blocks ), [ generation ] );
 
 	const refresh = () => setGeneration( ( value ) => value + 1 );
 	const syncContent = () => {
@@ -494,6 +498,7 @@ export function HerdEditorApp( { config } ) {
 			const policy = blockMutationPolicy( block, config.templateLock );
 			const structural = adapter.structural && slot >= 0 && ( policy.move || policy.remove || policy.insert );
 			const title = nameOf( block );
+			const anchor = anchorOf( block );
 
 			const blockRow = el( BlockRow, {
 				key: block.clientId,
@@ -504,6 +509,7 @@ export function HerdEditorApp( { config } ) {
 				icon: iconOf( metadata ),
 				badge: adapter.editable ? null : ( metadata.readOnly ? 'Open in Block Editor' : ( metadata.registered ? 'Read only' : 'Unsupported' ) ),
 				hidden: isHidden( block ),
+				warning: duplicateIds.has( anchor ) ? 'Duplicate anchor' : null,
 				isOpen: openPanels.has( block.clientId ),
 				childrenExpanded: expandedChildren.has( block.clientId ),
 				hasChildren: block.innerBlocks.length > 0,
@@ -573,7 +579,25 @@ export function HerdEditorApp( { config } ) {
 					} );
 					mutate( `${ title } deleted.`, () => controller.removeBlock( block.clientId ), fallback?.clientId );
 				},
-			}, openPanels.has( block.clientId ) ? panelFor( row, adapter ) : null );
+			}, ...( openPanels.has( block.clientId )
+				? [
+					panelFor( row, adapter ),
+					// Read-only blocks are handed to the Block Editor whole, and a block
+					// type that does not support an anchor would never render one.
+					adapter.editable && metadata.anchor
+						? el( AdvancedPanel, {
+							key: 'advanced',
+							block,
+							permalink: config.permalink || config.viewUrl || '',
+							isDuplicate: duplicateIds.has( anchor ),
+							onAnchor: ( value ) => {
+								controller.replaceAttributes( block.clientId, { anchor: value } );
+								refresh();
+							},
+						} )
+						: null,
+				]
+				: [] ) );
 
 			// Only top-level rows carry an insertion point; an expanded child row
 			// sits inside its parent, where there is no slot to insert into.
