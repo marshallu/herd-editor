@@ -185,26 +185,135 @@ function herd_editor_acf_blocks_from_tree( $blocks, &$result ) {
 	}
 }
 
+/** Compare a stored value against a conditional-logic rule value, ACF's way. */
+function herd_editor_condition_equals( $value, $rule_value ) {
+	if ( is_array( $value ) ) {
+		return in_array( $rule_value, array_map( 'strval', $value ), true );
+	}
+	return (string) $value === $rule_value;
+}
+
+/** The number a `>` or `<` rule compares against: a row/choice count, or the value itself. */
+function herd_editor_condition_size( $value ) {
+	return is_array( $value ) ? (float) count( $value ) : (float) $value;
+}
+
+/** Test one conditional-logic rule against the values stored for $block_id. */
+function herd_editor_condition_is_met( $rule, $block_id, $seen = array() ) {
+	if ( empty( $rule['field'] ) ) { return true; }
+	$field = acf_get_field( $rule['field'] );
+	/* A rule pointing at a field that no longer exists is one ACF's form drops
+	 * rather than fails. */
+	if ( ! $field || '' === (string) $field['name'] ) { return true; }
+	/* ACF's form reads null from a disabled control, and hiding a field disables
+	 * it, so a rule reading a hidden field sees nothing. That is what collapses a
+	 * chain of toggles: turning off the master switch hides the style buttons,
+	 * which in turn hide the gallery whose only rule reads them. */
+	$value      = herd_editor_field_is_visible( $field, $block_id, $seen ) ? acf_get_value( $block_id, $field ) : null;
+	$rule_value = isset( $rule['value'] ) ? (string) $rule['value'] : '';
+	/* ACF's browser rules read a control, where "0" is a value and only a blank
+	 * control is empty; PHP's own emptiness would hide every unchecked toggle. */
+	$has_value = ! ( null === $value || false === $value || '' === $value || ( is_array( $value ) && ! $value ) );
+	$contains  = is_array( $value )
+		? in_array( $rule_value, array_map( 'strval', $value ), true )
+		: ( '' !== $rule_value && false !== strpos( (string) $value, $rule_value ) );
+
+	switch ( isset( $rule['operator'] ) ? $rule['operator'] : '==' ) {
+		case '==':
+		case '===':
+			return herd_editor_condition_equals( $value, $rule_value );
+		case '!=':
+		case '!==':
+			return ! herd_editor_condition_equals( $value, $rule_value );
+		case '==empty':
+			return ! $has_value;
+		case '!=empty':
+			return $has_value;
+		case '==contains':
+			return $contains;
+		case '!=contains':
+			return ! $contains;
+		case '==pattern':
+			return '' !== $rule_value && 1 === @preg_match( '/' . str_replace( '/', '\\/', $rule_value ) . '/', (string) $value ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged -- An unusable pattern must not decide visibility.
+		case '>':
+			return herd_editor_condition_size( $value ) > (float) $rule_value;
+		case '<':
+			return herd_editor_condition_size( $value ) < (float) $rule_value;
+	}
+	/* An operator Herd does not know cannot be allowed to wave a field through:
+	 * treat it as shown, and let the field answer for itself. */
+	return true;
+}
+
+/**
+ * Whether a block field's editor would show it, so its rules apply.
+ *
+ * ACF's form disables the inputs of a conditionally hidden field, so a browser
+ * save never validates one. This sweep sees no form, so it has to make the same
+ * decision itself — otherwise a required field behind a toggle nobody turned on
+ * blocks publishing forever, with no visible field to fix.
+ */
+function herd_editor_field_is_visible( $field, $block_id, $seen = array() ) {
+	if ( empty( $field['conditional_logic'] ) || ! is_array( $field['conditional_logic'] ) ) { return true; }
+	/* Rules that point back at each other would recurse forever; the field on the
+	 * path already being asked about counts as shown, which ends the walk. */
+	if ( isset( $seen[ $field['key'] ] ) ) { return true; }
+	$seen[ $field['key'] ] = true;
+	foreach ( $field['conditional_logic'] as $group ) { // Groups are ORed together.
+		if ( ! is_array( $group ) || ! $group ) { return true; }
+		$met = true;
+		foreach ( $group as $rule ) { // Rules within a group are ANDed.
+			if ( ! herd_editor_condition_is_met( $rule, $block_id, $seen ) ) { $met = false; break; }
+		}
+		if ( $met ) { return true; }
+	}
+	return false;
+}
+
 /** Validate all ACF block values, including forms that Herd has not mounted. */
 function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
 	$blocks = array();
 	herd_editor_acf_blocks_from_tree( parse_blocks( (string) $content ), $blocks );
 	$errors = array();
+	if ( ! function_exists( 'acf_get_block_fields' ) || ! function_exists( 'acf_validate_value' ) || ! function_exists( 'acf_setup_meta' ) ) {
+		return $errors;
+	}
 	foreach ( $blocks as $index => $block ) {
-		if ( ! function_exists( 'acf_get_block_fields' ) || ! function_exists( 'acf_validate_value' ) ) { break; }
-		$data = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? $block['attrs']['data'] : array();
-		foreach ( (array) acf_get_block_fields( array( 'name' => $block['blockName'], 'data' => $data ) ) as $field ) {
-			if ( empty( $field['key'] ) ) { continue; }
-			$value = array_key_exists( $field['name'], $data ) ? $data[ $field['name'] ] : null;
-			$valid = acf_validate_value( $value, $field, '' );
-			if ( true !== $valid ) {
-				$errors[] = array(
-					'blockId' => isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '',
-					'field' => $field['key'],
-					'message' => is_string( $valid ) ? $valid : __( 'This field is required.', 'herd-editor' ),
-				);
-			}
+		$data   = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? $block['attrs']['data'] : array();
+		$fields = (array) acf_get_block_fields( array( 'name' => $block['blockName'], 'data' => $data ) );
+		if ( ! $fields ) { continue; }
+		/* ACF caches loaded values under "{$post_id}:{$field_name}", repeater
+		 * sub-values included, and acf_reset_meta() does not clear that store — so
+		 * every block gets an id no earlier block has used. */
+		static $namespace = 0;
+		$block_id = 'block_herd-editor-validate-' . ( ++$namespace );
+		/* Block attributes store repeaters and flexible content flattened
+		 * ( "portraits" => 3, "portraits_0_title" => "…" ), but ACF's validators
+		 * expect the nested rows a <form> would post. Reading each value back out
+		 * of ACF's local meta store rebuilds that shape; reaching into $data
+		 * directly hands a repeater its row count instead of its rows, and every
+		 * filled repeater fails its own `min`. */
+		acf_setup_meta( $data, $block_id );
+		foreach ( $fields as $field ) {
+			if ( empty( $field['key'] ) || '' === (string) $field['name'] ) { continue; }
+			/* Hiding a field hides everything inside it, so this one test also
+			 * excuses the sub-fields ACF validates recursively below. */
+			if ( ! herd_editor_field_is_visible( $field, $block_id ) ) { continue; }
+			acf_reset_validation_errors();
+			$valid = acf_validate_value( acf_get_value( $block_id, $field ), $field, '' );
+			/* acf_validate_value() only ever returns a bool — the message it built
+			 * lives in ACF's error store, which also carries sub-field failures a
+			 * repeater reports without failing itself. */
+			$reported = acf_get_validation_errors();
+			if ( true === $valid && empty( $reported ) ) { continue; }
+			$errors[] = array(
+				'blockId' => isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '',
+				'field' => $field['key'],
+				'message' => ! empty( $reported[0]['message'] ) ? (string) $reported[0]['message'] : __( 'This field is required.', 'herd-editor' ),
+			);
 		}
+		acf_reset_validation_errors();
+		acf_reset_meta( $block_id );
 	}
 	return $errors;
 }
