@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROFILES, cardStyleImpact, joinList, profileFor } from '../src/ui/acf/profiles.js';
+import { PROFILES, profileFor } from '../src/ui/acf/profiles.js';
 import { blockSummary } from '../src/ui/summary.js';
 
 test( 'reads a cards collection the way the style guide asks', () => {
@@ -49,28 +49,6 @@ test( 'falls back to the generic derivation for a block with no profile', () => 
 test( 'falls back when a profile has nothing to say about this block', () => {
 	const block = { name: 'acf/cards-collection', attributes: { data: { subheading: 'Second line' } } };
 	assert.equal( blockSummary( block, 'acf' ), 'Second line' );
-} );
-
-test( 'names what a style switch keeps and what it clears', () => {
-	assert.equal(
-		cardStyleImpact( 'minimalist', 'icon', 4 ),
-		'Keeps title, content, and link. Clears the image and subtitle on 4 cards.'
-	);
-	assert.equal(
-		cardStyleImpact( 'icon', 'minimalist', 1 ),
-		'Keeps title, content, and link. Clears the icon and the color on 1 card.'
-	);
-} );
-
-test( 'says nothing when a switch costs nothing', () => {
-	assert.equal( cardStyleImpact( 'icon', 'icon', 3 ), '' );
-	assert.equal( cardStyleImpact( 'icon', 'nonsense', 3 ), '' );
-} );
-
-test( 'joins a list the way a sentence does', () => {
-	assert.equal( joinList( [ 'title' ] ), 'title' );
-	assert.equal( joinList( [ 'title', 'link' ] ), 'title and link' );
-	assert.equal( joinList( [ 'title', 'content', 'link' ] ), 'title, content, and link' );
 } );
 
 test( 'only the blocks that need one carry a profile', () => {

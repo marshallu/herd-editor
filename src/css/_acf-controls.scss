@@ -167,38 +167,6 @@ $host: ".herd-editor__field-host";
 	outline-offset: -2px;
 }
 
-/* ---------- destructive switch confirm ---------- */
-
-/*
- * ACF hides the fields a style no longer reaches rather than clearing them, so a
- * switch nobody explained leaves invisible rows in postmeta for good. This names
- * what carries and what clears before anything moves.
- */
-.herd-confirm {
-	align-items: center;
-	background: var(--herd-green-tint);
-	border: 1px solid var(--herd-green-line);
-	border-radius: var(--herd-r);
-	color: var(--herd-green-ink);
-	display: flex;
-	font-size: 12px;
-	gap: 8px;
-	margin-top: 8px;
-	padding: 8px 10px;
-	/* One column of the field grid is not wide enough for a sentence and two
-	   buttons on one line. */
-	flex-wrap: wrap;
-}
-
-.herd-confirm[hidden] {
-	display: none;
-}
-
-.herd-confirm__text {
-	flex: 1;
-	min-width: 0;
-}
-
 /* ---------- site-restricted choice notice ---------- */
 
 /*

@@ -243,14 +243,9 @@ For cards-per-row the label is a glyph — 2, 3, or 4 vertical bars — not a nu
 
 ### Card style picker
 
-Three tiles with wireframe previews, name, and a field summary. Selected tile is green-bordered and tinted.
-
-**Style switching is destructive and must be confirmed.** Minimal and Icon share title, content, and CTA but diverge on image versus icon and color. ACF conditional logic *hides* orphaned fields rather than clearing them, so a user who switches and saves leaves invisible `card_image` rows in postmeta permanently.
-
-The confirm strip names what carries and what clears, per card count:
-
-> Keeps title, content, and link. Clears the image on 4 cards.
-> [Keep minimal] [Switch anyway]
+Card Style remains ACF's native select. Changing it applies immediately, so
+ACF's conditional logic updates the available card fields without an intervening
+warning or confirmation step.
 
 ### Site-restricted choice
 
@@ -263,7 +258,8 @@ Choosing it opens a modal — 420px, title, one sentence, one **Got it**:
 
 **The notice warns and does not revert.** Herd is not told which site it is running on, so a guardrail that reverted would take Black away from the one site entitled to it. It fires on the change, never on mount: a block that already carries the value was not set that way just now.
 
-A modal rather than the confirm strip because there is no decision to weigh — the strip exists to put two named outcomes side by side, and this has one.
+A modal is appropriate here because the editor needs to acknowledge a site rule,
+not choose between two outcomes.
 
 ### Boolean switch
 

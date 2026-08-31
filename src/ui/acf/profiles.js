@@ -7,7 +7,6 @@
  *
  *   - the summary line's wording and ordering
  *   - which control renders as a glyph rather than its label
- *   - what a style switch keeps and what it orphans
  *   - which choice carries a rule the field group does not record
  *
  * A block with no profile keeps the fully generic treatment.
@@ -16,45 +15,18 @@
 /**
  * Cards Collection's three card styles.
  *
- * `fields` lists the sub-fields each style actually reaches, taken from the
- * conditional logic in `group_64a57f86baa8d.json`. The confirm strip diffs two
- * of these lists to say what carries and what clears.
- *
  * Names follow the field group, not the prototype: the third style is Enhanced.
  */
 const CARD_STYLES = {
 	minimalist: {
 		name: 'Minimalist',
-		fields: [ 'card_image', 'card_title', 'card_subtitle', 'card_content', 'card_button' ],
 	},
 	icon: {
 		name: 'Icon',
-		fields: [ 'card_icon', 'card_color', 'card_title', 'card_content', 'card_button' ],
 	},
 	enhanced: {
 		name: 'Enhanced',
-		fields: [ 'card_image', 'card_title', 'card_subtitle', 'card_content_enhanced', 'card_link', 'read_more_text' ],
 	},
-};
-
-/**
- * What an editor calls each sub-field.
- *
- * The diff runs on these labels rather than on field names, because an editor
- * thinks "the content survives", not "card_content_enhanced was orphaned and
- * card_content took over".
- */
-const CARD_FIELD_LABELS = {
-	card_image: 'the image',
-	card_icon: 'the icon',
-	card_color: 'the color',
-	card_title: 'title',
-	card_subtitle: 'subtitle',
-	card_content: 'content',
-	card_content_enhanced: 'content',
-	card_button: 'link',
-	card_link: 'link',
-	read_more_text: 'read more text',
 };
 
 const BILLBOARD_PLACEMENT = { left: 'Left', right: 'Right', center: 'Centered' };
@@ -80,47 +52,6 @@ export function billboardLayout( data = {} ) {
 	return data.modern === '1' ? 'modern' : 'split';
 }
 
-/** "a, b, and c" — the summary and confirm strip both read as prose. */
-export function joinList( items ) {
-	const list = items.filter( Boolean );
-	if ( list.length < 2 ) return list.join( '' );
-	if ( list.length === 2 ) return `${ list[ 0 ] } and ${ list[ 1 ] }`;
-	return `${ list.slice( 0, -1 ).join( ', ' ) }, and ${ list[ list.length - 1 ] }`;
-}
-
-function labelsFor( style ) {
-	const seen = [];
-	( CARD_STYLES[ style ]?.fields || [] ).forEach( ( name ) => {
-		const label = CARD_FIELD_LABELS[ name ];
-		if ( label && ! seen.includes( label ) ) seen.push( label );
-	} );
-	return seen;
-}
-
-/**
- * What switching card style costs, in the editor's own words.
- *
- * ACF's conditional logic hides orphaned fields rather than clearing them, so a
- * switch that is never explained leaves invisible rows in postmeta permanently.
- *
- * @param {string} from  Current style value.
- * @param {string} to    Style being switched to.
- * @param {number} count How many cards the change touches.
- * @return {string} A sentence, or '' when nothing is lost.
- */
-export function cardStyleImpact( from, to, count ) {
-	const current = labelsFor( from );
-	const next = labelsFor( to );
-	if ( ! current.length || ! next.length ) return '';
-
-	const keeps = current.filter( ( label ) => next.includes( label ) );
-	const clears = current.filter( ( label ) => ! next.includes( label ) );
-	if ( ! clears.length ) return '';
-
-	const cards = count === 1 ? '1 card' : `${ count } cards`;
-	const kept = keeps.length ? `Keeps ${ joinList( keeps ) }. ` : '';
-	return `${ kept }Clears ${ joinList( clears ) } on ${ cards }.`;
-}
 
 /**
  * A choice the field group offers everywhere that only one site may use.
@@ -156,11 +87,6 @@ export const PROFILES = {
 				count && `${ count } ${ count === 1 ? 'card' : 'cards' }, ${ data.cards_per_row } per row`,
 			];
 		},
-		/*
-		 * Card style stays ACF's select. Switching it is destructive, so the select
-		 * is guarded rather than replaced.
-		 */
-		styleSwitch: { field: 'card_style', styles: CARD_STYLES, rows: 'cards', impact: cardStyleImpact },
 		budgets: { card_content: 220, card_content_enhanced: 220 },
 	},
 

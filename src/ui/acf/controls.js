@@ -1,6 +1,6 @@
 /**
- * Choice fields: swatches, segmented controls, the card style picker, and the
- * notice a site-restricted choice raises.
+ * Choice fields: swatches, segmented controls, and the notice a site-restricted
+ * choice raises.
  *
  * ACF's button group renders text radios sized for the Gutenberg sidebar. Herd
  * builds its own control instead of restyling that one — a colour control has to
@@ -15,9 +15,8 @@
  * Replacing native radios means replacing what they gave for free, so the group
  * is a real `radiogroup` with a roving tabindex and arrow keys.
  *
- * Two of these guard a choice rather than draw it. Both take what they know from
- * the block's profile, and neither writes to the value: the strip explains what
- * a style switch orphans, and the dialog says a choice belongs to one site.
+ * Site-restricted choices use the block's profile to explain their rule without
+ * changing the selected value.
  */
 
 import { humanize } from '../summary.js';
@@ -161,94 +160,6 @@ function decorateButtonGroups( form ) {
 	} );
 }
 
-/* ---------- destructive style switch ---------- */
-
-/**
- * Guard a style `select` rather than replace it.
- *
- * ACF's conditional logic hides the fields a style no longer reaches instead of
- * clearing them, so an unexplained switch leaves invisible rows in postmeta for
- * good. The select stays exactly as ACF rendered it; changing it puts the value
- * back and asks first.
- *
- * The strip only warns. Nothing here writes to the fields a switch orphans —
- * that data still persists, and now the editor has been told so.
- */
-function decorateStyleSwitch( form, profile ) {
-	const config = profile?.styleSwitch;
-	if ( ! config ) return;
-
-	const field = form.querySelector( `.acf-field-select[data-name="${ config.field }"]` );
-	const select = field?.querySelector( 'select' );
-	if ( ! select || field.classList.contains( 'herd-has-confirm' ) ) return;
-	field.classList.add( 'herd-has-confirm' );
-
-	const strip = document.createElement( 'div' );
-	strip.className = 'herd-confirm';
-	strip.hidden = true;
-
-	const message = document.createElement( 'span' );
-	message.className = 'herd-confirm__text';
-	const keep = document.createElement( 'button' );
-	keep.type = 'button';
-	keep.className = 'herd-btn';
-	const proceed = document.createElement( 'button' );
-	proceed.type = 'button';
-	proceed.className = 'herd-btn herd-btn--primary';
-	proceed.textContent = 'Switch anyway';
-	strip.append( message, keep, proceed );
-
-	const styleName = ( value ) => config.styles?.[ value ]?.name || humanize( value );
-
-	/** The last value the editor actually agreed to. */
-	let settled = select.value;
-	let pending = null;
-
-	/** Move the select without treating the result as a fresh request. */
-	const setValue = ( value ) => {
-		if ( select.value === value ) return;
-		select.value = value;
-		// ACF's conditional logic follows the select, so this shows and hides the
-		// fields the style reaches — including on the way back.
-		select.dispatchEvent( new Event( 'change', { bubbles: true } ) );
-	};
-
-	const close = ( value ) => {
-		settled = value;
-		pending = null;
-		strip.hidden = true;
-		setValue( value );
-	};
-
-	select.addEventListener( 'change', () => {
-		// Our own revert and confirm come back through here; neither is a new ask.
-		if ( select.value === settled ) return;
-
-		const rows = config.rows
-			? form.querySelectorAll( `.acf-field[data-name="${ config.rows }"] .acf-row:not(.acf-clone)` ).length
-			: 0;
-		const impact = typeof config.impact === 'function' ? config.impact( settled, select.value, rows ) : '';
-		if ( ! impact ) {
-			settled = select.value;
-			return;
-		}
-
-		pending = select.value;
-		message.textContent = impact;
-		// An action keeps its name through the whole flow.
-		keep.textContent = `Keep ${ styleName( settled ).toLowerCase() }`;
-		// Hold the select at the settled value until this is confirmed, then show
-		// the ask — `setValue` re-enters this handler and must not clear it.
-		setValue( settled );
-		strip.hidden = false;
-	} );
-
-	keep.addEventListener( 'click', () => close( settled ) );
-	proceed.addEventListener( 'click', () => pending && close( pending ) );
-
-	select.closest( '.acf-input' ).appendChild( strip );
-}
-
 /* ---------- site-restricted choices ---------- */
 
 /**
@@ -344,6 +255,5 @@ function decorateChoiceNotices( form, profile ) {
 export function decorateControls( form, profile ) {
 	if ( ! form ) return;
 	decorateButtonGroups( form );
-	decorateStyleSwitch( form, profile );
 	decorateChoiceNotices( form, profile );
 }

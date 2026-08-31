@@ -19,6 +19,19 @@ const background = ( value = 'white' ) => `
   </div>
 </div>`;
 
+/** Card Style remains ACF's native select so its conditional logic sees changes. */
+const cardStyle = ( value = 'minimalist' ) => `
+<div class="acf-field acf-field-select" data-name="card_style" data-type="select">
+  <div class="acf-label"><label>Card Style</label></div>
+  <div class="acf-input">
+    <select name="acf[field_card_style]">
+      <option value="minimalist"${ value === 'minimalist' ? ' selected' : '' }>Minimalist</option>
+      <option value="icon"${ value === 'icon' ? ' selected' : '' }>Icon</option>
+      <option value="enhanced"${ value === 'enhanced' ? ' selected' : '' }>Enhanced</option>
+    </select>
+  </div>
+</div>`;
+
 /** Opens counted through the one call jsdom does not implement. */
 let opens = 0;
 
@@ -111,6 +124,16 @@ test( 'decorating twice leaves one listener, so one choice is one warning', () =
 	choose( form, 'black' );
 
 	assert.equal( opens, 1 );
+} );
+
+test( 'changing Card Style applies immediately without a confirmation strip', () => {
+	const form = build( cardStyle() );
+	decorateControls( form, profileFor( 'acf/cards-collection' ) );
+
+	choose( form, 'icon' );
+
+	assert.equal( form.querySelector( 'select' ).value, 'icon' );
+	assert.equal( form.querySelector( '.herd-confirm' ), null );
 } );
 
 test( 'a block with no profile is left alone', () => {
