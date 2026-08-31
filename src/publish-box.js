@@ -26,6 +26,8 @@
  * rather than assumed.
  */
 
+import { endSave } from './save-progress.js';
+
 /** Two digits, the way core pads the hour and minute it writes into the stamp. */
 const pad = ( value ) => ( '00' + value ).slice( -2 );
 
@@ -326,7 +328,15 @@ export function wirePublishBox() {
 		const panel = box.closest( '.herd-rail__panel' );
 		if ( panel?.hidden ) byId( `herd-tab-${ panel.dataset.panel }` )?.click();
 		open( datePanel, dateEdit );
-		window.wp?.autosave?.enableButtons?.();
-		document.querySelector( '#publishing-action .spinner' )?.classList.remove( 'is-active' );
+		/*
+		 * A date can be made impossible after the press: the editor stays live while
+		 * the lock preflight and the document validation run, so this rejection can
+		 * arrive with the button already saying "Publishing…". In practice this
+		 * listener is bound before the app's -- assembleRail() runs ahead of
+		 * render() in herd-editor.js -- so it usually stops the submission before
+		 * anything is dressed. Usually is not a thing to rest correctness on, and
+		 * the treatment has exactly one place it comes off.
+		 */
+		endSave();
 	} );
 }

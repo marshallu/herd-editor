@@ -13,6 +13,7 @@ import { blockCounts, bodyFor, collectBlocks, iconOf, isHidden, titleFor, visibl
 import { dropSlot, insertPositionForSlot, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
 import { blockSummary } from './summary.js';
 import { Notice } from './primitives.js';
+import { beginSave, endSave, guardBusyClicks, watchRestore } from '../save-progress.js';
 import { decryptRecovery, deleteRecovery, downloadRecovery, encryptionKey, nativeFormValues, readRecovery, recoveryRecordId, restoreNativeFormValues, writeRecovery, encryptRecovery } from '../recovery.js';
 
 const el = createElement;
@@ -65,24 +66,21 @@ export function HerdEditorApp( { config } ) {
 		if ( bridge ) mountedAcfForms.current.add( bridge );
 	};
 	const flushAcfForms = () => mountedAcfForms.current.forEach( ( bridge ) => bridge.flush() );
-	const beginDraftSave = () => {
-		const save = document.getElementById( 'save-post' );
-		if ( ! save || save.disabled ) return;
-		const original = save.value;
-		const marker = document.createElement( 'input' );
-		marker.type = 'hidden'; marker.name = save.name; marker.value = original;
-		marker.dataset.herdDraftSave = '1';
-		save.after( marker );
-		save.disabled = true;
-		save.value = 'Saving…';
-		let spinner = save.parentElement?.querySelector( '.herd-draft-spinner' );
-		if ( ! spinner ) {
-			spinner = document.createElement( 'span' );
-			spinner.className = 'spinner herd-draft-spinner';
-			save.after( spinner );
-		}
-		spinner.classList.add( 'is-active' );
-		setSaveState( 'saving-draft' );
+	/*
+	 * Every submission gets the treatment, and it gets it on the first
+	 * interception rather than the last. What Save draft used to be given at pass
+	 * three -- after the preflight had already been and gone -- is what Publish
+	 * needs at pass one, in front of two round trips it cannot see the far side of.
+	 */
+	const markSaving = ( submitter ) => {
+		const intent = beginSave( submitter );
+		if ( ! intent ) return;
+		/* Nothing suspends core's autosave when the form is submitted, and an
+		 * autosave landing mid-publish would walk the bar through "Autosaving",
+		 * "Saved" and finally "unsaved changes" while the save it is talking over is
+		 * still in flight. Two of those three would be untrue. */
+		window.wp?.autosave?.server?.suspend?.();
+		setSaveState( intent.saveState );
 	};
 	const recoveryId = recoveryRecordId( config.currentUserId, config.postId );
 	const recoveryPayload = () => ( { content: controller.serialize(), fields: nativeFormValues( document.getElementById( 'post' ) ), savedMarker: config.saveMarker, createdAt: Date.now() } );
@@ -190,6 +188,34 @@ export function HerdEditorApp( { config } ) {
 		};
 	}, [] );
 
+	/*
+	 * The three things about a save in flight that App does not own the events
+	 * for: a second press while it is running, a page handed back by the browser
+	 * still wearing one, and a rejection raised outside React -- publish-box.js
+	 * refusing an impossible date. All of them tear down through one event, so
+	 * there is a single place the bar comes back to rest.
+	 */
+	useEffect( () => {
+		const ended = () => {
+			setSaveState( 'idle' );
+			/* Balances the suspend in markSaving() -- but not when the lock is what
+			 * ended the save. post-lock.js suspends autosave deliberately at that
+			 * point, so that a browser which no longer owns the post cannot go on
+			 * writing revisions to it, and resuming here would undo it. */
+			if ( ! document.getElementById( 'post' )?.classList.contains( 'herd-lock-lost' ) ) {
+				window.wp?.autosave?.server?.resume?.();
+			}
+		};
+		window.addEventListener( 'herd:save-ended', ended );
+		const stopGuard = guardBusyClicks();
+		const stopRestore = watchRestore();
+		return () => {
+			window.removeEventListener( 'herd:save-ended', ended );
+			stopGuard();
+			stopRestore();
+		};
+	}, [] );
+
 	useEffect( () => {
 		const form = document.getElementById( 'post' );
 		let submitting = false;
@@ -215,53 +241,86 @@ export function HerdEditorApp( { config } ) {
 			const result = await response.json();
 			return result?.success && result.data?.valid ? null : ( result?.data?.reason || 'connection' );
 		};
+		/*
+		 * Where the wait goes, so the next person to ask does not have to guess.
+		 *
+		 * Nothing here changes what is saved. A publish costs four round trips
+		 * before the editor is usable again -- the lock check, the validation, the
+		 * post to post.php and a full reload of this screen -- and reading the
+		 * validator was not enough to say which of them owns the minute, because it
+		 * is a loop over ACF's in-memory store with no query in it. Same shape as
+		 * post-lock.js's diagnostics: an event, for anything that wants to listen.
+		 */
+		const report = ( step, started ) => window.dispatchEvent( new CustomEvent( 'herd:save-timing', { detail: { step, ms: Math.round( performance.now() - started ) } } ) );
+		const timed = ( step, work ) => {
+			const started = performance.now();
+			return Promise.resolve( work() ).finally( () => report( step, started ) );
+		};
 		const submit = ( event ) => {
 			// A prior native listener (invalid date, lost lock) has rejected this
 			// submission. It must not start another preflight or a saving treatment.
 			if ( event.defaultPrevented ) return;
 			if ( form?.dataset.herdPreflight !== '1' ) {
-				syncContent();
+				/* Before the first round trip, not after the last one. The wait this
+				 * reports is almost entirely the two round trips below, and an
+				 * indicator that appeared once those had finished would be on screen
+				 * only for the part that was never slow. */
 				event.preventDefault();
-				persistRecovery().then( preflight ).then( ( reason ) => {
-					if ( reason ) {
-						setLockFailure( reason );
-						window.dispatchEvent( new CustomEvent( 'herd:lock-lost', { detail: { reason } } ) );
+				/* A second press during the round trips is the thing this is for, and
+				 * it is any second press: Save draft while a publish is in flight
+				 * would otherwise start a whole parallel submission of its own. */
+				if ( document.querySelector( '[data-herd-busy]' ) ) return;
+				markSaving( event.submitter );
+				syncContent();
+				const pressed = performance.now();
+				/*
+				 * Two independent questions -- does this browser still hold the lock,
+				 * and do the values pass -- so they are asked at once rather than one
+				 * after the other. They used to be separate passes of this handler,
+				 * which meant a publish paid for two complete admin bootstraps end to
+				 * end before the form was even posted.
+				 */
+				const checked = isPublishTransition( event.submitter ) ? timed( 'validate', validate ) : Promise.resolve( [] );
+				Promise.allSettled( [ timed( 'lock', () => timed( 'recovery', persistRecovery ).then( preflight ) ), checked ] ).then( ( [ lock, values ] ) => {
+					report( 'checks', pressed );
+					/* A lost lock outranks a failed field. The save cannot happen at
+					 * all, so there is nothing useful to say about its contents. */
+					if ( 'rejected' === lock.status ) { endSave(); setLockFailure( 'connection' ); return; }
+					if ( lock.value ) {
+						endSave();
+						setLockFailure( lock.value );
+						window.dispatchEvent( new CustomEvent( 'herd:lock-lost', { detail: { reason: lock.value } } ) );
 						return;
 					}
-					form.dataset.herdPreflight = '1'; form.requestSubmit( event.submitter );
-				} ).catch( () => setLockFailure( 'connection' ) );
-				return;
-			}
-			delete form.dataset.herdPreflight;
-			if ( isPublishTransition( event.submitter ) && form?.dataset.herdValidated !== '1' ) {
-				event.preventDefault();
-				validate().then( ( errors ) => {
+					if ( 'rejected' === values.status ) { endSave(); setAnnouncement( 'Publishing blocked because validation could not be completed.' ); return; }
+					const errors = values.value;
 					if ( errors.length ) {
+						endSave();
 						setValidationErrors( errors );
 						const first = errors[ 0 ];
 						if ( first.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
 						setAnnouncement( `Publishing blocked: ${ errors.length } ACF validation ${ errors.length === 1 ? 'error' : 'errors' } need attention.` );
 						return;
 					}
-					form.dataset.herdValidated = '1'; form.requestSubmit( event.submitter );
-				} ).catch( () => setAnnouncement( 'Publishing blocked because validation could not be completed.' ) );
+					form.dataset.herdPreflight = '1'; form.requestSubmit( event.submitter );
+				} );
 				return;
 			}
-			if ( form ) delete form.dataset.herdValidated;
+			delete form.dataset.herdPreflight;
 			// This is the one path the browser will submit natively. Flush forms
 			// synchronously, then write the complete controller document to #content.
+			const flushing = performance.now();
 			flushAcfForms();
 			syncContent();
-			const isDraftSave = event.submitter?.id === 'save-post' || event.submitter?.name === 'save';
+			report( 'flush', flushing );
 			submitting = true;
 			queueMicrotask( () => {
 				if ( event.defaultPrevented ) {
 					submitting = false;
-					return;
+					// Let every native submit listener finish first: an intercepted
+					// submission must never be left wearing its saving state.
+					endSave();
 				}
-				// Let every native submit listener finish first: an intercepted
-				// submission must never leave the draft control in its saving state.
-				if ( isDraftSave ) beginDraftSave();
 			} );
 		};
 		const click = () => syncContent();
@@ -275,7 +334,7 @@ export function HerdEditorApp( { config } ) {
 		form?.addEventListener( 'change', changed );
 		form?.addEventListener( 'submit', submit );
 		form?.addEventListener( 'click', click, true );
-		const onLost = ( event ) => { setLockFailure( event.detail?.reason || 'heartbeat' ); persistRecovery(); };
+		const onLost = ( event ) => { endSave(); setLockFailure( event.detail?.reason || 'heartbeat' ); persistRecovery(); };
 		window.addEventListener( 'herd:lock-lost', onLost );
 		window.addEventListener( 'beforeunload', unload );
 		return () => {

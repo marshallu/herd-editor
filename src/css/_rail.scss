@@ -106,8 +106,9 @@
 	padding: 0;
 }
 
-/* Save Draft is the only thing left in here; it needs to clear the status list. */
-#save-action .herd-draft-spinner {
+/* Save Draft is the only thing left in here; it needs to clear the status list.
+ * The spinner is the one core already prints beside the button. */
+#save-action .spinner {
 	float: none;
 	margin: 0 0 0 5px;
 	vertical-align: middle;

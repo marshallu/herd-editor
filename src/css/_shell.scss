@@ -241,7 +241,8 @@
  * to miss when it is only on screen for a moment.
  */
 .herd-bar__savestate.is-autosaving .herd-bar__dot,
-.herd-bar__savestate.is-saving .herd-bar__dot {
+.herd-bar__savestate.is-saving .herd-bar__dot,
+.herd-bar__savestate.is-saving-draft .herd-bar__dot {
 	animation: herd-savestate-pulse 1s ease-in-out infinite;
 	background: var(--herd-ink-3);
 }
@@ -256,7 +257,8 @@
 
 @media (prefers-reduced-motion: reduce) {
 	.herd-bar__savestate.is-autosaving .herd-bar__dot,
-	.herd-bar__savestate.is-saving .herd-bar__dot {
+	.herd-bar__savestate.is-saving .herd-bar__dot,
+	.herd-bar__savestate.is-saving-draft .herd-bar__dot {
 		animation: none;
 	}
 }
@@ -450,6 +452,36 @@
 	background: var(--herd-green-ink-hover);
 	border-color: var(--herd-green-ink-hover);
 	color: #fff;
+}
+
+/*
+ * A submission in flight. The button keeps its green: greying it out would say
+ * *unavailable* where the truth is *working*, and the spinner beside it is what
+ * carries the progress. Core agrees by omission -- .button-primary[aria-disabled]
+ * sets a cursor and nothing else (buttons.css:329), where the `disabled`
+ * property would have forced #8a8a8a on #e2e2e2 with !important and taken the
+ * label, which is now the thing saying what is happening, down to about 2.6:1.
+ */
+.herd-bar__native #publish[aria-disabled="true"] {
+	cursor: default;
+}
+
+.herd-bar__native #publish[aria-disabled="true"]:hover,
+.herd-bar__native #publish[aria-disabled="true"]:focus {
+	background: var(--herd-green-ink);
+	border-color: var(--herd-green-ink);
+}
+
+/*
+ * Core's spinner is an animated GIF, which no CSS can slow down or stop -- so
+ * under reduced motion it goes entirely. The label already says "Publishing…",
+ * and the style guide asks that colour and motion never carry a meaning alone.
+ */
+@media (prefers-reduced-motion: reduce) {
+	.herd-bar__native .spinner,
+	#save-action .spinner {
+		background-image: none;
+	}
 }
 
 /* ---------- columns ---------- */
