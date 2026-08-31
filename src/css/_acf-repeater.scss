@@ -19,6 +19,7 @@
  *         > td.acf-row-handle.order
  *         > td.acf-fields > .herd-cardrow + .acf-field...
  *         > td.acf-row-handle.remove
+ *     > .herd-repeater__foot             (the add button again, on a long list)
  */
 
 @use './boxes';
@@ -64,6 +65,31 @@
 /* Collapse all and the add button are the same control at different weights. */
 @include boxes.in-surfaces(".herd-repeater__head .herd-btn") {
 	flex: none;
+}
+
+/* ---------- the foot ---------- */
+
+/*
+ * The add button again, under the last row. Hidden by default and shown by
+ * src/ui/acf/repeater.js once the list is long enough to have scrolled its
+ * header off the top of the window — beside a single collapsed row it would be
+ * the same button twice, 40px apart.
+ *
+ * Mirrors the header: the same tint, the same rule, the same metrics. The
+ * repeater's `overflow: hidden` is what keeps it inside the rounded corners.
+ */
+.herd-repeater__foot {
+	display: none;
+}
+
+.herd-repeater__foot.is-shown {
+	align-items: center;
+	background: var(--herd-tint);
+	border-top: 1px solid var(--herd-line);
+	box-sizing: border-box;
+	display: flex;
+	min-height: var(--herd-header-h);
+	padding: 7px 10px;
 }
 
 /* The field's own label is now the header's title. */

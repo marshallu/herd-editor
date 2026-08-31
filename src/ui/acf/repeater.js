@@ -159,7 +159,38 @@ function buildRepeaterHeader( field, repeater ) {
 		head.appendChild( add );
 	}
 
-	return { head, count, collapse };
+	return { head, count, collapse, add };
+}
+
+/**
+ * The same add button again, at the foot of the list.
+ *
+ * The header's copy is where you look when the list is short. Once it is long
+ * enough to scroll — and one open row is most of a screen on its own — it has
+ * gone off the top of the window, and adding the next card means scrolling back
+ * up to a button you already know the position of. This one is where you were
+ * already looking: under the row you have just finished.
+ *
+ * A proxy rather than a second `data-event="add-row"` anchor. ACF's handler is
+ * delegated, so a copy would work, but then two elements claim to be the add
+ * button and only one of them is the one ACF renders, disables and reads its
+ * label from. Clicking through the real one keeps a single source of truth.
+ *
+ * @param {HTMLElement} add The repeater's real add button, in the header.
+ * @return {HTMLElement} The foot, hidden until there is a list to scroll.
+ */
+function buildFoot( add ) {
+	const foot = document.createElement( 'div' );
+	foot.className = 'herd-repeater__foot';
+
+	const button = document.createElement( 'button' );
+	button.type = 'button';
+	button.className = 'herd-btn herd-btn--accent';
+	button.textContent = add.textContent;
+	button.addEventListener( 'click', () => add.click() );
+
+	foot.appendChild( button );
+	return foot;
 }
 
 /**
@@ -221,8 +252,26 @@ function decorateRepeater( field, onRow ) {
 	const linkList = isLinkList( repeater );
 	if ( linkList ) repeater.classList.add( 'herd-linklist' );
 
-	const { head, count, collapse } = buildRepeaterHeader( field, repeater );
+	const { head, count, collapse, add } = buildRepeaterHeader( field, repeater );
 	repeater.insertBefore( head, repeater.firstChild );
+
+	// After the table, so it sits under the last row. ACF's own actions bar is
+	// what the add button was taken out of, and the stylesheet hides what is left.
+	const foot = add ? buildFoot( add ) : null;
+	if ( foot ) repeater.appendChild( foot );
+
+	/*
+	 * A second add button beside the first says nothing. It earns its place once
+	 * the list is taller than the window — more than one row, or one row open,
+	 * which is already most of a screen.
+	 */
+	const paintFoot = () => {
+		const rows = realRows( repeater );
+		foot?.classList.toggle(
+			'is-shown',
+			rows.length > 1 || rows.some( ( row ) => row.classList.contains( 'is-open' ) ),
+		);
+	};
 
 	/*
 	 * "Untitled" is true of a card nobody has named yet. It is not true of the
@@ -253,6 +302,7 @@ function decorateRepeater( field, onRow ) {
 		row.herdParts?.header.setAttribute( 'aria-expanded', String( open ) );
 		if ( open ) awakenEditors( row );
 		else refreshRow( row );
+		paintFoot();
 	};
 
 	const decorateRow = ( row ) => {
@@ -355,6 +405,7 @@ function decorateRepeater( field, onRow ) {
 		rows.forEach( decorateRow );
 		rows.forEach( ( row ) => ! row.classList.contains( 'is-open' ) && refreshRow( row ) );
 		paintCount( rows );
+		paintFoot();
 		// A row ACF has just added is the one the editor means to fill in.
 		const added = rows.find( ( row ) => row.herdJustAdded );
 		if ( added ) {

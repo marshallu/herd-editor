@@ -186,3 +186,78 @@ test( 'paints a repeater thumbnail for a recognised icon picker', () => {
 
 	assert.equal( form.querySelector( '.herd-cardrow__thumb svg' ).dataset.icon, 'phone' );
 } );
+
+/* ---------- the add button at the foot ---------- */
+
+/**
+ * A repeater of `count` one-field rows, mounted in a JSDOM window.
+ *
+ * @param {number} count How many rows the list holds.
+ * @return {HTMLElement} The form to decorate.
+ */
+function repeaterListForm( count ) {
+	const rows = Array.from( { length: count }, ( _, index ) => `
+		<tr class="acf-row">
+			<td class="acf-row-handle order"><span class="acf-row-number">${ index + 1 }</span></td>
+			<td class="acf-fields">
+				<div class="acf-field acf-field-text" data-name="title" data-type="text">
+					<div class="acf-input"><input type="text" value="Card ${ index + 1 }"></div>
+				</div>
+			</td>
+			<td class="acf-row-handle remove"></td>
+		</tr>` ).join( '' );
+
+	const dom = new JSDOM( `
+		<div class="acf-block-fields acf-fields">
+			<div class="acf-field acf-field-repeater" data-name="cards" data-type="repeater">
+				<div class="acf-label"><label>Cards</label></div>
+				<div class="acf-input"><div class="acf-repeater -block" data-min="0" data-max="0">
+					<table><tbody>${ rows }</tbody></table>
+					<div class="acf-actions"><a class="acf-repeater-add-row button button-primary" href="#" data-event="add-row">Add Card</a></div>
+				</div></div>
+			</div>
+		</div>` );
+	global.document = dom.window.document;
+	global.window = dom.window;
+	global.MutationObserver = dom.window.MutationObserver;
+	return dom.window.document.querySelector( '.acf-block-fields' );
+}
+
+const foot = ( form ) => form.querySelector( '.herd-repeater__foot' );
+
+test( 'one collapsed row does not get the same add button twice', () => {
+	const form = repeaterListForm( 1 );
+
+	decorateRepeaters( form );
+
+	assert.equal( foot( form ).classList.contains( 'is-shown' ), false );
+} );
+
+test( 'a list you have to scroll gets an add button at its foot', () => {
+	const form = repeaterListForm( 3 );
+
+	decorateRepeaters( form );
+
+	assert.equal( foot( form ).classList.contains( 'is-shown' ), true );
+	assert.equal( foot( form ).querySelector( 'button' ).textContent, 'Add Card' );
+} );
+
+test( 'an open row is tall enough to earn the foot on its own', () => {
+	const form = repeaterListForm( 1 );
+	decorateRepeaters( form );
+
+	form.querySelector( '.herd-cardrow' ).click();
+
+	assert.equal( foot( form ).classList.contains( 'is-shown' ), true );
+} );
+
+test( "the foot's button clicks ACF's own, so one element stays the add button", () => {
+	const form = repeaterListForm( 3 );
+	decorateRepeaters( form );
+
+	let added = 0;
+	form.querySelector( '.acf-repeater-add-row' ).addEventListener( 'click', () => added++ );
+	foot( form ).querySelector( 'button' ).click();
+
+	assert.equal( added, 1 );
+} );

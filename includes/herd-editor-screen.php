@@ -38,7 +38,12 @@ $herd_saved       = herd_editor_saved_notice( $post );
 	?>
 	<hr class="wp-header-end" />
 
-	<form id="post" method="post" action="post.php">
+	<?php
+	/* Required ACF controls can live in a collapsed block panel or a relocated
+	 * meta box. Native constraint validation would stop a draft before Herd can
+	 * serialize and recover it; Publish uses Herd's explicit ACF validation. */
+	?>
+	<form id="post" method="post" action="post.php" novalidate>
 		<?php wp_nonce_field( 'update-post_' . $post->ID ); ?>
 		<input type="hidden" name="action" value="editpost" />
 		<input type="hidden" name="post_ID" value="<?php echo esc_attr( $post->ID ); ?>" />
