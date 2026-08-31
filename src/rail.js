@@ -10,6 +10,34 @@
  * revealed so the publish box is never unreachable.
  */
 
+/**
+ * The block editor's own slug helper, when WordPress has it on the page.
+ *
+ * `wp-url` is an enqueue dependency of this screen, so in a browser this is
+ * always @wordpress/url's cleanForSlug -- the exact function behind the block
+ * editor's permalink. The fallback exists because this module is deliberately
+ * free of build-time imports so it can be tested in plain node, and it is a
+ * close paraphrase rather than a copy: it decomposes accents instead of pulling
+ * in remove-accents' character map. Nothing rests on the difference. The value
+ * is only ever displayed, and WordPress derives the real one on save.
+ *
+ * @param {string} text Text to slugify.
+ * @return {string} The slug.
+ */
+function cleanForSlug( text ) {
+	if ( window.wp?.url?.cleanForSlug ) return window.wp.url.cleanForSlug( text );
+	if ( ! text ) return '';
+	return text
+		.normalize( 'NFD' ).replace( /[\u0300-\u036f]/g, '' )
+		.replace( /(&nbsp;|&ndash;|&mdash;)/g, '-' )
+		.replace( /[\s./]+/g, '-' )
+		.replace( /&\S+?;/g, '' )
+		.replace( /[^\p{L}\p{N}_-]+/gu, '' )
+		.toLowerCase()
+		.replace( /-+/g, '-' )
+		.replace( /(^-+)|(-+$)/g, '' );
+}
+
 const STORAGE_KEY = 'herd-editor-rail-tab';
 const FALLBACK_TAB = 'more';
 
@@ -148,13 +176,34 @@ export function wireSlugEditor() {
 	const value = document.getElementById( 'herd-slug-value' );
 	const edit = document.getElementById( 'herd-slug-edit' );
 	const input = document.getElementById( 'post_name' );
+	const title = document.getElementById( 'title' );
 	if ( ! wrap || ! slug || ! value || ! edit || ! input ) return;
 
 	const placeholder = input.getAttribute( 'placeholder' ) || '';
 	let opener = edit;
 
+	/*
+	 * The same answer the block editor gives, in the same order: the slug that
+	 * has been saved, else one derived from the title, else the placeholder.
+	 * (getEditedPostSlug() in @wordpress/editor, which falls back to the post id
+	 * where Herd already has something better to show.)
+	 *
+	 * Derived only for display. Writing it into #post_name would post it as a
+	 * deliberate choice and pin the slug, so a title changed before publishing
+	 * would no longer be reflected -- WordPress derives the same value on save
+	 * anyway, and uniquifies it, which the browser cannot.
+	 */
+	const derived = () => cleanForSlug( title?.value || '' );
+	const shown = () => input.value || derived() || placeholder;
+
 	const collapse = () => {
-		value.textContent = input.value || placeholder;
+		/*
+		 * Nothing was really chosen if the field still holds exactly what the
+		 * title would have produced, so hand it back empty and let the slug keep
+		 * following the title.
+		 */
+		if ( input.value && input.value === derived() ) input.value = '';
+		value.textContent = shown();
 		slug.hidden = false;
 		edit.hidden = false;
 		input.hidden = true;
@@ -163,6 +212,8 @@ export function wireSlugEditor() {
 
 	const expand = ( event ) => {
 		opener = event?.currentTarget || edit;
+		// Open on the derived slug rather than an empty box, so it is edited, not authored.
+		if ( ! input.value ) input.value = derived();
 		slug.hidden = true;
 		edit.hidden = true;
 		input.hidden = false;
@@ -172,6 +223,11 @@ export function wireSlugEditor() {
 	};
 
 	collapse();
+
+	// Live, the way the block editor's permalink follows the title as it is typed.
+	title?.addEventListener( 'input', () => {
+		if ( ! wrap.classList.contains( 'is-editing' ) ) value.textContent = shown();
+	} );
 
 	slug.addEventListener( 'click', expand );
 	edit.addEventListener( 'click', expand );

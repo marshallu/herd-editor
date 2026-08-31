@@ -35,12 +35,16 @@ export function HerdEditorApp( { config } ) {
 	const [ validationErrors, setValidationErrors ] = useState( [] );
 	const [ recovery, setRecovery ] = useState( { payload: null, key: null } );
 	const [ recoveryDismissed, setRecoveryDismissed ] = useState( false );
+	const [ saveState, setSaveState ] = useState( 'idle' );
 	const [ lockFailure, setLockFailure ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
 	/* Held in a ref as well as state so the submit handler can persist a recovery
 	 * copy without listing the key as a dependency and re-binding every listener. */
 	const recoveryKeyRef = useRef( null );
+	const savedTimer = useRef( null );
+	// What core sent, captured on before-autosave so the response can be trusted against it.
+	const autosavingContent = useRef( null );
 	const rows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
 	const dirty = controller.dirty || nativeDirty;
 	const counts = blockCounts( controller.blocks );
@@ -107,6 +111,55 @@ export function HerdEditorApp( { config } ) {
 		document.addEventListener( 'visibilitychange', onVisibility );
 		return () => { window.clearTimeout( timer ); window.removeEventListener( 'pagehide', immediate ); document.removeEventListener( 'visibilitychange', onVisibility ); };
 	}, [ generation, nativeDirty, nativeVersion, recovery.key ] );
+
+	/*
+	 * Say that an autosave happened.
+	 *
+	 * Core autosaves quietly -- it fires these two jQuery events and nothing else
+	 * -- so without this the bar goes on reading "unsaved changes" while the
+	 * server already has the document. The block editor answers the same question
+	 * with PostSavedState: it names an autosave rather than lumping it in with a
+	 * deliberate save, and it holds "Saved" open for a second afterwards, because
+	 * an autosave that resolves quickly would otherwise flash past unread.
+	 *
+	 * after-autosave fires on every response, success or not (autosave.js:671
+	 * sits above the data.success check), so success is tested here rather than
+	 * assumed. An autosave of a draft is a real save of title and content, and
+	 * marking the document clean against exactly what was sent is what stops the
+	 * bar claiming unsaved changes for work that is on the server. It says nothing
+	 * about the meta boxes: ACF ignores a post without its own nonce, so those
+	 * edits are still unsaved and nativeDirty still speaks for them.
+	 */
+	useEffect( () => {
+		const $ = window.jQuery;
+		if ( ! $ ) return undefined;
+		const doc = $( document );
+		const onBefore = ( event, postData ) => {
+			autosavingContent.current = postData?.content ?? null;
+			window.clearTimeout( savedTimer.current );
+			setSaveState( 'autosaving' );
+		};
+		const onAfter = ( event, data ) => {
+			const sent = autosavingContent.current;
+			autosavingContent.current = null;
+			if ( ! data?.success ) {
+				setSaveState( 'idle' );
+				return;
+			}
+			if ( sent !== null ) {
+				controller.cleanSource = sent;
+				refresh();
+			}
+			setSaveState( 'saved' );
+			savedTimer.current = window.setTimeout( () => setSaveState( 'idle' ), 1000 );
+		};
+		doc.on( 'before-autosave.herd-savestate', onBefore );
+		doc.on( 'after-autosave.herd-savestate', onAfter );
+		return () => {
+			doc.off( '.herd-savestate' );
+			window.clearTimeout( savedTimer.current );
+		};
+	}, [] );
 
 	useEffect( () => {
 		const form = document.getElementById( 'post' );
@@ -386,6 +439,7 @@ export function HerdEditorApp( { config } ) {
 	const barTarget = document.getElementById( 'herd-bar-react' );
 	const barTools = el( BarTools, {
 		dirty,
+		saveState,
 		savedLabel: config.modifiedHuman || 'saved',
 		statusLabel: config.statusLabel || 'Draft',
 		isPublished: !! config.isPublished,

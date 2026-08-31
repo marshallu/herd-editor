@@ -55,7 +55,16 @@ $herd_saved       = herd_editor_saved_notice( $post );
 	<form id="post" method="post" action="post.php" novalidate>
 		<?php wp_nonce_field( 'update-post_' . $post->ID ); ?>
 		<input type="hidden" name="action" value="editpost" />
-		<input type="hidden" name="post_ID" value="<?php echo esc_attr( $post->ID ); ?>" />
+		<?php
+		/*
+		 * `id` as well as `name`, exactly as core renders it. Core's autosave reads
+		 * $('#post_ID') (wp-includes/js/autosave.js) and src/post-lock.js reads the
+		 * same element before it will install anything -- without the id, autosave
+		 * posts post_id 0 and the lock client returns without binding a single
+		 * handler.
+		 */
+		?>
+		<input type="hidden" id="post_ID" name="post_ID" value="<?php echo esc_attr( $post->ID ); ?>" />
 		<input type="hidden" name="post_type" id="post_type" value="<?php echo esc_attr( $post->post_type ); ?>" />
 		<input type="hidden" name="post_author" id="post_author" value="<?php echo esc_attr( $post->post_author ); ?>" />
 		<input type="hidden" name="post_status" id="post_status" value="<?php echo esc_attr( $post->post_status ); ?>" />
@@ -64,6 +73,16 @@ $herd_saved       = herd_editor_saved_notice( $post );
 		<?php if ( ! empty( $herd_active_post_lock ) ) : ?>
 			<input type="hidden" id="active_post_lock" name="active_post_lock" value="<?php echo esc_attr( $herd_active_post_lock ); ?>" />
 		<?php endif; ?>
+		<?php
+		/*
+		 * Herd has no excerpt field, but core's autosave sends
+		 * `excerpt: $('#excerpt').val() || ''` whether or not one exists, and an
+		 * autosave of a draft is a real edit_post(). Without somewhere to read the
+		 * current value from, every autosave would blank the excerpt -- `post` is
+		 * one of Herd's post types and it does support them. Carry it through.
+		 */
+		?>
+		<input type="hidden" id="excerpt" name="excerpt" value="<?php echo esc_attr( $post->post_excerpt ); ?>" />
 		<input type="hidden" name="content" id="content" value="<?php echo esc_attr( $post->post_content ); ?>" />
 
 		<header class="herd-bar">

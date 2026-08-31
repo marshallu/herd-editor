@@ -70,12 +70,37 @@ export function installPostLock( { document: documentObject = document, window: 
 	latestToken = lockInput()?.value || null;
 	if ( ! lockInput() ) disable( 'missing' );
 	if ( windowObject.wp?.heartbeat ) windowObject.wp.heartbeat.interval( 10 );
+
+	/*
+	 * Core throttles its own heartbeat, and the watchdog has to allow for it.
+	 * Once the window loses focus the interval becomes 120s, and five minutes
+	 * without a keystroke counts as losing focus even while the window is
+	 * frontmost (heartbeat.js:512 and :623 -- core's own comment there reads
+	 * "120 seconds. Post locks expire after 150 seconds", which is the margin it
+	 * is working to). A 45s watchdog was inside all of that: it declared the lock
+	 * dead 75s before core meant to send the next beat, and disabled the form
+	 * under someone who had done nothing but pause.
+	 *
+	 * So the threshold is the lock window itself -- the same
+	 * wp_check_post_lock_window the server uses to decide the question -- and the
+	 * check stands down while the document is unfocused, which is exactly when
+	 * core is throttling deliberately. Coming back resets the clock, because
+	 * refocusing makes core resume and beat again; and if the lock really was
+	 * taken while away, the heartbeat answers with lock_error, which is a fact
+	 * rather than an inference.
+	 */
+	const lockWindow = ( Number( windowObject.HerdEditor?.lockWindow ) || 150 ) * 1000;
+	const present = () => documentObject.visibilityState !== 'hidden' && ( documentObject.hasFocus?.() ?? true );
+	const refocus = () => { lastHeartbeat = Date.now(); };
+	windowObject.addEventListener?.( 'focus', refocus );
 	const watchdog = windowObject.setInterval?.( () => {
-		if ( ! lost && documentObject.visibilityState !== 'hidden' && Date.now() - lastHeartbeat > 45000 ) disable( 'heartbeat-timeout' );
+		if ( lost || ! present() ) return;
+		if ( Date.now() - lastHeartbeat > lockWindow ) disable( 'heartbeat-timeout' );
 	}, 5000 );
 	return () => {
 		$( documentObject ).off( '.herd-post-lock' );
 		form.removeEventListener( 'submit', preventSubmit );
+		windowObject.removeEventListener?.( 'focus', refocus );
 		if ( watchdog ) windowObject.clearInterval?.( watchdog );
 	};
 }

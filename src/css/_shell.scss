@@ -234,6 +234,33 @@
 	background: var(--herd-warning);
 }
 
+/*
+ * The save states, after .is-dirty so they win on equal specificity: while a
+ * save is actually happening, that is the more useful thing for the dot to say.
+ * The block editor animates its icon for the same reason -- a word alone is easy
+ * to miss when it is only on screen for a moment.
+ */
+.herd-bar__savestate.is-autosaving .herd-bar__dot,
+.herd-bar__savestate.is-saving .herd-bar__dot {
+	animation: herd-savestate-pulse 1s ease-in-out infinite;
+	background: var(--herd-ink-3);
+}
+
+.herd-bar__savestate.is-saved .herd-bar__dot {
+	background: var(--herd-green);
+}
+
+@keyframes herd-savestate-pulse {
+	50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.herd-bar__savestate.is-autosaving .herd-bar__dot,
+	.herd-bar__savestate.is-saving .herd-bar__dot {
+		animation: none;
+	}
+}
+
 .herd-bar__divider {
 	background: var(--herd-line);
 	flex: none;

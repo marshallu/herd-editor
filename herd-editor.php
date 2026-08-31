@@ -956,19 +956,20 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 
 	wp_enqueue_media();
 	wp_enqueue_script( 'heartbeat' );
-	/* Autosave is initialized against Herd's native #post form and the standard
-	 * #post_ID/#content fields rendered by the screen template. Browser recovery
-	 * below remains the primary guarantee if a host disables autosave. */
+	/*
+	 * Autosave is initialized against Herd's native #post form and the standard
+	 * #post_ID/#content/#excerpt fields rendered by the screen template, so it
+	 * behaves exactly as it does under the block and classic editors: an autosave
+	 * of a draft the current user owns is a real save. Browser recovery remains
+	 * the guarantee if a host disables autosave.
+	 *
+	 * Core's own autosaveL10n is left alone. Herd used to localize a second copy
+	 * asking for a 120s interval, but core's prints after Herd's and wins, so the
+	 * value never applied -- and its `post_id` was never read by anything, since
+	 * autosave takes the id from #post_ID. Core's 60s is the interval in effect
+	 * and the one the block editor uses.
+	 */
 	wp_enqueue_script( 'autosave' );
-	wp_localize_script(
-		'autosave',
-		'autosaveL10n',
-		array(
-			'autosaveInterval' => 120,
-			'blog_id'          => get_current_blog_id(),
-			'post_id'          => $post->ID,
-		)
-	);
 	if ( function_exists( 'acf_enqueue_scripts' ) ) {
 		acf_enqueue_scripts();
 	}
@@ -977,7 +978,9 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 	wp_enqueue_script(
 		'herd-editor-screen',
 		HERD_EDITOR_URL . 'build/herd-editor.js',
-		array_values( array_unique( array_merge( array( 'acf-input' ), $asset['dependencies'] ) ) ),
+		/* wp-url carries cleanForSlug, which src/rail.js uses to show the same
+		 * derived permalink the block editor shows before a post has been saved. */
+		array_values( array_unique( array_merge( array( 'acf-input', 'wp-url' ), $asset['dependencies'] ) ) ),
 		$asset['version'],
 		true
 	);
@@ -1014,6 +1017,9 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				'validationNonce' => wp_create_nonce( 'herd_editor_validate_document' ),
 				'recoveryKey' => herd_editor_recovery_key(),
 				'lockPreflightNonce' => wp_create_nonce( 'herd_editor_check_post_lock' ),
+				/* The window the server judges a lock by, so the browser watchdog
+				 * measures against the same number rather than a guess of its own. */
+				'lockWindow' => (int) apply_filters( 'wp_check_post_lock_window', 150 ),
 				'currentUserId' => get_current_user_id(),
 				/* A post.php redirect with a message is a confirmed native save. */
 				'successfulSave' => ! empty( $_GET['message'] ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -1308,11 +1314,16 @@ add_filter( 'page_row_actions', 'herd_editor_add_list_table_link', 20, 2 );
  * @param WP_Post $post Post being edited.
  */
 function herd_editor_switch_link( $post ) {
+	global $herd_editor_screen_hook, $hook_suffix;
 	if ( ! herd_editor_has_acf_pro() || ! herd_editor_supports_post( $post ) ) {
 		return;
 	}
+	/* This callback runs while meta boxes render. `$_GET['page']` is not a
+	 * reliable screen identity there (and can be altered by a plugin); the admin
+	 * hook is the route WordPress actually selected. Keep the query fallback for
+	 * integrations that render the box before $hook_suffix is populated. */
 	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$on_herd = isset( $_GET['page'] ) && 'herd-editor' === $_GET['page'];
+	$on_herd = ( ! empty( $herd_editor_screen_hook ) && $hook_suffix === $herd_editor_screen_hook ) || ( isset( $_GET['page'] ) && 'herd-editor' === $_GET['page'] );
 	$url     = $on_herd ? herd_editor_native_url( $post->ID, 'block' ) : herd_editor_url( $post->ID );
 	$label   = $on_herd ? __( 'Switch to Block Editor', 'herd-editor' ) : __( 'Switch to Herd Editor', 'herd-editor' );
 

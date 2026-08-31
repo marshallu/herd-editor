@@ -8,9 +8,10 @@ import { wireSlugEditor } from '../src/rail.js';
  * the input visible and both triggers hidden, so a bundle that never runs leaves
  * an editable slug rather than an unreachable one.
  */
-const screen = ( { slug = 'counseling' } = {} ) => `
+const screen = ( { slug = 'counseling', title = '' } = {} ) => `
 <div class="wrap herd-editor-screen">
   <form id="post">
+    <input type="text" id="title" name="post_title" value="${ title }" />
     <header class="herd-bar">
       <p class="herd-bar__slug" id="herd-slug">
         <span class="herd-bar__slug-home">marshall.test/</span>
@@ -172,4 +173,78 @@ test( 'rewriting the slug keeps the control saying what it is', () => {
 test( 'a bar without a slug line is left alone', () => {
 	build( '<div class="wrap herd-editor-screen"><form id="post"></form></div>' );
 	assert.doesNotThrow( () => wireSlugEditor() );
+} );
+
+
+/*
+ * Before a post is saved WordPress has no slug to give: drafts are stored with
+ * an empty post_name. The block editor answers with one derived from the title
+ * (getEditedPostSlug), and so does Herd, so the permalink is not the word "slug"
+ * until the first save.
+ */
+test( 'an unsaved post shows a slug derived from its title', () => {
+	const win = build( screen( { slug: '', title: 'Counseling & Wellness' } ) );
+	wireSlugEditor();
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'counseling-wellness' );
+} );
+
+test( 'a saved slug wins over the title', () => {
+	const win = build( screen( { slug: 'counseling', title: 'Something Else Entirely' } ) );
+	wireSlugEditor();
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'counseling' );
+} );
+
+test( 'with neither a slug nor a title the placeholder stands', () => {
+	const win = build( screen( { slug: '', title: '' } ) );
+	wireSlugEditor();
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'slug' );
+} );
+
+test( 'the derived slug follows the title as it is typed', () => {
+	const win = build( screen( { slug: '', title: '' } ) );
+	wireSlugEditor();
+	const title = win.document.getElementById( 'title' );
+	title.value = 'Student Health';
+	title.dispatchEvent( new win.Event( 'input', { bubbles: true } ) );
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'student-health' );
+} );
+
+/*
+ * The derived value is shown, never posted. Leaving it in post_name would pin
+ * the slug, so a title changed before publishing would stop being reflected --
+ * and WordPress, which alone can check the slug is unique, derives the same
+ * value on save anyway.
+ */
+test( 'a derived slug is not posted as a deliberate choice', () => {
+	const win = build( screen( { slug: '', title: 'Student Health' } ) );
+	wireSlugEditor();
+	assert.equal( win.document.getElementById( 'post_name' ).value, '' );
+} );
+
+test( 'editing opens on the derived slug rather than an empty box', () => {
+	const win = build( screen( { slug: '', title: 'Student Health' } ) );
+	wireSlugEditor();
+	win.document.getElementById( 'herd-slug-edit' ).click();
+	assert.equal( win.document.getElementById( 'post_name' ).value, 'student-health' );
+} );
+
+test( 'opening and closing without a change leaves the slug following the title', () => {
+	const win = build( screen( { slug: '', title: 'Student Health' } ) );
+	wireSlugEditor();
+	const input = win.document.getElementById( 'post_name' );
+	win.document.getElementById( 'herd-slug-edit' ).click();
+	input.dispatchEvent( new win.Event( 'blur' ) );
+	assert.equal( input.value, '' );
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'student-health' );
+} );
+
+test( 'a slug actually typed is kept', () => {
+	const win = build( screen( { slug: '', title: 'Student Health' } ) );
+	wireSlugEditor();
+	const input = win.document.getElementById( 'post_name' );
+	win.document.getElementById( 'herd-slug-edit' ).click();
+	input.value = 'health';
+	input.dispatchEvent( new win.Event( 'blur' ) );
+	assert.equal( input.value, 'health' );
+	assert.equal( win.document.getElementById( 'herd-slug-value' ).textContent, 'health' );
 } );

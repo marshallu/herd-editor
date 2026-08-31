@@ -15,8 +15,30 @@ import { ViewMenu } from './ViewMenu.js';
 
 const el = createElement;
 
+/**
+ * What the tail of the status line should say.
+ *
+ * The block editor's PostSavedState answers this in one place and in this order:
+ * a save in progress wins, naming itself so an autosave is distinguishable from
+ * a deliberate one; then a save that has just landed; then the resting state.
+ * Herd keeps the resting state it already had -- a timestamp is more use than
+ * the word "Saved" once the moment has passed.
+ *
+ * @param {string}  saveState  'autosaving', 'saving', 'saved', or 'idle'.
+ * @param {boolean} dirty      Whether the document has unsaved changes.
+ * @param {string}  savedLabel When it was last saved.
+ * @return {string} The tail text.
+ */
+export function saveStateLabel( saveState, dirty, savedLabel ) {
+	if ( saveState === 'autosaving' ) return 'Autosaving';
+	if ( saveState === 'saving' ) return 'Saving';
+	if ( saveState === 'saved' ) return 'Saved';
+	return dirty ? 'unsaved changes' : savedLabel;
+}
+
 export function BarTools( {
 	dirty,
+	saveState = 'idle',
 	savedLabel,
 	statusLabel,
 	isPublished,
@@ -40,10 +62,10 @@ export function BarTools( {
 		 * page is open, and a region wrapped around both would read the whole
 		 * sentence out again every time the document went clean.
 		 */
-		el( 'span', { className: `herd-bar__savestate${ dirty ? ' is-dirty' : '' }` },
+		el( 'span', { className: `herd-bar__savestate${ dirty ? ' is-dirty' : '' }${ saveState !== 'idle' ? ` is-${ saveState }` : '' }` },
 			el( 'span', { className: `herd-bar__dot${ isPublished ? '' : ' is-draft' }`, 'aria-hidden': true } ),
 			el( 'strong', { className: 'herd-bar__state' }, statusLabel ),
-			el( 'span', { className: 'herd-bar__saved', role: 'status' }, ` · ${ dirty ? 'unsaved changes' : savedLabel }` ) ),
+			el( 'span', { className: 'herd-bar__saved', role: 'status' }, ` · ${ saveStateLabel( saveState, dirty, savedLabel ) }` ) ),
 
 		el( 'span', { className: 'herd-bar__divider', 'aria-hidden': true } ),
 
