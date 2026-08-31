@@ -18,7 +18,7 @@ const el = createElement;
  * The bridge mounts on open and disposes on close, so several panels can be open
  * at once without leaving ACF instances behind.
  */
-export function AcfForm( { block, ancestors, config, generation, validationErrors = [], onAttributes } ) {
+export function AcfForm( { block, ancestors, config, generation, validationErrors = [], onAttributes, getData, onBridgeMount } ) {
 	const host = useRef();
 	const [ state, setState ] = useState( 'loading' );
 	const [ error, setError ] = useState( '' );
@@ -33,11 +33,15 @@ export function AcfForm( { block, ancestors, config, generation, validationError
 			postId: config.postId,
 			context: contextForBlock( ancestors, config.blockTypes, config.postId, config.postType ),
 			onAttributes,
+			getData,
 			prepare: layoutBlockForm,
 			enhance: ( form ) => enhanceBlockForm( form, block.name ),
 		} );
 		bridge.mount( host.current )
-			.then( ( result ) => active && setState( result.status ) )
+			.then( ( result ) => {
+				if ( result.status === 'mounted' ) onBridgeMount?.( bridge );
+				if ( active ) setState( result.status );
+			} )
 			.catch( ( reason ) => {
 				if ( active && reason.name !== 'AbortError' ) {
 					setError( reason.message || 'The ACF form could not be loaded.' );
@@ -46,6 +50,7 @@ export function AcfForm( { block, ancestors, config, generation, validationError
 			} );
 		return () => {
 			active = false;
+			onBridgeMount?.( null, bridge );
 			bridge.dispose();
 		};
 	}, [ block.clientId, generation, retry ] );

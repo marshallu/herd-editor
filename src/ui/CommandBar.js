@@ -24,13 +24,14 @@ const el = createElement;
  * Herd keeps the resting state it already had -- a timestamp is more use than
  * the word "Saved" once the moment has passed.
  *
- * @param {string}  saveState  'autosaving', 'saving', 'saved', or 'idle'.
+ * @param {string}  saveState  'autosaving', 'saving-draft', 'saving', 'saved', or 'idle'.
  * @param {boolean} dirty      Whether the document has unsaved changes.
  * @param {string}  savedLabel When it was last saved.
  * @return {string} The tail text.
  */
 export function saveStateLabel( saveState, dirty, savedLabel ) {
 	if ( saveState === 'autosaving' ) return 'Autosaving';
+	if ( saveState === 'saving-draft' ) return 'Saving draft…';
 	if ( saveState === 'saving' ) return 'Saving';
 	if ( saveState === 'saved' ) return 'Saved';
 	return dirty ? 'unsaved changes' : savedLabel;

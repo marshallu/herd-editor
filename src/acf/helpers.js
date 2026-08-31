@@ -90,8 +90,11 @@ function addressesRemovedRow( name, next, rendered ) {
 		// A repeater serializes its row count; flexible content serializes the
 		// list of layouts in play.
 		const value = next[ field ];
-		const length = Array.isArray( value ) ? value.length : Number.parseInt( value, 10 );
-		if ( Number.isInteger( length ) && Number.parseInt( row[ 1 ], 10 ) >= length ) return true;
+		/* A number-like scalar is ACF's explicit repeater count. Do not infer a
+		 * deletion from a scalar that merely begins with a digit: only the parent
+		 * repeater's own count/list is authority to prune descendants. */
+		const length = Array.isArray( value ) ? value.length : ( typeof value === 'string' && /^\d+$/.test( value ) ? Number( value ) : null );
+		if ( Number.isInteger( length ) && Number( row[ 1 ] ) >= length ) return true;
 	}
 	return false;
 }

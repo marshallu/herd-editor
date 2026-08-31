@@ -37,6 +37,31 @@ test( 'suppresses duplicate input/change commits and disposes ACF lifecycle', as
 	assert.equal( listeners.size, 0 );
 } );
 
+test( 'merges each edit with current controller data rather than the opened block snapshot', async () => {
+	const commits = [];
+	let current = { title: 'Opened', cards: '1', cards_0_title: 'A', cards_0_hidden: 'Keep' };
+	global.window = {
+		jQuery: ( value ) => value,
+		acf: { doAction() {}, serialize: () => ( { cards: '1', cards_0_title: 'Changed' } ) },
+	};
+	const bridge = new AcfBlockFormBridge( {
+		block: { clientId: 'one', attributes: { data: current } },
+		postId: 1,
+		getData: () => current,
+		onAttributes: ( attributes ) => { commits.push( attributes ); current = { ...current, ...attributes.data }; },
+	} );
+	bridge.fetchForm = async () => '<div class="acf-block-fields"></div>';
+	const { host, listeners } = fakeHost();
+	await bridge.mount( host );
+	// This represents a second mounted control committing after the panel opened.
+	current = { ...current, title: 'Edited elsewhere', recently_added: 'Retain me' };
+	listeners.get( 'input' )();
+	assert.deepEqual( commits[ 0 ], { data: {
+		title: 'Edited elsewhere', recently_added: 'Retain me', cards: '1', cards_0_title: 'Changed', cards_0_hidden: 'Keep',
+	} } );
+	bridge.dispose();
+} );
+
 test( 'decorates only after ACF has initialised, and unwinds on dispose', async () => {
 	// `prepare` moves DOM and must see an inert form; `enhance` reads rendered
 	// values and must not run until ACF has built them. The order below is the
@@ -131,6 +156,21 @@ test( 'drops a removed flexible-content layout, which serializes as a list', () 
 			{ body: [ 'text' ], body_0_copy: 'One' }
 		),
 		{ body: [ 'text' ], body_0_copy: 'One' }
+	);
+} );
+
+test( 'keeps a nested conditional value but removes an explicitly deleted inner or outer row', () => {
+	const previous = {
+		sections: '2', sections_0_cards: '2', sections_0_cards_0_title: 'A', sections_0_cards_0_note: 'Hidden', sections_0_cards_1_title: 'B',
+		sections_1_cards: '1', sections_1_cards_0_title: 'Outside',
+	};
+	assert.deepEqual(
+		mergeAcfBlockData( previous, { sections: '2', sections_0_cards: '1', sections_0_cards_0_title: 'A', sections_1_cards: '1', sections_1_cards_0_title: 'Outside' } ),
+		{ sections: '2', sections_0_cards: '1', sections_0_cards_0_title: 'A', sections_0_cards_0_note: 'Hidden', sections_1_cards: '1', sections_1_cards_0_title: 'Outside' }
+	);
+	assert.deepEqual(
+		mergeAcfBlockData( previous, { sections: '1', sections_0_cards: '2', sections_0_cards_0_title: 'A', sections_0_cards_1_title: 'B' } ),
+		{ sections: '1', sections_0_cards: '2', sections_0_cards_0_title: 'A', sections_0_cards_0_note: 'Hidden', sections_0_cards_1_title: 'B' }
 	);
 } );
 

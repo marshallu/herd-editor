@@ -40,6 +40,7 @@ export function HerdEditorApp( { config } ) {
 	const [ lockFailure, setLockFailure ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
+	const mountedAcfForms = useRef( new Set() );
 	/* Held in a ref as well as state so the submit handler can persist a recovery
 	 * copy without listing the key as a dependency and re-binding every listener. */
 	const recoveryKeyRef = useRef( null );
@@ -58,6 +59,30 @@ export function HerdEditorApp( { config } ) {
 	const syncContent = () => {
 		const content = document.getElementById( 'content' );
 		if ( content ) content.value = controller.serialize();
+	};
+	const registerAcfForm = ( bridge, previous ) => {
+		if ( previous ) mountedAcfForms.current.delete( previous );
+		if ( bridge ) mountedAcfForms.current.add( bridge );
+	};
+	const flushAcfForms = () => mountedAcfForms.current.forEach( ( bridge ) => bridge.flush() );
+	const beginDraftSave = () => {
+		const save = document.getElementById( 'save-post' );
+		if ( ! save || save.disabled ) return;
+		const original = save.value;
+		const marker = document.createElement( 'input' );
+		marker.type = 'hidden'; marker.name = save.name; marker.value = original;
+		marker.dataset.herdDraftSave = '1';
+		save.after( marker );
+		save.disabled = true;
+		save.value = 'Saving…';
+		let spinner = save.parentElement?.querySelector( '.herd-draft-spinner' );
+		if ( ! spinner ) {
+			spinner = document.createElement( 'span' );
+			spinner.className = 'spinner herd-draft-spinner';
+			save.after( spinner );
+		}
+		spinner.classList.add( 'is-active' );
+		setSaveState( 'saving-draft' );
 	};
 	const recoveryId = recoveryRecordId( config.currentUserId, config.postId );
 	const recoveryPayload = () => ( { content: controller.serialize(), fields: nativeFormValues( document.getElementById( 'post' ) ), savedMarker: config.saveMarker, createdAt: Date.now() } );
@@ -191,8 +216,11 @@ export function HerdEditorApp( { config } ) {
 			return result?.success && result.data?.valid ? null : ( result?.data?.reason || 'connection' );
 		};
 		const submit = ( event ) => {
-			syncContent();
+			// A prior native listener (invalid date, lost lock) has rejected this
+			// submission. It must not start another preflight or a saving treatment.
+			if ( event.defaultPrevented ) return;
 			if ( form?.dataset.herdPreflight !== '1' ) {
+				syncContent();
 				event.preventDefault();
 				persistRecovery().then( preflight ).then( ( reason ) => {
 					if ( reason ) {
@@ -220,9 +248,20 @@ export function HerdEditorApp( { config } ) {
 				return;
 			}
 			if ( form ) delete form.dataset.herdValidated;
+			// This is the one path the browser will submit natively. Flush forms
+			// synchronously, then write the complete controller document to #content.
+			flushAcfForms();
+			syncContent();
+			const isDraftSave = event.submitter?.id === 'save-post' || event.submitter?.name === 'save';
 			submitting = true;
 			queueMicrotask( () => {
-				if ( event.defaultPrevented ) submitting = false;
+				if ( event.defaultPrevented ) {
+					submitting = false;
+					return;
+				}
+				// Let every native submit listener finish first: an intercepted
+				// submission must never leave the draft control in its saving state.
+				if ( isDraftSave ) beginDraftSave();
 			} );
 		};
 		const click = () => syncContent();
@@ -416,6 +455,8 @@ export function HerdEditorApp( { config } ) {
 				config,
 				generation: formVersions[ row.block.clientId ] || 0,
 				validationErrors: validationErrors.filter( ( error ) => error.blockId === row.block.clientId ),
+				getData: () => controller.find( row.block.clientId )?.attributes?.data || {},
+				onBridgeMount: registerAcfForm,
 				onAttributes: ( attributes ) => {
 					controller.replaceAttributes( row.block.clientId, attributes );
 					refresh();

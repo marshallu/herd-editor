@@ -12,6 +12,10 @@ test( 'a save in progress outranks the resting state', () => {
 	assert.equal( saveStateLabel( 'saving', true, '2 minutes ago' ), 'Saving' );
 } );
 
+test( 'a native draft save names itself while the browser navigates', () => {
+	assert.equal( saveStateLabel( 'saving-draft', true, '2 minutes ago' ), 'Saving draft…' );
+} );
+
 test( 'an autosave is named, not lumped in with a deliberate save', () => {
 	assert.notEqual( saveStateLabel( 'autosaving', true, '' ), saveStateLabel( 'saving', true, '' ) );
 } );

@@ -5,11 +5,14 @@ import { buildFetchBlockPayload, dataAttributesFromForm, mergeAcfBlockData } fro
  * acf.serialize, or lifecycle actions directly.
  */
 export class AcfBlockFormBridge {
-	constructor( { block, postId, context, onAttributes, prepare, enhance } ) {
+	constructor( { block, postId, context, onAttributes, getData, prepare, enhance } ) {
 		this.block = block;
 		this.postId = postId;
 		this.context = context || {};
 		this.onAttributes = onAttributes;
+		// A panel can stay mounted while another edit changes this block.  Do not
+		// merge against the snapshot that fetched the form in that case.
+		this.getData = getData;
 		this.prepare = prepare;
 		this.enhance = enhance;
 		this.teardown = null;
@@ -62,14 +65,18 @@ export class AcfBlockFormBridge {
 		return { status: 'mounted' };
 	}
 
-	handleChange() {
+	flush() {
 		if ( ! this.form ) return;
 		const submitted = dataAttributesFromForm( this.form, this.block.clientId, window.acf );
-		const data = mergeAcfBlockData( this.block.attributes?.data, submitted );
+		const data = mergeAcfBlockData( this.getData?.() ?? this.block.attributes?.data, submitted );
 		const serialized = JSON.stringify( data );
 		if ( serialized === this.lastSerialized ) return;
 		this.lastSerialized = serialized;
 		this.onAttributes( { data } );
+	}
+
+	handleChange() {
+		this.flush();
 	}
 
 	dispose() {

@@ -107,6 +107,11 @@
 }
 
 /* Save Draft is the only thing left in here; it needs to clear the status list. */
+#save-action .herd-draft-spinner {
+	float: none;
+	margin: 0 0 0 5px;
+	vertical-align: middle;
+}
 .herd-editor-screen .herd-rail__panel #minor-publishing-actions {
 	padding-bottom: 12px;
 }
