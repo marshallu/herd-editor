@@ -336,11 +336,21 @@ function herd_editor_is_default_for( $post ) {
 }
 
 /**
- * Send post.php and post-new.php to the Herd screen.
+ * Render Herd in place of the native editors on post.php and post-new.php.
  *
  * Core fires `replace_editor` before it has emitted anything -- post.php:194
- * and post-new.php:70, the latter after the auto-draft exists -- so redirecting
- * from here is safe, and a brand new post already has the id Herd needs.
+ * and post-new.php:70, the latter after the auto-draft exists -- which is
+ * exactly where the block and classic editors take over, so Herd takes over
+ * there too. It used to redirect to its own submenu page instead, which cost a
+ * second full admin bootstrap on every open: the click sat on a 302 with an
+ * empty body while WordPress booted twice. Rendering here costs one.
+ *
+ * Claiming the request means answering `true`, which stands core's own editor
+ * down. Both call sites close with admin-footer.php themselves, so the screen
+ * emits the header and the body and nothing else.
+ *
+ * The submenu page stays registered: admin.php?page=herd-editor&post=N is still
+ * a valid way in, and is still where a save lands.
  *
  * @param bool    $replace Whether the editor has already been replaced.
  * @param WP_Post $post    Post being edited.
@@ -360,20 +370,44 @@ function herd_editor_replace_editor( $replace, $post ) {
 	/*
 	 * Core has printed nothing at either call site, but a plugin emitting a
 	 * notice during admin_init would have. Falling through to the native editor
-	 * is a better failure than a warning above a blank page.
+	 * is a better failure than a warning above a half-rendered screen.
 	 */
 	if ( headers_sent() ) {
 		return $replace;
 	}
 
 	/*
-	 * Anything core put in the URL comes along. revision.php sends a restore
-	 * back through post.php carrying `message` and `revision`, and dropping
-	 * them here is what made a restored revision arrive silently.
+	 * `replace_editor` is asked two different questions. post.php:194 and
+	 * post-new.php:70 ask it to actually replace the editor. WP_Screen::get()
+	 * asks it as a plain predicate -- "will something replace the editor?" --
+	 * only to decide `is_block_editor`, and it asks from inside
+	 * set_current_screen(), which admin.php runs on every admin request.
+	 *
+	 * Both want the same answer, but only one wants a rendered page. The old
+	 * redirect could not tell them apart and did not need to: it exited either
+	 * way. Rendering has to, or the screen is emitted from inside
+	 * set_current_screen() -- before the screen it needs even exists -- and then
+	 * again at the real call site.
+	 *
+	 * The screen itself is what separates them. WP_Screen::get() is asking
+	 * *because* there is no current screen yet; by post.php:194 admin.php has
+	 * built one. Answer the predicate honestly in both cases; render in one.
 	 */
-	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	wp_safe_redirect( herd_editor_carry_message( wp_unslash( $_GET ), $post->ID ) );
-	exit;
+	static $rendered = false;
+	if ( $rendered || ! get_current_screen() ) {
+		return true;
+	}
+	$rendered = true;
+
+	/*
+	 * Whatever core put in the URL is already in $_GET on this same request --
+	 * revision.php sends a restore back through post.php carrying `message` and
+	 * `revision` -- so the screen reads it directly. Nothing to carry.
+	 */
+	$GLOBALS['herd_editor_rendering_inline'] = true;
+	herd_editor_current_post( $post );
+	herd_editor_render_screen();
+	return true;
 }
 add_filter( 'replace_editor', 'herd_editor_replace_editor', 10, 2 );
 

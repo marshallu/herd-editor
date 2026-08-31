@@ -16,23 +16,34 @@ import './editor.scss';
 const config = window.HerdEditor;
 const root = document.getElementById( 'herd-editor-root' );
 
-// Must run before ACF initialises any field, or the first dropdown opens unnamespaced.
-registerPortalNamespaces( window.acf );
-
-assembleRail();
 /*
- * After the rail: the postboxes have to be on their panels before the surfaces
- * are scanned. Guarded on its own — assembleRail() catches to keep the publish
- * box reachable, and dressing a link is not a reason to lose that.
+ * The whole boot is wrapped so the finally can lift `herd-editor-booting`. That
+ * class hides the shell's no-JS layout while the DOM is rearranged, and it has
+ * to come off however this ends: a throw should leave the screen looking like
+ * it did before the guard existed, not blank. Nothing here is *caught* -- these
+ * failures are real and belong in the console.
  */
 try {
-	enhanceBoxes( window.acf );
-} catch ( error ) {
-	// eslint-disable-next-line no-console
-	console.error( 'Herd Editor could not dress the settings fields.', error );
-}
-installPostLock();
+	// Must run before ACF initialises any field, or the first dropdown opens unnamespaced.
+	registerPortalNamespaces( window.acf );
 
-if ( root && config ) {
-	render( createElement( HerdEditorApp, { config } ), root );
+	assembleRail();
+	/*
+	 * After the rail: the postboxes have to be on their panels before the surfaces
+	 * are scanned. Guarded on its own — assembleRail() catches to keep the publish
+	 * box reachable, and dressing a link is not a reason to lose that.
+	 */
+	try {
+		enhanceBoxes( window.acf );
+	} catch ( error ) {
+		// eslint-disable-next-line no-console
+		console.error( 'Herd Editor could not dress the settings fields.', error );
+	}
+	installPostLock();
+
+	if ( root && config ) {
+		render( createElement( HerdEditorApp, { config } ), root );
+	}
+} finally {
+	document.querySelector( '.herd-editor-screen' )?.classList.remove( 'herd-editor-booting' );
 }

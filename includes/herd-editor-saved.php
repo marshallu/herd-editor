@@ -30,9 +30,13 @@ const HERD_EDITOR_LINKED_MESSAGES = array( 1, 6, 8, 9, 10 );
  *
  * `message` is how WordPress names what just happened -- published, drafted,
  * scheduled -- and `revision` is what message 5 needs in order to say which
- * revision was restored. Both redirects into Herd rebuild the URL from scratch
- * rather than amending core's, so without this the answer is dropped and the
- * screen arrives with nothing to report.
+ * revision was restored. The post-save redirect into Herd rebuilds the URL from
+ * scratch rather than amending core's, so without this the answer is dropped and
+ * the screen arrives with nothing to report.
+ *
+ * Opening the editor needs none of this: Herd renders in place on post.php and
+ * post-new.php now, so whatever core put in the URL is still in $_GET when
+ * herd_editor_saved_notice() reads it.
  *
  * @param array $args    Query args to take the answer from.
  * @param int   $post_id Post being edited.

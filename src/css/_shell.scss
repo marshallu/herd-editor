@@ -453,6 +453,32 @@
 	display: none;
 }
 
+/*
+ * The boot guard. Between first paint and src/herd-editor.js running, the shell
+ * is still in its no-JS shape: the publish actions have not been lifted into the
+ * command bar, the slug is a bare input, and every meta box is in #herd-staging.
+ * Painting that and then rearranging it is the flicker. Hold back only what
+ * moves -- the admin chrome, the title and the command bar's own frame stay
+ * visible, so the screen arrives looking like the editor rather than blank.
+ *
+ * Reserve the main column's height too: #herd-editor-root is empty until React
+ * mounts, and letting it collapse pulls the whole page up and then down again.
+ *
+ * Scoped to .js -- admin-header.php rewrites the body's no-js class inline, so
+ * with scripting off the guard never applies and nothing here can hide a rail
+ * that will never be assembled. It is the same statement .no-js .herd-staging
+ * makes below, in the direction that fails safe.
+ */
+.js .herd-editor-booting .herd-rail,
+.js .herd-editor-booting .herd-bar__slug,
+.js .herd-editor-booting .herd-bar__actions {
+	visibility: hidden;
+}
+
+.js .herd-editor-booting #herd-editor-root {
+	min-height: 60vh;
+}
+
 /* ---------- shared controls ---------- */
 
 .herd-btn {
@@ -613,6 +639,18 @@
 
 .herd-notice.is-error {
 	border-left-color: var(--herd-danger);
+}
+
+/*
+ * The recovery offer's buttons. Inline with the sentence that introduces them
+ * rather than on their own row: the notice sits above a fully usable editor and
+ * should read as an aside, not as a decision blocking the document.
+ */
+.herd-recovery-actions {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	vertical-align: middle;
 }
 
 /*

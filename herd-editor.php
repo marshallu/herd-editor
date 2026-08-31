@@ -176,28 +176,29 @@ function herd_editor_validate_post_lock_before_save() {
 add_action( 'admin_init', 'herd_editor_validate_post_lock_before_save', 1 );
 
 /**
- * Return the current user's browser-recovery key. The key is deliberately
- * scoped to a user, not a post: IndexedDB is browser-local and this prevents a
- * second WordPress account on the same browser profile from reading a copy left
- * by the first account.
+ * The current user's browser-recovery key, minted on first use.
+ *
+ * The key is deliberately scoped to a user, not a post: IndexedDB is
+ * browser-local and this prevents a second WordPress account on the same
+ * browser profile from reading a copy left by the first account.
+ *
+ * It is a per-user constant, so it travels inline in the screen's own config
+ * blob rather than over a round trip. Fetching it cost a full admin bootstrap
+ * in front of the editor's first paint, and bought nothing: the blob is already
+ * inlined into this same authenticated response, so anything able to read one
+ * can read the other.
+ *
+ * @return string 43-character base64url key.
  */
-function herd_editor_ajax_get_recovery_key() {
-
-	check_ajax_referer( 'herd_editor_get_recovery_key', 'nonce' );
-	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0;
-	$post    = $post_id ? get_post( $post_id ) : null;
-	if ( ! $post || ! herd_editor_supports_post( $post ) ) {
-		wp_send_json_error( array( 'message' => __( 'You cannot recover this post.', 'herd-editor' ) ), 403 );
-	}
+function herd_editor_recovery_key() {
 	$user_id = get_current_user_id();
 	$key     = (string) get_user_meta( $user_id, '_herd_editor_recovery_key', true );
 	if ( ! preg_match( '/^[A-Za-z0-9_-]{43}$/', $key ) ) {
 		$key = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
 		update_user_meta( $user_id, '_herd_editor_recovery_key', $key );
 	}
-	wp_send_json_success( array( 'key' => $key ) );
+	return $key;
 }
-add_action( 'wp_ajax_herd_editor_get_recovery_key', 'herd_editor_ajax_get_recovery_key' );
 
 /** Answer whether the browser's exact post-lock token can still save. */
 function herd_editor_ajax_check_post_lock() {
@@ -741,13 +742,33 @@ function herd_editor_rail_assignments( $screen_id, $post ) {
  */
 function herd_editor_meta_boxes( $screen_id, $post_type, $context, $post ) {
 	$index = 0;
-	foreach ( array( $screen_id, $post_type ) as $target ) {
+	/*
+	 * Deduplicated because the two targets are only distinct on the submenu
+	 * screen. Rendered in place on post.php/post-new.php, get_current_screen()
+	 * already *is* the post type, and every box would otherwise print twice.
+	 */
+	foreach ( array_unique( array( $screen_id, $post_type ) ) as $target ) {
 		$index++;
 		ob_start();
 		do_meta_boxes( $target, $context, $post );
 		$html = ob_get_clean();
 		echo str_replace( ' id="' . $context . '-sortables"', ' id="herd-sortables-' . esc_attr( $context . '-' . $index ) . '"', $html ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 	}
+}
+
+/**
+ * Whether the request being rendered is Herd's editor screen.
+ *
+ * True for both entry points: the hidden submenu page, and the in-place render
+ * that claims post.php/post-new.php via `replace_editor`. The inline flag is set
+ * before admin-header.php runs, which is where both `admin_enqueue_scripts` and
+ * `admin_body_class` fire.
+ *
+ * @return bool
+ */
+function herd_editor_is_herd_screen() {
+	global $herd_editor_screen_hook, $hook_suffix, $herd_editor_rendering_inline;
+	return ! empty( $herd_editor_rendering_inline ) || ( $hook_suffix && $hook_suffix === $herd_editor_screen_hook );
 }
 
 /** Register a hidden admin page so WordPress supplies its normal admin chrome. */
@@ -764,40 +785,69 @@ add_action( 'admin_menu', 'herd_editor_register_screen' );
  * that has never been saved is given the starting document its post type asks
  * for, and both callers -- the render path and the asset enqueue, which build
  * the hidden #content input and window.HerdEditor.postContent -- have to be
- * handed the same one. Nothing is written; the seed reaches the database on the
- * first save, exactly as core's own `default_content` does.
+ * handed the same one.
  *
+ * The `$primed` argument exists because post-new.php has no `post` query arg:
+ * core creates the auto-draft and hands the object straight to `replace_editor`,
+ * so the in-place render supplies it rather than letting this read the URL.
+ * First answer wins, whichever way it arrives.
+ *
+ * @param WP_Post|null|false $primed Post to memoise, or false to resolve from the URL.
  * @return WP_Post|null
  */
-function herd_editor_current_post() {
+function herd_editor_current_post( $primed = false ) {
 	static $current = false;
 	if ( false !== $current ) {
 		return $current;
 	}
 
-	$post_id = isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$current = $post_id ? get_post( $post_id ) : null;
-
-	if ( $current && 'auto-draft' === $current->post_status ) {
-		/*
-		 * A brand new post is a real row: core inserts it with the literal title
-		 * "Auto Draft" and blanks that on the object before rendering. Herd
-		 * renders from the object too, so it has to do the same or the title
-		 * field opens pre-filled with a word nobody typed.
-		 */
-		if ( __( 'Auto Draft' ) === $current->post_title ) {
-			$current->post_title = '';
-		}
-		if ( '' === trim( (string) $current->post_content ) ) {
-			$current->post_content = herd_editor_starter_content( $current );
-		}
+	if ( false !== $primed ) {
+		$current = herd_editor_prepare_post( $primed );
+		return $current;
 	}
+
+	$post_id = isset( $_GET['post'] ) ? absint( $_GET['post'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$current = herd_editor_prepare_post( $post_id ? get_post( $post_id ) : null );
 
 	return $current;
 }
 
+/**
+ * Give a brand new post the document its post type asks for.
+ *
+ * A new post is a real row: core inserts it with the literal title "Auto Draft"
+ * and blanks that on the object before rendering. Herd renders from the object
+ * too, so it has to do the same or the title field opens pre-filled with a word
+ * nobody typed. Nothing is written; the seed reaches the database on the first
+ * save, exactly as core's own `default_content` does.
+ *
+ * @param WP_Post|null $post Post being edited.
+ * @return WP_Post|null
+ */
+function herd_editor_prepare_post( $post ) {
+	if ( $post && 'auto-draft' === $post->post_status ) {
+		if ( __( 'Auto Draft' ) === $post->post_title ) {
+			$post->post_title = '';
+		}
+		if ( '' === trim( (string) $post->post_content ) ) {
+			$post->post_content = herd_editor_starter_content( $post );
+		}
+	}
+	return $post;
+}
+
+/**
+ * Render the Herd screen.
+ *
+ * Serves both entry points. As the submenu page's callback, admin.php has
+ * already emitted the admin header and will emit the footer. Rendered in place
+ * from `replace_editor`, neither has happened yet -- so the header is emitted
+ * here, after the meta boxes are registered and before any markup, matching
+ * core's own ordering in edit-form-advanced.php. The footer is never emitted
+ * here: post.php and post-new.php both close with it themselves.
+ */
 function herd_editor_render_screen() {
-	global $post;
+	global $post, $herd_editor_rendering_inline;
 	$post = herd_editor_current_post();
 	if ( ! herd_editor_has_acf_pro() || ! herd_editor_supports_post( $post ) ) {
 		wp_die( esc_html__( 'You cannot edit this item in Herd Editor.', 'herd-editor' ), 403 );
@@ -807,16 +857,65 @@ function herd_editor_render_screen() {
 	 * is issued until the user explicitly takes over. */
 	$herd_active_post_lock = herd_editor_active_post_lock( $post->ID );
 
+	/*
+	 * Say plainly that this is not the block editor, before a single meta box is
+	 * registered or rendered.
+	 *
+	 * post.php and post-new.php hand `replace_editor` a screen still marked as the
+	 * block editor and only correct it *after* the filter returns -- too late for a
+	 * filter that renders. Left alone, do_meta_boxes() drops every box flagged
+	 * __back_compat_meta_box (wp-admin/includes/template.php:1353), on the grounds
+	 * that the block editor supplies its own: Publish, Page Attributes, Featured
+	 * Image and Author would all silently vanish. The submenu screen never had this
+	 * problem, being nobody's idea of the block editor.
+	 */
+	if ( ! empty( $herd_editor_rendering_inline ) ) {
+		$herd_screen = get_current_screen();
+		if ( $herd_screen ) {
+			$herd_screen->is_block_editor( false );
+		}
+	}
+
 	require_once ABSPATH . 'wp-admin/includes/meta-boxes.php';
-	// ACF only auto-registers post field groups on the native post screen.
-	// Herd uses the same post form, so register those groups explicitly here.
-	$acf_post_form = function_exists( 'acf_get_instance' ) ? acf_get_instance( 'ACF_Form_Post' ) : null;
+	/*
+	 * ACF hooks its own add_meta_boxes from `load-post.php` and `load-post-new.php`
+	 * (ACF_Form_Post::__construct), so on the submenu page it never registers the
+	 * post field groups and Herd has to ask for them by hand. Rendered in place,
+	 * those load hooks have already fired and ACF is registered: asking again
+	 * would run acf_localize_data( 'postboxes' ) a second time and hand the
+	 * browser every field group twice.
+	 */
+	$acf_post_form = empty( $herd_editor_rendering_inline ) && function_exists( 'acf_get_instance' ) ? acf_get_instance( 'ACF_Form_Post' ) : null;
 	if ( $acf_post_form && method_exists( $acf_post_form, 'add_meta_boxes' ) ) {
 		$acf_post_form->add_meta_boxes( $post->post_type, $post );
 	}
 	register_and_do_post_meta_boxes( $post );
-	remove_meta_box( 'slugdiv', get_current_screen()->id, 'normal' );
+	remove_meta_box( 'slugdiv', herd_editor_screen_id( $post ), 'normal' );
+	if ( ! empty( $herd_editor_rendering_inline ) ) {
+		require_once ABSPATH . 'wp-admin/admin-header.php';
+	}
 	require HERD_EDITOR_DIR . 'includes/herd-editor-screen.php';
+}
+
+/**
+ * The screen meta boxes are registered against.
+ *
+ * On the submenu page this is Herd's own screen id, which is not the post type,
+ * so boxes arrive on two different targets and both have to be rendered. Claiming
+ * post.php/post-new.php instead, the screen *is* the post type and the two
+ * collapse into one.
+ *
+ * Falls back to the post type rather than trusting `get_current_screen()` to be
+ * non-null: reading `->id` off null is a warning that yields null, and a null
+ * target sends `do_meta_boxes()` to the current screen anyway -- which is how the
+ * same box ends up rendered twice.
+ *
+ * @param WP_Post $post Post being edited.
+ * @return string
+ */
+function herd_editor_screen_id( $post ) {
+	$screen = get_current_screen();
+	return $screen && $screen->id ? $screen->id : $post->post_type;
 }
 
 /**
@@ -835,8 +934,7 @@ function herd_editor_render_screen() {
  * @return string The classes, with Herd's own appended when this is its screen.
  */
 function herd_editor_body_class( $classes ) {
-	global $herd_editor_screen_hook, $hook_suffix;
-	if ( $hook_suffix !== $herd_editor_screen_hook || ! herd_editor_has_acf_pro() ) {
+	if ( ! herd_editor_is_herd_screen() || ! herd_editor_has_acf_pro() ) {
 		return $classes;
 	}
 	if ( ! herd_editor_supports_post( herd_editor_current_post() ) ) {
@@ -848,8 +946,7 @@ add_filter( 'admin_body_class', 'herd_editor_body_class' );
 
 /** Load Herd-only assets on the dedicated mode, never on frontend requests. */
 function herd_editor_enqueue_assets( $hook_suffix ) {
-	global $herd_editor_screen_hook;
-	if ( $hook_suffix !== $herd_editor_screen_hook || ! herd_editor_has_acf_pro() ) {
+	if ( ! herd_editor_is_herd_screen() || ! herd_editor_has_acf_pro() ) {
 		return;
 	}
 	$post = herd_editor_current_post();
@@ -915,7 +1012,7 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				/** Filter how many ACF blocks Expand all mounts before asking for confirmation. */
 				'expandWarnAt' => (int) apply_filters( 'herd_editor_expand_warn_at', 8 ),
 				'validationNonce' => wp_create_nonce( 'herd_editor_validate_document' ),
-				'recoveryNonce' => wp_create_nonce( 'herd_editor_get_recovery_key' ),
+				'recoveryKey' => herd_editor_recovery_key(),
 				'lockPreflightNonce' => wp_create_nonce( 'herd_editor_check_post_lock' ),
 				'currentUserId' => get_current_user_id(),
 				/* A post.php redirect with a message is a confirmed native save. */

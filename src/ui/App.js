@@ -33,10 +33,14 @@ export function HerdEditorApp( { config } ) {
 	// The bar's View menu, held here so it and an inserter cannot both be open.
 	const [ menuOpen, setMenuOpen ] = useState( false );
 	const [ validationErrors, setValidationErrors ] = useState( [] );
-	const [ recovery, setRecovery ] = useState( { state: 'loading', payload: null, key: null } );
+	const [ recovery, setRecovery ] = useState( { payload: null, key: null } );
+	const [ recoveryDismissed, setRecoveryDismissed ] = useState( false );
 	const [ lockFailure, setLockFailure ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
+	/* Held in a ref as well as state so the submit handler can persist a recovery
+	 * copy without listing the key as a dependency and re-binding every listener. */
+	const recoveryKeyRef = useRef( null );
 	const rows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
 	const dirty = controller.dirty || nativeDirty;
 	const counts = blockCounts( controller.blocks );
@@ -50,10 +54,10 @@ export function HerdEditorApp( { config } ) {
 	const recoveryId = recoveryRecordId( config.currentUserId, config.postId );
 	const recoveryPayload = () => ( { content: controller.serialize(), fields: nativeFormValues( document.getElementById( 'post' ) ), savedMarker: config.saveMarker, createdAt: Date.now() } );
 	const persistRecovery = async () => {
-		if ( ! recovery.key || !( controller.dirty || nativeDirty ) ) return;
+		if ( ! recoveryKeyRef.current || !( controller.dirty || nativeDirty ) ) return;
 		try {
 			const payload = recoveryPayload();
-			const encrypted = await encryptRecovery( payload, recovery.key );
+			const encrypted = await encryptRecovery( payload, recoveryKeyRef.current );
 			await writeRecovery( { id: recoveryId, createdAt: payload.createdAt, ...encrypted } );
 		} catch ( error ) {
 			window.dispatchEvent( new CustomEvent( 'herd:recovery-diagnostic', { detail: { type: 'recovery-write-failed', error: String( error ) } } ) );
@@ -62,39 +66,47 @@ export function HerdEditorApp( { config } ) {
 
 	useEffect( syncContent, [ generation ] );
 
-	/* Recovery key retrieval is authenticated and the document never leaves this
-	 * browser: only ciphertext is committed to IndexedDB. */
+	/* The document never leaves this browser: only ciphertext is committed to
+	 * IndexedDB. The key arrives inline in config, so nothing here touches the
+	 * network -- and nothing here gates a paint. The editor renders from
+	 * config.postContent on the first frame and this resolves behind it, exactly
+	 * as core's local-autosave monitor does. */
 	useEffect( () => {
 		let alive = true;
 		(async () => {
 			try {
-				const body = new URLSearchParams( { action: 'herd_editor_get_recovery_key', nonce: config.recoveryNonce || '', postId: String( config.postId ) } );
-				const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body } );
-				const result = await response.json();
-				if ( ! result?.success ) throw new Error( 'Recovery key was rejected.' );
-				const key = await encryptionKey( result.data.key );
-				if ( config.successfulSave ) await deleteRecovery( recoveryId );
-				const record = config.successfulSave ? null : await readRecovery( recoveryId );
-				const payload = record ? await decryptRecovery( record, key ) : null;
+				if ( ! config.recoveryKey ) throw new Error( 'No recovery key was supplied.' );
+				const key = await encryptionKey( config.recoveryKey );
+				recoveryKeyRef.current = key;
 				if ( ! alive ) return;
-				const newer = payload && Number( payload.createdAt ) > Number( config.saveMarker || 0 ) * 1000;
-				setRecovery( { state: newer ? 'available' : 'ready', payload: newer ? payload : null, key } );
+				setRecovery( ( current ) => ( { ...current, key } ) );
+				/* A confirmed native save supersedes any copy this browser held. */
+				if ( config.successfulSave ) {
+					await deleteRecovery( recoveryId );
+					return;
+				}
+				const record = await readRecovery( recoveryId );
+				const payload = record ? await decryptRecovery( record, key ) : null;
+				if ( ! alive || ! payload ) return;
+				if ( Number( payload.createdAt ) > Number( config.saveMarker || 0 ) * 1000 ) {
+					setRecovery( ( current ) => ( { ...current, payload } ) );
+				}
 			} catch ( error ) {
-				if ( alive ) setRecovery( { state: 'ready', payload: null, key: null } );
+				window.dispatchEvent( new CustomEvent( 'herd:recovery-diagnostic', { detail: { type: 'recovery-read-failed', error: String( error ) } } ) );
 			}
 		})();
 		return () => { alive = false; };
 	}, [] );
 
 	useEffect( () => {
-		if ( recovery.state !== 'ready' || ! recovery.key ) return undefined;
+		if ( ! recovery.key ) return undefined;
 		const timer = window.setTimeout( persistRecovery, 600 );
 		const immediate = () => { persistRecovery(); };
 		const onVisibility = () => { if ( document.visibilityState === 'hidden' ) immediate(); };
 		window.addEventListener( 'pagehide', immediate );
 		document.addEventListener( 'visibilitychange', onVisibility );
 		return () => { window.clearTimeout( timer ); window.removeEventListener( 'pagehide', immediate ); document.removeEventListener( 'visibilitychange', onVisibility ); };
-	}, [ generation, nativeDirty, nativeVersion, recovery.state, recovery.key ] );
+	}, [ generation, nativeDirty, nativeVersion, recovery.key ] );
 
 	useEffect( () => {
 		const form = document.getElementById( 'post' );
@@ -178,7 +190,7 @@ export function HerdEditorApp( { config } ) {
 			window.removeEventListener( 'herd:lock-lost', onLost );
 			window.removeEventListener( 'beforeunload', unload );
 		};
-		}, [ nativeDirty, recovery.key ] );
+		}, [ nativeDirty ] );
 
 	const restoreRecovery = () => {
 		if ( ! recovery.payload ) return;
@@ -186,9 +198,9 @@ export function HerdEditorApp( { config } ) {
 		controller.index = 0;
 		controller.cleanSource = config.postContent;
 		restoreNativeFormValues( document.getElementById( 'post' ), recovery.payload.fields );
-		setNativeDirty( true ); refresh(); setRecovery( ( current ) => ( { ...current, state: 'ready' } ) );
+		setNativeDirty( true ); refresh(); setRecovery( ( current ) => ( { ...current, payload: null } ) );
 	};
-	const discardRecovery = async () => { await deleteRecovery( recoveryId ); setRecovery( ( current ) => ( { ...current, state: 'ready', payload: null } ) ); };
+	const discardRecovery = async () => { await deleteRecovery( recoveryId ); setRecovery( ( current ) => ( { ...current, payload: null } ) ); };
 
 	const toggleIn = ( setter ) => ( id ) => setter( ( current ) => {
 		const next = new Set( current );
@@ -372,14 +384,6 @@ export function HerdEditorApp( { config } ) {
 	};
 
 	const barTarget = document.getElementById( 'herd-bar-react' );
-	if ( recovery.state === 'loading' || recovery.state === 'available' ) {
-		return el( 'main', { className: 'herd-editor', 'aria-label': 'Herd recovery' },
-			el( Notice, { status: 'info' }, recovery.state === 'loading' ? 'Checking for a recoverable copy…' : 'A newer browser recovery copy is available. Restore it before editing this server version.' ),
-			recovery.state === 'available' && el( 'p', { className: 'herd-recovery-actions' },
-				el( 'button', { type: 'button', className: 'button button-primary', onClick: restoreRecovery }, 'Restore recovery copy' ),
-				' ', el( 'button', { type: 'button', className: 'button', onClick: discardRecovery }, 'Discard copy' ),
-				' ', el( 'button', { type: 'button', className: 'button', onClick: () => downloadRecovery( recovery.payload, config.postId ) }, 'Export copy' ) ) );
-	}
 	const barTools = el( BarTools, {
 		dirty,
 		savedLabel: config.modifiedHuman || 'saved',
@@ -401,6 +405,15 @@ export function HerdEditorApp( { config } ) {
 
 	return el( 'main', { className: 'herd-editor', 'aria-label': 'Herd block editor' },
 		barTarget && createPortal( barTools, barTarget ),
+		/* Offered, never imposed: the server version below is fully editable while
+		 * this stands, and restoring is always an explicit click. */
+		recovery.payload && ! recoveryDismissed && el( Notice, { status: 'warning' },
+			`The backup of this ${ config.singular || 'document' } in your browser is different from the version below. `,
+			el( 'span', { className: 'herd-recovery-actions' },
+				el( 'button', { type: 'button', className: 'button button-primary', onClick: restoreRecovery }, 'Restore the backup' ),
+				el( 'button', { type: 'button', className: 'button', onClick: discardRecovery }, 'Discard' ),
+				el( 'button', { type: 'button', className: 'button', onClick: () => downloadRecovery( recovery.payload, config.postId ) }, 'Export' ),
+				el( 'button', { type: 'button', className: 'button-link', onClick: () => setRecoveryDismissed( true ) }, 'Dismiss' ) ) ),
 		lockFailure && el( Notice, { status: 'error' },
 			`The editing lock is no longer safe to save (${ lockFailure }). Your changes were kept in this browser. `,
 			el( 'a', { href: window.location.href }, 'Reload' ), ' · ',

@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-$herd_screen_id   = get_current_screen()->id;
+$herd_screen_id   = herd_editor_screen_id( $post );
 $herd_home        = preg_replace( '#^https?://#', '', untrailingslashit( home_url( '/' ) ) );
 $herd_list_url    = 'post' === $post->post_type
 	? admin_url( 'edit.php' )
@@ -26,7 +26,16 @@ $herd_tabs        = herd_editor_rail_tab_labels();
 $herd_assignments = herd_editor_rail_assignments( $herd_screen_id, $post );
 $herd_saved       = herd_editor_saved_notice( $post );
 ?>
-<div class="wrap herd-editor-screen">
+<?php
+/*
+ * `herd-editor-booting` holds back the parts src/rail.js is about to move, so
+ * the screen does not paint its no-JS layout -- slug as a bare input, rail with
+ * no tabs, empty main column -- and then visibly reassemble itself a moment
+ * later. src/herd-editor.js drops the class once the DOM is arranged. Every
+ * failure path drops it too: the class must never be what is left behind.
+ */
+?>
+<div class="wrap herd-editor-screen herd-editor-booting">
 	<h1 class="screen-reader-text"><?php esc_html_e( 'Herd Editor', 'herd-editor' ); ?></h1>
 	<?php
 	/*
@@ -184,6 +193,10 @@ $herd_saved       = herd_editor_saved_notice( $post );
 				var staging = document.getElementById( 'herd-staging' );
 				if ( staging ) {
 					staging.style.display = 'block';
+				}
+				var wrap = document.querySelector( '.herd-editor-screen' );
+				if ( wrap ) {
+					wrap.classList.remove( 'herd-editor-booting' );
 				}
 			} );
 		</script>

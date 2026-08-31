@@ -226,9 +226,11 @@ export function assembleRail() {
 		wireSlugEditor();
 		wireSavedNotice();
 	} catch ( error ) {
-		// Never strand the editor without a publish box.
+		// Never strand the editor without a publish box, and never leave the
+		// boot guard holding back a rail that will now never be assembled.
 		const staging = document.getElementById( 'herd-staging' );
 		if ( staging ) staging.style.display = 'block';
+		document.querySelector( '.herd-editor-screen' )?.classList.remove( 'herd-editor-booting' );
 		// eslint-disable-next-line no-console
 		console.error( 'Herd Editor could not assemble the settings rail.', error );
 	}
