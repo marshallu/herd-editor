@@ -15,6 +15,7 @@ export function BlockRow( {
 	warning,
 	hidden,
 	isOpen,
+	keepBodyMounted,
 	childrenExpanded,
 	hasChildren,
 	canReorder,
@@ -118,5 +119,11 @@ export function BlockRow( {
 				onClick: onDelete,
 			} ) ) ),
 
-	isOpen && el( 'div', { className: 'herd-block__body' }, children ) );
+	/* ACF forms are expensive server-rendered widgets. Their owner can request a
+	 * retained body: hidden when collapsed, still mounted and ready on the next
+	 * open. Other panels preserve the former mount-on-open behaviour. */
+	( isOpen || keepBodyMounted ) && el( 'div', {
+		className: 'herd-block__body',
+		hidden: ! isOpen,
+	}, children ) );
 }

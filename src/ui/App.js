@@ -24,6 +24,12 @@ export function HerdEditorApp( { config } ) {
 	const [ generation, setGeneration ] = useState( 0 );
 	const [ formVersions, setFormVersions ] = useState( () => ( {} ) );
 	const [ openPanels, setOpenPanels ] = useState( () => new Set() );
+	// ACF forms arrive through an AJAX request and initialise third-party controls.
+	// Once an author has paid that cost, keep the live form in the document while
+	// its block is collapsed so reopening it is immediate. This is deliberately
+	// separate from openPanels: openPanels is presentation state; visited panels
+	// own the retained ACF instances and are still flushed before saving.
+	const [ visitedAcfPanels, setVisitedAcfPanels ] = useState( () => new Set() );
 	const [ expandedChildren, setExpandedChildren ] = useState( () => new Set() );
 	const [ focusedId, setFocusedId ] = useState( null );
 	const [ liftedId, setLiftedId ] = useState( null );
@@ -367,7 +373,13 @@ export function HerdEditorApp( { config } ) {
 		if ( next.has( id ) ) next.delete( id ); else next.add( id );
 		return next;
 	} );
-	const togglePanel = toggleIn( setOpenPanels );
+	const togglePanel = ( id, retainAcfForm = false ) => {
+		/* A block can only be collapsed after it has been opened, so marking every
+		 * toggle as visited avoids coordinating two state updaters merely to learn
+		 * which direction this press took. */
+		if ( retainAcfForm ) setVisitedAcfPanels( ( current ) => current.has( id ) ? current : new Set( current ).add( id ) );
+		toggleIn( setOpenPanels )( id );
+	};
 	const toggleChildren = toggleIn( setExpandedChildren );
 
 	const focusId = ( id ) => requestAnimationFrame( () => rowRefs.current.get( id )?.focus() );
@@ -503,6 +515,7 @@ export function HerdEditorApp( { config } ) {
 		if ( acfCount > cap && ! window.confirm( `Expanding every block loads ${ acfCount } ACF forms at once, which can be slow on a large page. Continue?` ) ) return;
 		setExpandedChildren( new Set( all.filter( ( block ) => block.innerBlocks?.length ).map( ( block ) => block.clientId ) ) );
 		setOpenPanels( new Set( all.map( ( block ) => block.clientId ) ) );
+		setVisitedAcfPanels( ( current ) => new Set( [ ...current, ...all.filter( ( block ) => adapterFor( block, config.blockTypes[ block.name ] || {} ).id === 'acf' ).map( ( block ) => block.clientId ) ] ) );
 		setAnnouncement( `${ all.length } blocks expanded.` );
 	};
 
@@ -610,6 +623,8 @@ export function HerdEditorApp( { config } ) {
 			const structural = adapter.structural && slot >= 0 && ( policy.move || policy.remove || policy.insert );
 			const title = nameOf( block );
 			const anchor = anchorOf( block );
+			const retainAcfForm = adapter.id === 'acf' && visitedAcfPanels.has( block.clientId );
+			const renderPanel = openPanels.has( block.clientId ) || retainAcfForm;
 
 			const blockRow = el( BlockRow, {
 				key: block.clientId,
@@ -622,6 +637,7 @@ export function HerdEditorApp( { config } ) {
 				hidden: isHidden( block ),
 				warning: duplicateIds.has( anchor ) ? 'Duplicate anchor' : null,
 				isOpen: openPanels.has( block.clientId ),
+				keepBodyMounted: retainAcfForm,
 				childrenExpanded: expandedChildren.has( block.clientId ),
 				hasChildren: block.innerBlocks.length > 0,
 				canReorder: structural && policy.move && named.length > 1,
@@ -634,7 +650,7 @@ export function HerdEditorApp( { config } ) {
 				tabIndex: focusedId === null ? ( index === 0 ? 0 : -1 ) : ( focusedId === block.clientId ? 0 : -1 ),
 				registerRef: ( node ) => node ? rowRefs.current.set( block.clientId, node ) : rowRefs.current.delete( block.clientId ),
 				onFocus: () => setFocusedId( block.clientId ),
-				onToggle: () => togglePanel( block.clientId ),
+				onToggle: () => togglePanel( block.clientId, adapter.id === 'acf' ),
 				onToggleChildren: () => toggleChildren( block.clientId ),
 				onKeyDown: ( event ) => onRowKeyDown( event, row, index ),
 				onGripKeyDown: ( event ) => onGripKeyDown( event, block ),
@@ -690,12 +706,12 @@ export function HerdEditorApp( { config } ) {
 					} );
 					mutate( `${ title } deleted.`, () => controller.removeBlock( block.clientId ), fallback?.clientId );
 				},
-			}, ...( openPanels.has( block.clientId )
+			}, ...( renderPanel
 				? [
 					panelFor( row, adapter ),
 					// Read-only blocks are handed to the Block Editor whole, and a block
 					// type that does not support an anchor would never render one.
-					adapter.editable && metadata.anchor
+					openPanels.has( block.clientId ) && adapter.editable && metadata.anchor
 						? el( AdvancedPanel, {
 							key: 'advanced',
 							block,
