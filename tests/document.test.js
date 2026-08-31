@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cloneBlock, createBlock, findBlockByClientId, insertBlock, moveBlock, parseDocument, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeBlockAttributes, serializeDocument } from '../src/document.js';
+import { changedAttributeIds, cloneBlock, createBlock, findBlockByClientId, insertBlock, moveBlock, parseDocument, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeBlockAttributes, serializeDocument } from '../src/document.js';
 import { DocumentController } from '../src/controller.js';
 
 const source = 'before\n<!-- wp:group {  "className":"wide"  } -->\n<p>A</p>\n<!-- wp:acf/hero {"name":"acf/hero","data":{"title":"A \\"quote\\""}} /-->\n<!-- wp:paragraph --> <p>Child</p> <!-- /wp:paragraph -->\n<!-- /wp:group -->\nafter';
@@ -108,4 +108,46 @@ test( 'controller makes insertion, duplication, deletion, movement, and field ed
 	controller.removeBlock( duplicate.clientId );
 	controller.undo();
 	assert.ok( controller.find( duplicate.clientId ) );
+} );
+
+test( 'rearranging the list changes nobody\'s attributes', () => {
+	const blocks = parseDocument( source );
+	const group = blocks.find( ( block ) => block.name === 'core/group' );
+	const hero = group.innerBlocks.find( ( block ) => block.name === 'acf/hero' );
+	assert.deepEqual( changedAttributeIds( blocks, insertBlock( blocks, null, 1, createBlock( 'acf/cards' ) ) ), [] );
+	assert.deepEqual( changedAttributeIds( blocks, insertBlock( blocks, group.clientId, 0, createBlock( 'acf/cards' ) ) ), [] );
+	assert.deepEqual( changedAttributeIds( blocks, removeBlock( blocks, hero.clientId ) ), [] );
+	assert.deepEqual( changedAttributeIds( blocks, moveBlock( blocks, hero.clientId, group.clientId, 0 ) ), [] );
+	assert.deepEqual( changedAttributeIds( blocks, insertBlock( blocks, null, 1, cloneBlock( group ) ) ), [] );
+} );
+
+test( 'reports only the block whose attributes were replaced, however deep', () => {
+	const blocks = parseDocument( source );
+	const group = blocks.find( ( block ) => block.name === 'core/group' );
+	const hero = group.innerBlocks.find( ( block ) => block.name === 'acf/hero' );
+	assert.deepEqual( changedAttributeIds( blocks, replaceAttributes( blocks, hero.clientId, { data: { title: 'Changed' } } ) ), [ hero.clientId ] );
+	assert.deepEqual( changedAttributeIds( blocks, replaceAttributes( blocks, group.clientId, { className: 'narrow' } ) ), [ group.clientId ] );
+	// A body edit rewrites the node but not its attributes, and the mounted ACF
+	// form never rendered the body, so it is not a reason to fetch again.
+	assert.deepEqual( changedAttributeIds( blocks, replaceBlockBody( blocks, hero.clientId, '<p>B</p>' ) ), [] );
+} );
+
+test( 'undo reports the edited block and leaves its siblings alone', () => {
+	const controller = new DocumentController( parseDocument( source ) );
+	const group = controller.blocks.find( ( block ) => block.name === 'core/group' );
+	const hero = group.innerBlocks.find( ( block ) => block.name === 'acf/hero' );
+	controller.replaceAttributes( hero.clientId, { data: { title: 'Changed' } } );
+	const before = controller.blocks;
+	controller.undo();
+	assert.deepEqual( changedAttributeIds( before, controller.blocks ), [ hero.clientId ] );
+	assert.deepEqual( changedAttributeIds( controller.blocks, controller.redo() ), [ hero.clientId ] );
+} );
+
+test( 'undoing an insert reports nothing, because the block is simply gone', () => {
+	const controller = new DocumentController( parseDocument( source ) );
+	controller.insertBlock( null, 1, createBlock( 'acf/cards' ) );
+	const before = controller.blocks;
+	controller.undo();
+	assert.deepEqual( changedAttributeIds( before, controller.blocks ), [] );
+	assert.deepEqual( changedAttributeIds( controller.blocks, controller.redo() ), [] );
 } );

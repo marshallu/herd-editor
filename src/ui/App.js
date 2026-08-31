@@ -3,7 +3,7 @@
 import { createElement, createPortal, useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { adapterFor, blockMutationPolicy, canAddBlock, createAcfBlock } from '../adapters.js';
 import { DocumentController } from '../controller.js';
-import { parseDocument } from '../document.js';
+import { changedAttributeIds, parseDocument } from '../document.js';
 import { BarTools } from './CommandBar.js';
 import { BlockRow } from './BlockRow.js';
 import { InsertPoint } from './InsertPoint.js';
@@ -19,7 +19,7 @@ const CORE_ADAPTERS = [ 'paragraph', 'heading', 'html', 'shortcode' ];
 export function HerdEditorApp( { config } ) {
 	const controller = useRef( new DocumentController( parseDocument( config.postContent ) ) ).current;
 	const [ generation, setGeneration ] = useState( 0 );
-	const [ formGeneration, setFormGeneration ] = useState( 0 );
+	const [ formVersions, setFormVersions ] = useState( () => ( {} ) );
 	const [ openPanels, setOpenPanels ] = useState( () => new Set() );
 	const [ expandedChildren, setExpandedChildren ] = useState( () => new Set() );
 	const [ focusedId, setFocusedId ] = useState( null );
@@ -114,12 +114,35 @@ export function HerdEditorApp( { config } ) {
 
 	const focusId = ( id ) => requestAnimationFrame( () => rowRefs.current.get( id )?.focus() );
 	const focusAt = ( index ) => focusId( rows[ Math.max( 0, Math.min( index, rows.length - 1 ) ) ]?.block.clientId );
+	// Inserting, duplicating and deleting rearrange the list without touching any
+	// other block's data, so the forms already mounted are still correct and stay
+	// exactly as the author left them.
 	const mutate = ( message, callback, nextFocus = null ) => {
 		callback();
-		setFormGeneration( ( value ) => value + 1 );
 		refresh();
 		setAnnouncement( message );
 		if ( nextFocus ) focusId( nextFocus );
+	};
+
+	/**
+	 * Undo and redo swap the whole tree, so a mounted ACF form can be left showing
+	 * values the document no longer holds.  Only the blocks whose attributes
+	 * actually moved need fetching again; the rest keep the DOM they have, along
+	 * with focus, caret, and any repeater rows the author had opened.
+	 */
+	const jump = ( message, callback ) => {
+		const before = controller.blocks;
+		callback();
+		const changed = changedAttributeIds( before, controller.blocks );
+		if ( changed.length ) {
+			setFormVersions( ( current ) => {
+				const next = { ...current };
+				changed.forEach( ( id ) => { next[ id ] = ( next[ id ] || 0 ) + 1; } );
+				return next;
+			} );
+		}
+		refresh();
+		setAnnouncement( message );
 	};
 
 	const nameOf = ( block ) => titleFor( block, config.blockTypes );
@@ -236,7 +259,7 @@ export function HerdEditorApp( { config } ) {
 				block: row.block,
 				ancestors: row.ancestors,
 				config,
-				generation: formGeneration,
+				generation: formVersions[ row.block.clientId ] || 0,
 				validationErrors: validationErrors.filter( ( error ) => error.blockId === row.block.clientId ),
 				onAttributes: ( attributes ) => {
 					controller.replaceAttributes( row.block.clientId, attributes );
@@ -272,8 +295,8 @@ export function HerdEditorApp( { config } ) {
 		singular: config.singular || '',
 		canUndo: controller.canUndo,
 		canRedo: controller.canRedo,
-		onUndo: () => mutate( 'Change undone.', () => controller.undo() ),
-		onRedo: () => mutate( 'Change redone.', () => controller.redo() ),
+		onUndo: () => jump( 'Change undone.', () => controller.undo() ),
+		onRedo: () => jump( 'Change redone.', () => controller.redo() ),
 		menuOpen,
 		onMenuOpen: () => {
 			setMenuOpen( true );
@@ -364,7 +387,6 @@ export function HerdEditorApp( { config } ) {
 					const before = new Set( controller.blocks.map( ( candidate ) => candidate.clientId ) );
 					controller.duplicateBlock( block.clientId );
 					const clone = controller.blocks.find( ( candidate ) => ! before.has( candidate.clientId ) );
-					setFormGeneration( ( value ) => value + 1 );
 					refresh();
 					setAnnouncement( `${ title } duplicated.` );
 					if ( clone ) {

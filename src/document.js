@@ -230,3 +230,29 @@ export function moveBlock( blocks, clientId, parentId, index ) {
 	const adjusted = source.parentId === parentId && source.index < index ? index - 1 : index;
 	return insertBlock( removeBlock( blocks, clientId ), parentId, adjusted, source.block );
 }
+
+function attributesById( blocks, into = new Map() ) {
+	for ( const block of blocks || [] ) {
+		into.set( block.clientId, block.attributes );
+		attributesById( block.innerBlocks, into );
+	}
+	return into;
+}
+
+/**
+ * Client ids whose attributes differ between two snapshots of the tree.
+ *
+ * Every helper here replaces the attributes object it edits and leaves the
+ * rest of the tree referentially intact, so identity is a sound test and no
+ * deep compare is needed.  An id present in only one snapshot is not
+ * reported: it was added or removed, not changed, and so has no mounted form
+ * left showing the wrong values.
+ */
+export function changedAttributeIds( before, after ) {
+	const previous = attributesById( before );
+	const changed = [];
+	for ( const [ clientId, attributes ] of attributesById( after ) ) {
+		if ( previous.has( clientId ) && previous.get( clientId ) !== attributes ) changed.push( clientId );
+	}
+	return changed;
+}
