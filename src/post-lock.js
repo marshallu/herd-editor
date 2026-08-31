@@ -13,10 +13,18 @@ export function installPostLock( { document: documentObject = document, window: 
 	if ( ! $ || ! form || ! dialog || ! postId ) return () => {};
 
 	let lost = false;
+	let latestToken = null;
+	let lastHeartbeat = Date.now();
 	const lockInput = () => documentObject.getElementById( 'active_post_lock' );
-	const disable = () => {
+	const diagnose = ( type, detail = {} ) => {
+		form.dataset.herdLockState = type;
+		if ( windowObject.CustomEvent && windowObject.dispatchEvent ) windowObject.dispatchEvent( new windowObject.CustomEvent( 'herd:recovery-diagnostic', { detail: { type, latestToken, ...detail } } ) );
+	};
+	const disable = ( reason = 'heartbeat' ) => {
 		if ( lost ) return;
 		lost = true;
+		diagnose( 'lock-lost', { reason } );
+		if ( windowObject.CustomEvent && windowObject.dispatchEvent ) windowObject.dispatchEvent( new windowObject.CustomEvent( 'herd:lock-lost', { detail: { reason, latestToken } } ) );
 		// Do not let core autosave create a recovery revision after ownership has
 		// been lost. It can be resumed only after the user explicitly takes over
 		// and reloads, which also refreshes the nonce and lock token.
@@ -38,16 +46,20 @@ export function installPostLock( { document: documentObject = document, window: 
 	};
 	const send = ( event, data ) => {
 		const token = lockInput()?.value;
+		latestToken = token || latestToken;
 		data['wp-refresh-post-lock'] = { post_id: postId, ...( token ? { lock: token } : {} ) };
 	};
 	const tick = ( event, data ) => {
 		const response = data['wp-refresh-post-lock'];
-		if ( ! response ) return;
+		if ( ! response ) { diagnose( 'heartbeat-missing' ); return; }
+		lastHeartbeat = Date.now();
 		if ( response.lock_error ) {
-			disable();
+			disable( 'rejected' );
 			showLostDialog( response.lock_error );
 		} else if ( response.new_lock && lockInput() ) {
 			lockInput().value = response.new_lock;
+			latestToken = response.new_lock;
+			diagnose( 'lock-healthy' );
 		}
 	};
 
@@ -55,10 +67,15 @@ export function installPostLock( { document: documentObject = document, window: 
 	// A screen opened while another user owns the lock has no usable token. Core
 	// would otherwise autosave a per-user revision before the first heartbeat
 	// reports that ownership, so suspend it immediately.
-	if ( ! lockInput() ) disable();
+	latestToken = lockInput()?.value || null;
+	if ( ! lockInput() ) disable( 'missing' );
 	if ( windowObject.wp?.heartbeat ) windowObject.wp.heartbeat.interval( 10 );
+	const watchdog = windowObject.setInterval?.( () => {
+		if ( ! lost && documentObject.visibilityState !== 'hidden' && Date.now() - lastHeartbeat > 45000 ) disable( 'heartbeat-timeout' );
+	}, 5000 );
 	return () => {
 		$( documentObject ).off( '.herd-post-lock' );
 		form.removeEventListener( 'submit', preventSubmit );
+		if ( watchdog ) windowObject.clearInterval?.( watchdog );
 	};
 }

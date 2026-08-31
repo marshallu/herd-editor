@@ -12,6 +12,7 @@ import { blockCounts, bodyFor, collectBlocks, iconOf, isHidden, titleFor, visibl
 import { dropSlot, insertPositionForSlot, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
 import { blockSummary } from './summary.js';
 import { Notice } from './primitives.js';
+import { decryptRecovery, deleteRecovery, downloadRecovery, encryptionKey, nativeFormValues, readRecovery, recoveryRecordId, restoreNativeFormValues, writeRecovery, encryptRecovery } from '../recovery.js';
 
 const el = createElement;
 const CORE_ADAPTERS = [ 'paragraph', 'heading', 'html', 'shortcode' ];
@@ -26,11 +27,14 @@ export function HerdEditorApp( { config } ) {
 	const [ liftedId, setLiftedId ] = useState( null );
 	const [ drag, setDrag ] = useState( null );
 	const [ nativeDirty, setNativeDirty ] = useState( false );
+	const [ nativeVersion, setNativeVersion ] = useState( 0 );
 	const [ announcement, setAnnouncement ] = useState( '' );
 	const [ openGap, setOpenGap ] = useState( null );
 	// The bar's View menu, held here so it and an inserter cannot both be open.
 	const [ menuOpen, setMenuOpen ] = useState( false );
 	const [ validationErrors, setValidationErrors ] = useState( [] );
+	const [ recovery, setRecovery ] = useState( { state: 'loading', payload: null, key: null } );
+	const [ lockFailure, setLockFailure ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
 	const rows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
@@ -43,14 +47,63 @@ export function HerdEditorApp( { config } ) {
 		const content = document.getElementById( 'content' );
 		if ( content ) content.value = controller.serialize();
 	};
+	const recoveryId = recoveryRecordId( config.currentUserId, config.postId );
+	const recoveryPayload = () => ( { content: controller.serialize(), fields: nativeFormValues( document.getElementById( 'post' ) ), savedMarker: config.saveMarker, createdAt: Date.now() } );
+	const persistRecovery = async () => {
+		if ( ! recovery.key || !( controller.dirty || nativeDirty ) ) return;
+		try {
+			const payload = recoveryPayload();
+			const encrypted = await encryptRecovery( payload, recovery.key );
+			await writeRecovery( { id: recoveryId, createdAt: payload.createdAt, ...encrypted } );
+		} catch ( error ) {
+			window.dispatchEvent( new CustomEvent( 'herd:recovery-diagnostic', { detail: { type: 'recovery-write-failed', error: String( error ) } } ) );
+		}
+	};
 
 	useEffect( syncContent, [ generation ] );
+
+	/* Recovery key retrieval is authenticated and the document never leaves this
+	 * browser: only ciphertext is committed to IndexedDB. */
+	useEffect( () => {
+		let alive = true;
+		(async () => {
+			try {
+				const body = new URLSearchParams( { action: 'herd_editor_get_recovery_key', nonce: config.recoveryNonce || '', postId: String( config.postId ) } );
+				const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body } );
+				const result = await response.json();
+				if ( ! result?.success ) throw new Error( 'Recovery key was rejected.' );
+				const key = await encryptionKey( result.data.key );
+				if ( config.successfulSave ) await deleteRecovery( recoveryId );
+				const record = config.successfulSave ? null : await readRecovery( recoveryId );
+				const payload = record ? await decryptRecovery( record, key ) : null;
+				if ( ! alive ) return;
+				const newer = payload && Number( payload.createdAt ) > Number( config.saveMarker || 0 ) * 1000;
+				setRecovery( { state: newer ? 'available' : 'ready', payload: newer ? payload : null, key } );
+			} catch ( error ) {
+				if ( alive ) setRecovery( { state: 'ready', payload: null, key: null } );
+			}
+		})();
+		return () => { alive = false; };
+	}, [] );
+
+	useEffect( () => {
+		if ( recovery.state !== 'ready' || ! recovery.key ) return undefined;
+		const timer = window.setTimeout( persistRecovery, 600 );
+		const immediate = () => { persistRecovery(); };
+		const onVisibility = () => { if ( document.visibilityState === 'hidden' ) immediate(); };
+		window.addEventListener( 'pagehide', immediate );
+		document.addEventListener( 'visibilitychange', onVisibility );
+		return () => { window.clearTimeout( timer ); window.removeEventListener( 'pagehide', immediate ); document.removeEventListener( 'visibilitychange', onVisibility ); };
+	}, [ generation, nativeDirty, nativeVersion, recovery.state, recovery.key ] );
 
 	useEffect( () => {
 		const form = document.getElementById( 'post' );
 		let submitting = false;
 		const changed = ( event ) => {
-			if ( event.target?.id !== 'content' && ! event.target?.closest?.( '#herd-editor-root' ) ) setNativeDirty( true );
+			if ( event.target?.id !== 'content' && ! event.target?.closest?.( '#herd-editor-root' ) ) {
+				setNativeDirty( true );
+				setNativeVersion( ( value ) => value + 1 );
+			}
 		};
 		const isPublishTransition = ( submitter ) => /publish|schedule/i.test( submitter?.id || submitter?.name || '' );
 		const validate = async () => {
@@ -61,8 +114,28 @@ export function HerdEditorApp( { config } ) {
 			const payload = await response.json();
 			return payload?.success ? payload.data.errors || [] : [ { message: 'Validation could not be completed.' } ];
 		};
+		const preflight = async () => {
+			const token = document.getElementById( 'active_post_lock' )?.value || '';
+			const body = new URLSearchParams( { action: 'herd_editor_check_post_lock', nonce: config.lockPreflightNonce || '', postId: String( config.postId ), lock: token } );
+			const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' }, body } );
+			const result = await response.json();
+			return result?.success && result.data?.valid ? null : ( result?.data?.reason || 'connection' );
+		};
 		const submit = ( event ) => {
 			syncContent();
+			if ( form?.dataset.herdPreflight !== '1' ) {
+				event.preventDefault();
+				persistRecovery().then( preflight ).then( ( reason ) => {
+					if ( reason ) {
+						setLockFailure( reason );
+						window.dispatchEvent( new CustomEvent( 'herd:lock-lost', { detail: { reason } } ) );
+						return;
+					}
+					form.dataset.herdPreflight = '1'; form.requestSubmit( event.submitter );
+				} ).catch( () => setLockFailure( 'connection' ) );
+				return;
+			}
+			delete form.dataset.herdPreflight;
 			if ( isPublishTransition( event.submitter ) && form?.dataset.herdValidated !== '1' ) {
 				event.preventDefault();
 				validate().then( ( errors ) => {
@@ -94,15 +167,28 @@ export function HerdEditorApp( { config } ) {
 		form?.addEventListener( 'change', changed );
 		form?.addEventListener( 'submit', submit );
 		form?.addEventListener( 'click', click, true );
+		const onLost = ( event ) => { setLockFailure( event.detail?.reason || 'heartbeat' ); persistRecovery(); };
+		window.addEventListener( 'herd:lock-lost', onLost );
 		window.addEventListener( 'beforeunload', unload );
 		return () => {
 			form?.removeEventListener( 'input', changed );
 			form?.removeEventListener( 'change', changed );
 			form?.removeEventListener( 'submit', submit );
 			form?.removeEventListener( 'click', click, true );
+			window.removeEventListener( 'herd:lock-lost', onLost );
 			window.removeEventListener( 'beforeunload', unload );
 		};
-		}, [ nativeDirty ] );
+		}, [ nativeDirty, recovery.key ] );
+
+	const restoreRecovery = () => {
+		if ( ! recovery.payload ) return;
+		controller.history = [ parseDocument( recovery.payload.content || '' ) ];
+		controller.index = 0;
+		controller.cleanSource = config.postContent;
+		restoreNativeFormValues( document.getElementById( 'post' ), recovery.payload.fields );
+		setNativeDirty( true ); refresh(); setRecovery( ( current ) => ( { ...current, state: 'ready' } ) );
+	};
+	const discardRecovery = async () => { await deleteRecovery( recoveryId ); setRecovery( ( current ) => ( { ...current, state: 'ready', payload: null } ) ); };
 
 	const toggleIn = ( setter ) => ( id ) => setter( ( current ) => {
 		const next = new Set( current );
@@ -286,6 +372,14 @@ export function HerdEditorApp( { config } ) {
 	};
 
 	const barTarget = document.getElementById( 'herd-bar-react' );
+	if ( recovery.state === 'loading' || recovery.state === 'available' ) {
+		return el( 'main', { className: 'herd-editor', 'aria-label': 'Herd recovery' },
+			el( Notice, { status: 'info' }, recovery.state === 'loading' ? 'Checking for a recoverable copy…' : 'A newer browser recovery copy is available. Restore it before editing this server version.' ),
+			recovery.state === 'available' && el( 'p', { className: 'herd-recovery-actions' },
+				el( 'button', { type: 'button', className: 'button button-primary', onClick: restoreRecovery }, 'Restore recovery copy' ),
+				' ', el( 'button', { type: 'button', className: 'button', onClick: discardRecovery }, 'Discard copy' ),
+				' ', el( 'button', { type: 'button', className: 'button', onClick: () => downloadRecovery( recovery.payload, config.postId ) }, 'Export copy' ) ) );
+	}
 	const barTools = el( BarTools, {
 		dirty,
 		savedLabel: config.modifiedHuman || 'saved',
@@ -307,6 +401,13 @@ export function HerdEditorApp( { config } ) {
 
 	return el( 'main', { className: 'herd-editor', 'aria-label': 'Herd block editor' },
 		barTarget && createPortal( barTools, barTarget ),
+		lockFailure && el( Notice, { status: 'error' },
+			`The editing lock is no longer safe to save (${ lockFailure }). Your changes were kept in this browser. `,
+			el( 'a', { href: window.location.href }, 'Reload' ), ' · ',
+			document.querySelector( '#post-lock-dialog .wp-tab-last' )?.href && el( 'a', { href: document.querySelector( '#post-lock-dialog .wp-tab-last' ).href }, 'Take over' ),
+			document.querySelector( '#post-lock-dialog .wp-tab-last' )?.href && ' · ',
+			el( 'button', { type: 'button', className: 'button-link', onClick: restoreRecovery }, 'Restore' ), ' · ',
+			el( 'button', { type: 'button', className: 'button-link', onClick: () => downloadRecovery( recoveryPayload(), config.postId ) }, 'Export' ) ),
 
 		el( 'p', { className: 'screen-reader-text', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' }, announcement ),
 

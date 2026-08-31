@@ -175,6 +175,56 @@ function herd_editor_validate_post_lock_before_save() {
 }
 add_action( 'admin_init', 'herd_editor_validate_post_lock_before_save', 1 );
 
+/**
+ * Return the current user's browser-recovery key. The key is deliberately
+ * scoped to a user, not a post: IndexedDB is browser-local and this prevents a
+ * second WordPress account on the same browser profile from reading a copy left
+ * by the first account.
+ */
+function herd_editor_ajax_get_recovery_key() {
+
+	check_ajax_referer( 'herd_editor_get_recovery_key', 'nonce' );
+	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0;
+	$post    = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) {
+		wp_send_json_error( array( 'message' => __( 'You cannot recover this post.', 'herd-editor' ) ), 403 );
+	}
+	$user_id = get_current_user_id();
+	$key     = (string) get_user_meta( $user_id, '_herd_editor_recovery_key', true );
+	if ( ! preg_match( '/^[A-Za-z0-9_-]{43}$/', $key ) ) {
+		$key = rtrim( strtr( base64_encode( random_bytes( 32 ) ), '+/', '-_' ), '=' );
+		update_user_meta( $user_id, '_herd_editor_recovery_key', $key );
+	}
+	wp_send_json_success( array( 'key' => $key ) );
+}
+add_action( 'wp_ajax_herd_editor_get_recovery_key', 'herd_editor_ajax_get_recovery_key' );
+
+/** Answer whether the browser's exact post-lock token can still save. */
+function herd_editor_ajax_check_post_lock() {
+	check_ajax_referer( 'herd_editor_check_post_lock', 'nonce' );
+	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0;
+	$token   = isset( $_POST['lock'] ) ? (string) wp_unslash( $_POST['lock'] ) : '';
+	$post    = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) {
+		wp_send_json_error( array( 'message' => __( 'You cannot save this post.', 'herd-editor' ) ), 403 );
+	}
+	$current = (string) get_post_meta( $post_id, '_edit_lock', true );
+	$parts   = explode( ':', $token );
+	$window  = (int) apply_filters( 'wp_check_post_lock_window', 150 );
+	$reason  = '';
+	if ( '' === $token ) { $reason = 'missing'; }
+	elseif ( 2 !== count( $parts ) || ! ctype_digit( $parts[0] ) || ! ctype_digit( $parts[1] ) ) { $reason = 'malformed'; }
+	elseif ( (int) $parts[1] !== get_current_user_id() ) { $reason = 'another-user'; }
+	elseif ( (int) $parts[0] <= time() - $window ) { $reason = 'expired'; }
+	elseif ( '' === $current ) { $reason = 'missing'; }
+	elseif ( ! hash_equals( $current, $token ) ) { $reason = 'stale'; }
+	if ( $reason ) {
+		wp_send_json_success( array( 'valid' => false, 'reason' => $reason ) );
+	}
+	wp_send_json_success( array( 'valid' => true ) );
+}
+add_action( 'wp_ajax_herd_editor_check_post_lock', 'herd_editor_ajax_check_post_lock' );
+
 /** Flatten a parsed Gutenberg tree in the same order as the browser document. */
 function herd_editor_acf_blocks_from_tree( $blocks, &$result ) {
 	foreach ( (array) $blocks as $block ) {
@@ -809,10 +859,19 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 
 	wp_enqueue_media();
 	wp_enqueue_script( 'heartbeat' );
-	// Core autosave owns its per-user revision and session-storage recovery
-	// protocol. Herd deliberately supplies its normal post fields below instead
-	// of creating a second document store.
+	/* Autosave is initialized against Herd's native #post form and the standard
+	 * #post_ID/#content fields rendered by the screen template. Browser recovery
+	 * below remains the primary guarantee if a host disables autosave. */
 	wp_enqueue_script( 'autosave' );
+	wp_localize_script(
+		'autosave',
+		'autosaveL10n',
+		array(
+			'autosaveInterval' => 120,
+			'blog_id'          => get_current_blog_id(),
+			'post_id'          => $post->ID,
+		)
+	);
 	if ( function_exists( 'acf_enqueue_scripts' ) ) {
 		acf_enqueue_scripts();
 	}
@@ -856,6 +915,12 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				/** Filter how many ACF blocks Expand all mounts before asking for confirmation. */
 				'expandWarnAt' => (int) apply_filters( 'herd_editor_expand_warn_at', 8 ),
 				'validationNonce' => wp_create_nonce( 'herd_editor_validate_document' ),
+				'recoveryNonce' => wp_create_nonce( 'herd_editor_get_recovery_key' ),
+				'lockPreflightNonce' => wp_create_nonce( 'herd_editor_check_post_lock' ),
+				'currentUserId' => get_current_user_id(),
+				/* A post.php redirect with a message is a confirmed native save. */
+				'successfulSave' => ! empty( $_GET['message'] ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				'saveMarker' => (string) get_post_modified_time( 'U', true, $post ),
 				'icons' => herd_editor_icon_set(),
 			)
 		) . ';',
