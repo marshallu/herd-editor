@@ -10,6 +10,8 @@
  * revealed so the publish box is never unreachable.
  */
 
+import { wirePublishBox } from './publish-box.js';
+
 /**
  * The block editor's own slug helper, when WordPress has it on the page.
  *
@@ -279,6 +281,7 @@ export function assembleRail() {
 		liftPublishActions();
 		distribute( readMap() );
 		buildTabs();
+		wirePublishBox();
 		wireSlugEditor();
 		wireSavedNotice();
 	} catch ( error ) {

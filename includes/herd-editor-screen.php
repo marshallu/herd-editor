@@ -67,7 +67,23 @@ $herd_saved       = herd_editor_saved_notice( $post );
 		<input type="hidden" id="post_ID" name="post_ID" value="<?php echo esc_attr( $post->ID ); ?>" />
 		<input type="hidden" name="post_type" id="post_type" value="<?php echo esc_attr( $post->post_type ); ?>" />
 		<input type="hidden" name="post_author" id="post_author" value="<?php echo esc_attr( $post->post_author ); ?>" />
-		<input type="hidden" name="post_status" id="post_status" value="<?php echo esc_attr( $post->post_status ); ?>" />
+		<?php
+		/*
+		 * `original_post_status`, exactly as core's edit-form-advanced.php prints
+		 * it: the status the post was loaded with, which nothing on the server
+		 * reads and everything in the publish box needs -- it is how the date line
+		 * decides between "Publish on" and "Published on".
+		 *
+		 * It used to be `post_status`, which was the wrong core field to mirror.
+		 * WordPress gives the publish box's status select that same id, so the
+		 * document carried it twice and getElementById answered with this one:
+		 * core's autosave recorded a status the select had already moved off. The
+		 * status now posts from the select alone, and where a user cannot publish
+		 * and there is no select, _wp_translate_postdata() keeps the status the
+		 * post already had -- which is what this field was posting anyway.
+		 */
+		?>
+		<input type="hidden" name="original_post_status" id="original_post_status" value="<?php echo esc_attr( $post->post_status ); ?>" />
 		<input type="hidden" name="auto_draft" id="auto_draft" value="<?php echo 'auto-draft' === $post->post_status ? '1' : ''; ?>" />
 		<input type="hidden" name="herd-editor" value="1" />
 		<?php if ( ! empty( $herd_active_post_lock ) ) : ?>

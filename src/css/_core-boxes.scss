@@ -128,6 +128,30 @@
 	margin: 0;
 }
 
+/* ---------- the publish box's editors ---------- */
+
+/*
+ * Status, visibility and the date each open a panel under the summary line that
+ * asked for it (src/publish-box.js). Core prints them flush against that line,
+ * where a fieldset of five controls reads as loose parts of the row above. The
+ * inset is what makes an open panel one thing.
+ */
+@include boxes.in-boxes("#post-status-select, #post-visibility-select, #timestampdiv") {
+	border-left: 2px solid var(--herd-line);
+	margin: 6px 0 2px;
+	padding: 4px 0 4px 10px;
+}
+
+/* Core lays the OK/Cancel pair out inline; only the status panel lacks a <p>. */
+@include boxes.in-boxes("#post-status-select .save-post-status") {
+	margin-top: 8px;
+}
+
+@include boxes.in-boxes(".button-cancel") {
+	color: var(--herd-ink-3);
+	padding: 6px 8px;
+}
+
 /* ---------- the date editor ---------- */
 
 /*
