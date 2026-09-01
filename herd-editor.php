@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Herd Editor
  * Description: A dedicated Herd Editor mode for editing existing ACF blocks alongside Classic and Block Editor.
- * Version: 1.0.2
+ * Version: 1.0.3
  * Requires at least: 7.1
  * Requires PHP: 7.4
  * Requires Plugins: advanced-custom-fields-pro
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'HERD_EDITOR_VERSION', '1.0.2' );
+define( 'HERD_EDITOR_VERSION', '1.0.3' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
 /** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
 define( 'HERD_EDITOR_FILE', __FILE__ );
@@ -46,6 +46,30 @@ function herd_editor_has_acf_pro() {
 	 * without ACF Pro at all, and the site keeps both native editors.
 	 */
 	return defined( 'ACF_VERSION' ) && version_compare( ACF_VERSION, HERD_EDITOR_MIN_ACF, '>=' );
+}
+
+/** Compact ACF schema for readable client-side search; it contains no form HTML. */
+function herd_editor_acf_field_map() {
+	if ( ! function_exists( 'acf_get_field_groups' ) || ! function_exists( 'acf_get_fields' ) ) {
+		return array();
+	}
+	$map = array();
+	$add = null;
+	$add = static function( $fields ) use ( &$map, &$add ) {
+		foreach ( (array) $fields as $field ) {
+			if ( empty( $field['key'] ) ) continue;
+			$map[ $field['key'] ] = array(
+				'name' => isset( $field['name'] ) ? (string) $field['name'] : '',
+				'label' => isset( $field['label'] ) ? wp_strip_all_tags( (string) $field['label'] ) : '',
+				'type' => isset( $field['type'] ) ? (string) $field['type'] : '',
+				'choices' => isset( $field['choices'] ) && is_array( $field['choices'] ) ? $field['choices'] : array(),
+			);
+			$add( isset( $field['sub_fields'] ) ? $field['sub_fields'] : array() );
+			foreach ( (array) ( $field['layouts'] ?? array() ) as $layout ) $add( isset( $layout['sub_fields'] ) ? $layout['sub_fields'] : array() );
+		}
+	};
+	foreach ( (array) acf_get_field_groups() as $group ) $add( acf_get_fields( $group ) );
+	return $map;
 }
 
 /*
@@ -1518,6 +1542,7 @@ function herd_editor_enqueue_assets() {
 				'icons' => herd_editor_icon_set(),
 				/* The field name that means "hidden", or '' where the site has none. */
 				'visibilityField' => herd_editor_visibility_field(),
+				'acfFields' => herd_editor_acf_field_map(),
 				/* Per-block summary wording and choice rules; see src/ui/acf/profiles.js. */
 				'profiles' => herd_editor_block_profiles(),
 			)

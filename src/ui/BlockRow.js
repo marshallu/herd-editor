@@ -27,6 +27,7 @@ export function BlockRow( {
 	deleteDisabled,
 	tabIndex,
 	registerRef,
+	registerContainer,
 	onFocus,
 	onToggle,
 	onToggleChildren,
@@ -39,6 +40,8 @@ export function BlockRow( {
 	onDrop,
 	onDuplicate,
 	onDelete,
+	onMove,
+	searchMatch,
 	children,
 } ) {
 	const classes = [ 'herd-block' ];
@@ -51,13 +54,15 @@ export function BlockRow( {
 	if ( hidden ) classes.push( 'is-hidden' );
 
 	return el( 'li', {
+		ref: registerContainer,
+		'data-block-id': block.clientId,
 		className: classes.join( ' ' ),
 		style: { '--herd-depth': depth },
 		onDragOver: canReorder ? onDragOver : undefined,
 		onDragLeave: canReorder ? onDragLeave : undefined,
 		onDrop: canReorder ? onDrop : undefined,
 	},
-	el( 'div', { className: 'herd-block__row' },
+		el( 'div', { className: `herd-block__row${ searchMatch ? ' is-search-match' : '' }` },
 		canReorder
 			? el( 'button', {
 				type: 'button',
@@ -111,6 +116,7 @@ export function BlockRow( {
 				disabled: duplicateDisabled,
 				onClick: onDuplicate,
 			} ),
+			onMove && el( 'button', { type: 'button', className: 'herd-block__tool herd-block__move', onClick: onMove }, 'Move…' ),
 			el( IconButton, {
 				icon: 'trash',
 				label: `Delete ${ title }`,

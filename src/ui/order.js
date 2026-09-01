@@ -75,3 +75,21 @@ export function insertPositionForSlot( blocks, slot ) {
 	if ( ! named.length || slot >= named.length ) return ( blocks || [] ).length;
 	return named[ Math.max( 0, slot ) ].position;
 }
+
+/** Accessible Move dialog destinations for a top-level block. */
+export function moveDestinations( blocks, clientId, canMove = true ) {
+	if ( !canMove ) return [];
+	const named = topLevelPositions( blocks );
+	const from = named.findIndex( ( item ) => item.clientId === clientId );
+	if ( from < 0 || named.length < 2 ) return [];
+	const destinations = [];
+	for ( let slot = 0; slot < named.length; slot++ ) {
+		if ( slot === from ) continue;
+		const target = named[ slot ];
+		if ( slot === 0 ) destinations.push( { id: 'beginning', label: 'Beginning of document', slot } );
+		if ( slot < from ) destinations.push( { id: `before-${ target.clientId }`, label: `Before ${ target.clientId }`, slot, targetId: target.clientId } );
+		if ( slot > from ) destinations.push( { id: `after-${ target.clientId }`, label: `After ${ target.clientId }`, slot, targetId: target.clientId } );
+		if ( slot === named.length - 1 ) destinations.push( { id: 'end', label: 'End of document', slot } );
+	}
+	return destinations;
+}

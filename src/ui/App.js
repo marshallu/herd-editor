@@ -6,11 +6,13 @@ import { DocumentController } from '../controller.js';
 import { changedAttributeIds, parseDocument } from '../document.js';
 import { BarTools } from './CommandBar.js';
 import { BlockRow } from './BlockRow.js';
+import { BlockIndex } from './block-index.js';
+import { Outline } from './Outline.js';
 import { InsertPoint } from './InsertPoint.js';
 import { AcfForm, AdvancedPanel, CoreEditor, FallbackPanel } from './panels.js';
 import { anchorOf, duplicateAnchors } from './anchors.js';
 import { blockCounts, bodyFor, collectBlocks, iconOf, isHidden, titleFor, visibleRows } from './blocks.js';
-import { dropSlot, insertPositionForSlot, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
+import { dropSlot, insertPositionForSlot, moveDestinations, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
 import { blockSummary } from './summary.js';
 import { Notice } from './primitives.js';
 import { beginSave, endSave, guardBusyClicks, watchRestore } from '../save-progress.js';
@@ -46,8 +48,18 @@ export function HerdEditorApp( { config } ) {
 	const [ recoveryDismissed, setRecoveryDismissed ] = useState( false );
 	const [ saveState, setSaveState ] = useState( 'idle' );
 	const [ lockFailure, setLockFailure ] = useState( null );
+	const [ search, setSearch ] = useState( '' );
+	const [ outlineFilter, setOutlineFilter ] = useState( 'all' );
+	const [ outlineOpen, setOutlineOpen ] = useState( false );
+	const [ currentVisible, setCurrentVisible ] = useState( null );
+	const [ moveBlockId, setMoveBlockId ] = useState( null );
+	const [ moveSearch, setMoveSearch ] = useState( '' );
 
 	const rowRefs = useRef( new Map() );
+	const rowContainers = useRef( new Map() );
+	const searchRef = useRef( null );
+	const outlineTriggerRef = useRef( null );
+	const index = useRef( new BlockIndex( { blockTypes: config.blockTypes, acfFields: config.acfFields } ) ).current;
 	const mountedAcfForms = useRef( new Set() );
 	/* Held in a ref as well as state so the submit handler can persist a recovery
 	 * copy without listing the key as a dependency and re-binding every listener. */
@@ -55,13 +67,38 @@ export function HerdEditorApp( { config } ) {
 	const savedTimer = useRef( null );
 	// What core sent, captured on before-autosave so the response can be trusted against it.
 	const autosavingContent = useRef( null );
-	const rows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
+	const normalRows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
+	const records = useMemo( () => index.update( controller.blocks, validationErrors ), [ generation, validationErrors ] );
+	const searchRecords = useMemo( () => index.query( search ), [ records, search ] );
+	const rows = search ? searchRecords.map( ( record ) => ( { block: record.block, ancestors: record.ancestors.map( ( id ) => controller.find( id ) ).filter( Boolean ), path: record.path, searchMatch: record.matched } ) ) : normalRows;
 	const dirty = controller.dirty || nativeDirty;
 	const counts = blockCounts( controller.blocks );
 	const named = topLevelPositions( controller.blocks );
 	/* Whole-document, because a clash is only visible from outside the two blocks
 	 * that have it: neither one can tell it is the second. */
 	const duplicateIds = useMemo( () => duplicateAnchors( controller.blocks ), [ generation ] );
+	const movingBlock = moveBlockId ? controller.find( moveBlockId ) : null;
+	const destinations = movingBlock ? moveDestinations( controller.blocks, moveBlockId, blockMutationPolicy( movingBlock, config.templateLock ).move ) : [];
+
+	useEffect( () => {
+		const onKeyDown = ( event ) => {
+			if ( event.key !== '/' || event.defaultPrevented ) return;
+			const target = event.target;
+			if ( target?.matches?.( 'input, textarea, select, [contenteditable="true"]' ) || target?.closest?.( '[role="dialog"]' ) ) return;
+			event.preventDefault(); searchRef.current?.focus();
+		};
+		window.addEventListener( 'keydown', onKeyDown );
+		return () => window.removeEventListener( 'keydown', onKeyDown );
+	}, [] );
+	useEffect( () => {
+		if ( !window.IntersectionObserver ) return undefined;
+		const observer = new IntersectionObserver( ( entries ) => {
+			const visible = entries.filter( ( entry ) => entry.isIntersecting ).sort( ( a, b ) => a.boundingClientRect.top - b.boundingClientRect.top )[ 0 ];
+			if ( visible ) setCurrentVisible( visible.target.dataset.blockId );
+		}, { rootMargin: '-20% 0px -65% 0px' } );
+		rowContainers.current.forEach( ( node ) => observer.observe( node ) );
+		return () => observer.disconnect();
+	}, [ rows, generation ] );
 
 	const refresh = () => setGeneration( ( value ) => value + 1 );
 	const syncContent = () => {
@@ -465,6 +502,11 @@ export function HerdEditorApp( { config } ) {
 	const toggleChildren = toggleIn( setExpandedChildren );
 
 	const focusId = ( id ) => requestAnimationFrame( () => rowRefs.current.get( id )?.focus() );
+	const revealAndFocus = ( id ) => {
+		const record = index.records.get( id );
+		if ( record ) setExpandedChildren( ( old ) => new Set( [ ...old, ...record.ancestors ] ) );
+		requestAnimationFrame( () => { rowContainers.current.get( id )?.scrollIntoView( { block: 'center' } ); focusId( id ); } );
+	};
 	const focusAt = ( index ) => focusId( rows[ Math.max( 0, Math.min( index, rows.length - 1 ) ) ]?.block.clientId );
 	// Inserting, duplicating and deleting rearrange the list without touching any
 	// other block's data, so the forms already mounted are still correct and stay
@@ -688,7 +730,9 @@ export function HerdEditorApp( { config } ) {
 
 		el( 'p', { className: 'screen-reader-text', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' }, announcement ),
 
-		el( 'div', { className: 'herd-listhead' },
+		el( 'div', { className: 'herd-workspace' },
+		el( 'section', { className: 'herd-workspace__main' },
+		el( 'label', { className: 'herd-search' }, el( 'span', { className: 'screen-reader-text' }, 'Search blocks' ), el( 'input', { ref: searchRef, type: 'search', value: search, placeholder: 'Search blocks', onChange: ( event ) => setSearch( event.target.value ), onKeyDown: ( event ) => { if ( event.key === 'Escape' ) { setSearch( '' ); event.currentTarget.blur(); } } } ) ),
 			el( 'span', { className: 'herd-listhead__count' }, `${ named.length } ${ named.length === 1 ? 'block' : 'blocks' }` ),
 			el( 'span', { className: 'herd-listhead__acts' },
 				el( 'button', { type: 'button', className: 'herd-ghost', onClick: collapseAll }, 'Collapse all' ),
@@ -718,6 +762,7 @@ export function HerdEditorApp( { config } ) {
 				badge: adapter.editable ? null : ( metadata.readOnly ? 'Open in Block Editor' : ( metadata.registered ? 'Read only' : 'Unsupported' ) ),
 				hidden: isHidden( block ),
 				warning: duplicateIds.has( anchor ) ? 'Duplicate anchor' : null,
+				searchMatch: row.searchMatch,
 				isOpen: openPanels.has( block.clientId ),
 				keepBodyMounted: retainAcfForm,
 				childrenExpanded: expandedChildren.has( block.clientId ),
@@ -731,6 +776,7 @@ export function HerdEditorApp( { config } ) {
 				deleteDisabled: ! policy.remove,
 				tabIndex: focusedId === null ? ( index === 0 ? 0 : -1 ) : ( focusedId === block.clientId ? 0 : -1 ),
 				registerRef: ( node ) => node ? rowRefs.current.set( block.clientId, node ) : rowRefs.current.delete( block.clientId ),
+				registerContainer: ( node ) => node ? rowContainers.current.set( block.clientId, node ) : rowContainers.current.delete( block.clientId ),
 				onFocus: () => setFocusedId( block.clientId ),
 				onToggle: () => togglePanel( block.clientId, adapter.id === 'acf' ),
 				onToggleChildren: () => toggleChildren( block.clientId ),
@@ -777,6 +823,7 @@ export function HerdEditorApp( { config } ) {
 						focusId( clone.clientId );
 					}
 				},
+				onMove: structural && policy.move && named.length > 1 ? () => { setMoveBlockId( block.clientId ); setMoveSearch( '' ); } : null,
 				onDelete: () => {
 					if ( ! policy.remove ) return;
 					if ( ! window.confirm( `Delete ${ title }? You can undo this action.` ) ) return;
@@ -813,7 +860,7 @@ export function HerdEditorApp( { config } ) {
 			return slot >= 0 && blockMutationPolicy( null, config.templateLock ).insert
 				? [ el( InsertPoint, insertPointFor( slot, titleAt( slot - 1 ) ) ), blockRow ]
 				: [ blockRow ];
-		} ).concat( el( InsertPoint, {
+		} ).concat( !search && el( InsertPoint, {
 			...insertPointFor( named.length, titleAt( named.length - 1 ) ),
 			// The final insertion point sits immediately above the persistent tail
 			// control, so keep its menu with the document rather than over it —
@@ -822,12 +869,17 @@ export function HerdEditorApp( { config } ) {
 			preferAbove: true,
 		} ) ) ),
 
-		el( 'button', {
+		!search && el( 'button', {
 			type: 'button',
 			className: 'herd-inserter__tail',
 			onClick: () => {
 				setOpenGap( named.length );
 				setMenuOpen( false );
 			},
-		}, '+ Add block' ) );
+		}, '+ Add block' ) ),
+		el( 'button', { ref: outlineTriggerRef, type: 'button', className: 'herd-outline-trigger', onClick: () => setOutlineOpen( true ) }, 'Outline' ),
+		el( Outline, { records, filter: outlineFilter, onFilter: setOutlineFilter, currentId: currentVisible, onSelect: revealAndFocus } ) ),
+		outlineOpen && el( 'div', { className: 'herd-modal', role: 'dialog', 'aria-modal': true, 'aria-label': 'Document outline' }, el( Outline, { records, filter: outlineFilter, onFilter: setOutlineFilter, currentId: currentVisible, drawer: true, onSelect: ( id ) => { setOutlineOpen( false ); revealAndFocus( id ); }, onClose: () => { setOutlineOpen( false ); requestAnimationFrame( () => outlineTriggerRef.current?.focus() ); } } ) ),
+		movingBlock && el( 'div', { className: 'herd-modal', role: 'dialog', 'aria-modal': true, 'aria-label': `Move ${ nameOf( movingBlock ) }` },
+			el( 'div', { className: 'herd-move-dialog' }, el( 'h2', null, `Move ${ nameOf( movingBlock ) }` ), el( 'input', { type: 'search', autoFocus: true, value: moveSearch, placeholder: 'Filter destinations', onChange: ( event ) => setMoveSearch( event.target.value ), onKeyDown: ( event ) => { if ( event.key === 'Escape' ) setMoveBlockId( null ); } } ), el( 'ol', null, destinations.filter( ( item ) => item.label.toLowerCase().includes( moveSearch.toLowerCase() ) ).map( ( item ) => el( 'li', { key: item.id }, el( 'button', { type: 'button', onClick: () => { moveToSlot( movingBlock, item.slot ); setMoveBlockId( null ); revealAndFocus( movingBlock.clientId ); } }, item.label ) ) ) ), el( 'button', { type: 'button', onClick: () => setMoveBlockId( null ) }, 'Cancel' ) ) );
 }
