@@ -368,6 +368,11 @@ export function wireSavedNotice() {
 	const notice = document.getElementById( 'herd-saved' );
 	const button = document.getElementById( 'herd-saved-dismiss' );
 	if ( ! notice || ! button ) return;
+	let dismissTimer = null;
+	const hide = () => {
+		window.clearTimeout( dismissTimer );
+		notice.hidden = true;
+	};
 
 	/*
 	 * A Herd save does not reload the screen any more, so the notice it earns
@@ -403,6 +408,10 @@ export function wireSavedNotice() {
 		notice.remove();
 		notice.hidden = false;
 		parent?.insertBefore( notice, next );
+		window.clearTimeout( dismissTimer );
+		/* Long enough to read and reach View Page, short enough not to cover
+		 * the document after the confirmation has done its job. */
+		dismissTimer = window.setTimeout( hide, 6000 );
 	};
 	window.addEventListener( 'herd:saved', ( event ) => show( event.detail?.notice ) );
 
@@ -410,7 +419,7 @@ export function wireSavedNotice() {
 	button.addEventListener( 'click', () => {
 		/* Hidden rather than removed: there is another save coming, and a notice
 		 * torn out of the document has nothing left for show() to fill in. */
-		notice.hidden = true;
+		hide();
 		// Dismissing must not drop focus to the body; the back arrow is the
 		// nearest thing above where the notice was.
 		document.querySelector( '.herd-bar__back' )?.focus();
@@ -423,6 +432,7 @@ export function wireSavedNotice() {
 			// An unparseable URL is not a reason to keep the notice on screen.
 		}
 	} );
+	if ( !notice.hidden ) dismissTimer = window.setTimeout( hide, 6000 );
 }
 
 export function assembleRail() {

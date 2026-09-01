@@ -829,18 +829,27 @@
 	vertical-align: middle;
 }
 
-/*
- * The post-save confirmation. It sits between the sticky bar and the columns,
- * so it takes .herd-cols' gutter and content width rather than running the
- * width of the admin body and leaving the block list indented under it.
- */
+/* Gutenberg-style post-save confirmation: transient, centered and clear of
+ * the persistent command bar without taking document space. */
 .herd-saved {
 	align-items: center;
+	background: #1e1e1e;
+	border: 0;
+	border-radius: 4px;
+	bottom: 24px;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, .24);
+	color: #fff;
 	display: flex;
+	font-size: 14px;
 	flex-wrap: wrap;
-	gap: 4px 12px;
-	margin: 20px 20px 0;
-	max-width: 1400px;
+	gap: 8px 28px;
+	left: 50%;
+	margin: 0;
+	max-width: calc(100vw - 24px);
+	padding: 16px 40px;
+	position: fixed;
+	transform: translateX(-50%);
+	z-index: 100000;
 }
 
 /*
@@ -863,7 +872,7 @@
 
 .herd-saved__link {
 	align-items: center;
-	color: var(--herd-green-ink);
+	color: #fff;
 	display: flex;
 	gap: 2px;
 	text-decoration: none;
@@ -871,7 +880,7 @@
 
 .herd-saved__link:hover,
 .herd-saved__link:focus {
-	color: var(--herd-green-ink-hover);
+	color: #fff;
 	text-decoration: underline;
 }
 
@@ -958,7 +967,9 @@
 	}
 
 	.herd-saved {
-		margin: 12px 12px 0;
+		bottom: 12px;
+		gap: 8px 18px;
+		padding: 14px 20px;
 	}
 }
 
