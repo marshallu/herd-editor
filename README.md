@@ -6,6 +6,56 @@ Requires ACF Pro 6.0 or newer. Without it the plugin declines to offer itself an
 
 ---
 
+## Using it with your theme
+
+Nothing. Install it, and every ACF block your theme registers is editable.
+
+Herd reads what your blocks already declare — `title`, `icon`, `category`,
+`keywords`, `supports.anchor` — and asks ACF for each block's form rather than
+knowing anything about your fields. It never reads `acf-json` and never names a
+field key, so a field group you change is a form Herd renders differently the
+next time it is opened.
+
+The inserter groups blocks by the **category each block registers**, resolved
+through WordPress's own block category list. A block lands in the same group
+here that it does in Gutenberg's inserter, for the same reason. If every block
+in your theme declares one category — which is common, since a category is
+usually just a vendor namespace — you get one list and no heading, and the
+search box does the work.
+
+Four things Herd cannot infer, because no registry records them. Each has a
+control on **Settings → Herd Editor** and a filter, and each is optional:
+
+| What | Filter | Without it |
+|---|---|---|
+| A curated inserter grouping | `herd_editor_block_groups` | Blocks group by their registered category |
+| The field that means "hidden on the front end" | `herd_editor_visibility_field` | No block is ever marked hidden |
+| Your named SVG icon set, for icon selects | `herd_editor_icons` | Icon fields render as stock ACF selects |
+| Per-block summary wording | `herd_editor_block_profiles` | Summaries are derived from each block's most identifying fields |
+
+**A filter always beats the settings screen.** A stored setting is the *default*
+passed into its filter, so a theme that states something in code cannot be
+overridden from the admin — and the screen says so where that is happening.
+
+On multisite these are **network** settings, on Network Admin → Settings → Herd
+Editor. There is no per-site screen: all of it describes the editor rather than
+any one site's content, and the network shares the theme and the plugins that
+supply it.
+
+### Your theme's admin CSS
+
+Herd draws every surface on its own screen, so it **does not load the active
+theme's admin stylesheets there**. A theme's admin CSS is written for the
+Classic and Block editors and usually carries `!important` to override ACF; on
+this screen that is not a customisation but a repaint.
+
+Turn it off with `herd_editor_suppress_theme_styles`, keep or drop individual
+handles with `herd_editor_suppressed_style_handles`, or use the checkboxes on
+the settings screen. A stylesheet served from somewhere other than your theme
+directory — a Vite dev server, a CDN — is not detected and has to be named.
+
+---
+
 ## Field widths
 
 Every ACF field can be given a width, and Herd lays fields out in rows honouring it.
@@ -109,9 +159,11 @@ The one thing that does not survive a re-save while Herd is deactivated is a Lin
 
 ## Uninstalling
 
-Uninstall removes nothing. See `uninstall.php` — the file exists to record that decision, since it is the first place anyone will look.
+Uninstall does not touch your field groups. See `uninstall.php` — the file exists to record that decision, since it is the first place anyone will look. Deactivation is deliberately different, and the Spacer section above says why.
 
-Herd stores no options, transients, tables or postmeta of its own.
+It removes the two options Herd owns: the default-editor choice, and the settings row behind the screen above. On multisite the settings row is a network option, and both are removed.
+
+Herd stores no transients, tables or postmeta of its own — a width lives in ACF's own `wrapper['width']`, and a spacer holds no value at all.
 
 ---
 
@@ -129,4 +181,13 @@ Herd stores no options, transients, tables or postmeta of its own.
 | `herd_editor_rail_tabs` | Which rail tab each meta box lands in |
 | `herd_editor_rail_tab_labels` | The rail's tabs and their labels |
 | `herd_editor_icons` | The icon set published to the editor |
+| `herd_editor_hidden_inserter_blocks` | Registered blocks kept out of the inserter |
+| `herd_editor_visibility_field` | The ACF field name that marks a block hidden |
+| `herd_editor_block_profiles` | Per-block summary wording and choice rules |
+| `herd_editor_suppress_theme_styles` | Whether the theme's admin CSS is dropped on the Herd screen |
+| `herd_editor_suppressed_style_handles` | Which stylesheet handles are dropped |
+| `herd_editor_starter_template` | The block template a new post opens with |
 | `herd_editor_expand_warn_at` | How many blocks Expand all mounts before confirming |
+
+Every one of these is also a control on Settings → Herd Editor, except the
+width, layout-field and rail filters, which are developer-level.
