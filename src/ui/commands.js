@@ -11,12 +11,16 @@ export function availableCommands( commands, context = {} ) {
 
 export function createCommandRegistry( actions ) {
 	return [
-		command( { id: 'find-blocks', label: 'Find blocks', shortcut: '⌘K', run: actions.find } ),
+		command( { id: 'find-blocks', label: 'Find blocks', shortcut: '/', run: actions.find } ),
+		command( { id: 'insert', label: 'Insert a block', available: ( context ) => !! context.canInsert, run: actions.insert } ),
 		command( { id: 'expand-all', label: 'Expand all blocks', run: actions.expandAll } ),
 		command( { id: 'collapse-all', label: 'Collapse all blocks', run: actions.collapseAll } ),
 		command( { id: 'duplicate', label: 'Duplicate selected block', available: ( context ) => !! context.selected?.canDuplicate, run: actions.duplicate } ),
 		command( { id: 'delete', label: 'Delete selected block', available: ( context ) => !! context.selected?.canDelete, run: actions.remove } ),
 		command( { id: 'move', label: 'Move selected block', available: ( context ) => !! context.selected?.canMove, run: actions.move } ),
+		command( { id: 'preview', label: 'Preview selected block', available: ( context ) => !! context.selected?.canPreview, run: actions.preview } ),
+		command( { id: 'toggle-visibility', label: 'Toggle selected block visibility', available: ( context ) => !! context.selected?.canVisibility, run: actions.toggleVisibility } ),
 		command( { id: 'next-validation', label: 'Next validation result', available: ( context ) => !! context.validationCount, run: actions.nextValidation } ),
+		command( { id: 'history', label: 'Open revision history', run: actions.history } ),
 	];
 }

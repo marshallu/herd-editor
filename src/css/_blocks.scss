@@ -125,6 +125,12 @@
 .herd-block mark { background: #fff1a8; color: inherit; }
 .herd-search-match { color: var(--herd-ink-3); font-size: 11px; }
 
+.herd-block__preview-thumbnail { align-items: center; display: inline-flex; position: relative; }
+.herd-block__preview-open { background: none; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 4px; }
+.herd-block__preview-frame { background: var(--herd-surface); border: 1px solid var(--herd-line); display: none; height: 58px; overflow: hidden; position: absolute; right: 0; top: calc(100% + 4px); width: 116px; z-index: 3; }
+.herd-block__preview-thumbnail:hover .herd-block__preview-frame, .herd-block__preview-thumbnail:focus-within .herd-block__preview-frame { display: block; }
+.herd-block__preview-frame iframe { border: 0; height: 180px; pointer-events: none; transform: scale(.33); transform-origin: top left; width: 350px; }
+
 
 /* ---------- card ---------- */
 

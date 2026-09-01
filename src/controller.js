@@ -26,12 +26,12 @@ export class DocumentController {
 	replaceAttributesExact( id, attrs ) { return this.commit( replaceAttributesExact( this.blocks, id, attrs ), id ); }
 	replaceBlockBody( id, body ) { return this.commit( replaceBlockBody( this.blocks, id, body ), id ); }
 	insertBlock( parentId, index, block ) { return this.commit( insertBlock( this.blocks, parentId, index, block ) ); }
-	duplicateBlock( id, parentId = null, index = null, profiles = {}, clear = [] ) {
+	duplicateBlock( id, parentId = null, index = null, profiles = {}, clear = null ) {
 		const block = this.find( id );
 		if ( ! block ) return this.blocks;
 		const siblings = parentId === null ? this.blocks : this.find( parentId )?.innerBlocks || [];
 		const sourceIndex = siblings.findIndex( ( candidate ) => candidate.clientId === id );
-		const copy = Object.keys( profiles ).length || clear.length ? duplicateWithProfile( block, profiles, clear ) : cloneBlock( block );
+		const copy = Object.keys( profiles ).length || clear !== null ? duplicateWithProfile( block, profiles, clear ) : cloneBlock( block );
 		if ( ! copy ) return this.blocks;
 		return this.commit( insertBlock( this.blocks, parentId, index === null ? sourceIndex + 1 : index, copy ) );
 	}

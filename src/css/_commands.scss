@@ -1,0 +1,14 @@
+.herd-command-palette,
+.herd-duplicate-dialog {
+	background: var(--herd-surface); border: 1px solid var(--herd-line); border-radius: var(--herd-r); box-shadow: 0 6px 20px rgba(0, 0, 0, .13); color: var(--herd-ink); padding: 14px; width: min(560px, 100%);
+}
+.herd-command-palette input { box-sizing: border-box; font: inherit; padding: 10px; width: 100%; }
+.herd-command-palette ul { list-style: none; margin: 10px 0 0; max-height: min(50vh, 420px); overflow: auto; padding: 0; }
+.herd-command-palette li button { background: none; border: 0; color: inherit; cursor: pointer; display: flex; font: inherit; justify-content: space-between; padding: 10px; text-align: left; width: 100%; }
+.herd-command-palette li[aria-selected="true"] button, .herd-command-palette li button:hover { background: var(--herd-canvas); }
+.herd-command-palette kbd { color: var(--herd-ink-3); }
+.herd-command-palette__empty { color: var(--herd-ink-3); padding: 10px; }
+.herd-duplicate-dialog h2 { margin-top: 0; }
+.herd-duplicate-dialog fieldset { border: 0; margin: 16px 0; padding: 0; }
+.herd-duplicate-dialog fieldset label { display: block; margin: 8px 0; }
+.herd-duplicate-dialog__actions { display: flex; gap: 8px; justify-content: flex-end; }

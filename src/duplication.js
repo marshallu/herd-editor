@@ -5,11 +5,13 @@ export function duplicationProfile( profiles = {}, block ) {
 	return { policy: [ 'safe', 'review', 'blocked' ].includes( profile.policy ) ? profile.policy : 'safe', clear: Array.isArray( profile.clear ) ? profile.clear : [], warn: Array.isArray( profile.warn ) ? profile.warn : [], message: profile.message || '' };
 }
 
-export function duplicateWithProfile( block, profiles = {}, clear = [] ) {
+export function duplicateWithProfile( block, profiles = {}, clear = null ) {
 	const profile = duplicationProfile( profiles, block );
 	if ( profile.policy === 'blocked' ) return null;
 	const copy = cloneBlock( block );
-	const fields = new Set( [ ...profile.clear, ...clear ] );
+	/* A review dialog supplies its checked values explicitly; ordinary safe
+	 * duplication retains the profile's automatic clear list. */
+	const fields = new Set( clear === null ? profile.clear : clear );
 	if ( fields.size && copy.attributes?.data ) {
 		const data = { ...copy.attributes.data };
 		for ( const field of fields ) {
@@ -25,5 +27,5 @@ export function duplicateWithProfile( block, profiles = {}, clear = [] ) {
 
 export function duplicationReviewValues( block, profiles = {} ) {
 	const profile = duplicationProfile( profiles, block );
-	return profile.warn.filter( ( field ) => { const value = block?.attributes?.data?.[ field ]; return value !== '' && value !== null && value !== undefined; } );
+	return [ ...new Set( [ ...profile.warn, ...profile.clear ] ) ].filter( ( field ) => { const value = block?.attributes?.data?.[ field ]; return value !== '' && value !== null && value !== undefined; } );
 }

@@ -17,6 +17,9 @@ import { outlineRows } from './outline-data.js';
 import { DocumentOutline } from './DocumentOutline.js';
 import { MoveDialog } from './MoveDialog.js';
 import { PreviewDrawer } from './PreviewDrawer.js';
+import { CommandPalette } from './CommandPalette.js';
+import { DuplicationDialog } from './DuplicationDialog.js';
+import { createCommandRegistry } from './commands.js';
 import { Notice } from './primitives.js';
 import { FormLifecycle } from './form-lifecycle.js';
 import { anyDirty, clearMatchingDomains, dirtyDomainFor, emptyDirtyDomains, markDomain } from './dirty-domains.js';
@@ -25,7 +28,7 @@ import { beginSave, endSave, guardBusyClicks, settleSave, watchRestore } from '.
 import { applySaveResult, buildSaveRequest, classifySaveResult } from '../save-request.js';
 import { decryptRecovery, deleteRecovery, downloadRecovery, encryptionKey, nativeFormValues, readRecovery, recoveryRecordId, restoreNativeFormValues, writeRecovery, encryptRecovery } from '../recovery.js';
 import { normalizeEditorialResults, validateEditorialDocument } from './editorial-validation.js';
-import { duplicationProfile, duplicationReviewValues } from '../duplication.js';
+import { duplicationProfile } from '../duplication.js';
 
 const el = createElement;
 const CORE_ADAPTERS = [ 'paragraph', 'heading', 'html', 'shortcode' ];
@@ -74,6 +77,8 @@ export function HerdEditorApp( { config } ) {
 	const [ search, setSearch ] = useState( '' );
 	const [ movingId, setMovingId ] = useState( null );
 	const [ preview, setPreview ] = useState( null );
+	const [ commandPaletteOpen, setCommandPaletteOpen ] = useState( false );
+	const [ duplicationReview, setDuplicationReview ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
 	const searchRef = useRef( null );
@@ -121,6 +126,15 @@ export function HerdEditorApp( { config } ) {
 			if ( event.target?.matches?.( 'input, textarea, select, [contenteditable="true"]' ) ) return;
 			event.preventDefault();
 			searchRef.current?.focus();
+		};
+		window.addEventListener( 'keydown', onKeyDown );
+		return () => window.removeEventListener( 'keydown', onKeyDown );
+	}, [] );
+	useEffect( () => {
+		const onKeyDown = ( event ) => {
+			if ( event.defaultPrevented || !( event.metaKey || event.ctrlKey ) || event.key.toLowerCase() !== 'k' ) return;
+			event.preventDefault();
+			setCommandPaletteOpen( true );
 		};
 		window.addEventListener( 'keydown', onKeyDown );
 		return () => window.removeEventListener( 'keydown', onKeyDown );
@@ -673,6 +687,50 @@ export function HerdEditorApp( { config } ) {
 			return next;
 		} );
 	};
+	const openBlockPreview = ( block, origin = document.activeElement ) => {
+		const metadata = config.blockTypes[ block?.name ] || {};
+		if ( !block || adapterFor( block, metadata ).id !== 'acf' || !metadata.registered ) return;
+		setPreview( { block, postId: config.postId, title: nameOf( block ), key: `${ block.name }-${ JSON.stringify( block.attributes?.data || {} ) }`, context: config.previewContext || {}, origin } );
+	};
+	const duplicateBlock = ( block, clear = null ) => {
+		if ( !block || !allowed( 'duplicate', block ) ) return;
+		const before = new Set( collectBlocks( controller.blocks ).map( ( candidate ) => candidate.clientId ) );
+		controller.duplicateBlock( block.clientId, null, null, config.duplicationProfiles || {}, clear );
+		const clone = collectBlocks( controller.blocks ).find( ( candidate ) => !before.has( candidate.clientId ) );
+		refresh(); setDuplicationReview( null ); setAnnouncement( `${ nameOf( block ) } duplicated.` );
+		if ( clone ) { setOpenPanels( ( current ) => new Set( current ).add( clone.clientId ) ); focusId( clone.clientId ); }
+	};
+	const requestDuplicate = ( block ) => {
+		if ( !block || !allowed( 'duplicate', block ) ) return;
+		const profile = duplicationProfile( config.duplicationProfiles, block );
+		if ( profile.policy === 'blocked' ) { setAnnouncement( profile.message || `${ nameOf( block ) } cannot be duplicated.` ); return; }
+		if ( profile.policy === 'review' ) { setDuplicationReview( block ); return; }
+		duplicateBlock( block );
+	};
+	const deleteBlock = ( block ) => {
+		if ( !block || !allowed( 'remove', block ) || !window.confirm( `Delete ${ nameOf( block ) }? You can undo this action.` ) ) return;
+		const slot = topLevelSlot( controller.blocks, block.clientId ); const fallback = named[ slot + 1 ] || named[ slot - 1 ];
+		setOpenPanels( ( current ) => { const next = new Set( current ); next.delete( block.clientId ); return next; } );
+		mutate( `${ nameOf( block ) } deleted.`, () => controller.removeBlock( block.clientId ), fallback?.clientId );
+	};
+	const toggleBlockVisibility = ( block ) => {
+		const field = config.visibilityField;
+		if ( !block || !field || !allowed( 'visibility', block ) ) return;
+		controller.replaceAttributes( block.clientId, { data: { ...block.attributes?.data, [ field ]: isHidden( block ) ? 0 : 1 } } );
+		refresh(); setAnnouncement( `${ nameOf( block ) } is now ${ isHidden( block ) ? 'visible' : 'hidden' }.` );
+	};
+	const selectedBlock = focusedId ? controller.find( focusedId ) : null;
+	const selectedMetadata = config.blockTypes[ selectedBlock?.name ] || {};
+	const commandContext = {
+		canInsert: allowed( 'insert' ) && blockMutationPolicy( null, config.templateLock ).insert,
+		validationCount: validationErrors.length,
+		selected: selectedBlock && {
+			canDuplicate: allowed( 'duplicate', selectedBlock ) && duplicationProfile( config.duplicationProfiles, selectedBlock ).policy !== 'blocked',
+			canDelete: allowed( 'remove', selectedBlock ), canMove: allowed( 'move', selectedBlock ) && topLevelSlot( controller.blocks, selectedBlock.clientId ) >= 0 && named.length > 1,
+			canPreview: adapterFor( selectedBlock, selectedMetadata ).id === 'acf' && selectedMetadata.registered,
+			canVisibility: !!config.visibilityField && allowed( 'visibility', selectedBlock ),
+		},
+	};
 
 	/** Props shared by every insertion point; only the slot differs. */
 	const insertPointFor = ( slot, afterTitle ) => ( {
@@ -766,6 +824,13 @@ export function HerdEditorApp( { config } ) {
 		evictForms( formLifecycle.collapseInactive() );
 		setAnnouncement( 'Safe inactive forms released.' );
 	};
+	const commands = createCommandRegistry( {
+		find: () => searchRef.current?.focus(), insert: () => setOpenGap( named.length ), expandAll, collapseAll,
+		duplicate: () => requestDuplicate( selectedBlock ), remove: () => deleteBlock( selectedBlock ), move: () => setMovingId( selectedBlock?.clientId || null ),
+		preview: () => openBlockPreview( selectedBlock ), toggleVisibility: () => toggleBlockVisibility( selectedBlock ),
+		nextValidation: () => { const result = validationErrors.find( ( item ) => item.blockId ); if ( result ) { setOpenPanels( ( current ) => new Set( current ).add( result.blockId ) ); focusId( result.blockId ); } },
+		history: () => document.getElementById( 'herd-tab-history' )?.click(),
+	} );
 
 	const panelFor = ( row, adapter ) => {
 		if ( adapter.id === 'acf' ) {
@@ -971,35 +1036,11 @@ export function HerdEditorApp( { config } ) {
 					if ( ! source || fromSlot === -1 || slot === -1 ) return;
 					moveToSlot( source, dropSlot( fromSlot, slot, drag.after ) );
 				},
-				onDuplicate: () => {
-					if ( ! policy.insert || ! allowed( 'duplicate', block ) ) return;
-					const profile = duplicationProfile( config.duplicationProfiles, block );
-					if ( profile.policy === 'blocked' ) { setAnnouncement( profile.message || `${ title } cannot be duplicated.` ); return; }
-					const review = duplicationReviewValues( block, config.duplicationProfiles );
-					if ( profile.policy === 'review' && ! window.confirm( `${ profile.message || `Review ${ title } before duplicating.` }${ review.length ? ` The copy will retain: ${ review.join( ', ' ) }.` : '' }` ) ) return;
-					const before = new Set( controller.blocks.map( ( candidate ) => candidate.clientId ) );
-					controller.duplicateBlock( block.clientId, null, null, config.duplicationProfiles || {} );
-					const clone = controller.blocks.find( ( candidate ) => ! before.has( candidate.clientId ) );
-					refresh();
-					setAnnouncement( `${ title } duplicated.` );
-					if ( clone ) {
-						setOpenPanels( ( current ) => new Set( current ).add( clone.clientId ) );
-						focusId( clone.clientId );
-					}
-				},
+				onDuplicate: () => requestDuplicate( block ),
 				onMove: structural && policy.move && allowed( 'move', block ) && named.length > 1 ? () => setMovingId( block.clientId ) : null,
-				onPreview: adapter.id === 'acf' && metadata.registered ? ( event ) => setPreview( { block, postId: config.postId, title, key: `${ block.name }-${ JSON.stringify( block.attributes?.data || {} ) }`, origin: event.currentTarget } ) : null,
-				onDelete: () => {
-					if ( ! policy.remove || ! allowed( 'remove', block ) ) return;
-					if ( ! window.confirm( `Delete ${ title }? You can undo this action.` ) ) return;
-					const fallback = named[ slot + 1 ] || named[ slot - 1 ];
-					setOpenPanels( ( current ) => {
-						const next = new Set( current );
-						next.delete( block.clientId );
-						return next;
-					} );
-					mutate( `${ title } deleted.`, () => controller.removeBlock( block.clientId ), fallback?.clientId );
-				},
+				onPreview: adapter.id === 'acf' && metadata.registered ? ( event ) => openBlockPreview( block, event.currentTarget ) : null,
+				previewThumbnail: adapter.id === 'acf' && metadata.registered ? { preview: { block, postId: config.postId, key: `${ block.name }-${ JSON.stringify( block.attributes?.data || {} ) }`, context: config.previewContext || {} }, nonce: config.previewNonce } : null,
+				onDelete: () => deleteBlock( block ),
 			}, ...( renderPanel
 				? [
 					panelFor( row, adapter ),
@@ -1053,6 +1094,8 @@ export function HerdEditorApp( { config } ) {
 			onClose: () => setPreview( null ),
 			onEdit: () => { setOpenPanels( ( current ) => new Set( current ).add( preview.block.clientId ) ); setPreview( null ); },
 		} ), document.body ),
+		duplicationReview && createPortal( el( DuplicationDialog, { block: duplicationReview, title: nameOf( duplicationReview ), profiles: config.duplicationProfiles, fields: config.acfFields, onDuplicate: ( clear ) => duplicateBlock( duplicationReview, clear ), onClose: () => setDuplicationReview( null ) } ), document.body ),
+		commandPaletteOpen && createPortal( el( CommandPalette, { commands, context: commandContext, onClose: () => setCommandPaletteOpen( false ) } ), document.body ),
 		movingBlock && createPortal( el( MoveDialog, {
 			title: nameOf( movingBlock ),
 			summary: blockSummary( movingBlock, adapterFor( movingBlock, config.blockTypes ).id, bodyFor( movingBlock ) ),

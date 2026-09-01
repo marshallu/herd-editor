@@ -22,23 +22,24 @@ export function PreviewDrawer( { preview, nonce, onClose, onEdit } ) {
 	const [ attempt, setAttempt ] = useState( 0 );
 	const [ viewport, setViewport ] = useState( 'desktop' );
 	const closeRef = useRef( null );
+	const cacheKey = `${ preview.key }-${ JSON.stringify( preview.context || {} ) }-${ viewport }`;
 	useEffect( () => {
 		let alive = true;
 		const load = async () => {
 			setState( 'loading' ); setFrameUrl( '' );
-			if ( previewCache.has( preview.key ) ) {
-				setFrameUrl( previewCache.get( preview.key ) ); setState( 'ready' ); return;
+			if ( previewCache.has( cacheKey ) ) {
+				setFrameUrl( previewCache.get( cacheKey ) ); setState( 'ready' ); return;
 			}
 			try {
 				const body = new URLSearchParams( { action: 'herd_editor_create_preview', nonce: nonce || '', postId: String( preview.postId ), blockName: preview.block.name, data: JSON.stringify( preview.block.attributes?.data || {} ) } );
 				const result = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', body } ).then( ( response ) => response.json() );
 				if ( !result?.success ) throw new Error( result?.data?.message || 'Preview unavailable.' );
-				if ( alive ) { previewCache.set( preview.key, result.data.frameUrl ); setFrameUrl( result.data.frameUrl ); setState( result.data.empty ? 'empty' : 'ready' ); }
+				if ( alive ) { previewCache.set( cacheKey, result.data.frameUrl ); setFrameUrl( result.data.frameUrl ); setState( result.data.empty ? 'empty' : 'ready' ); }
 			} catch ( error ) { if ( alive ) setState( 'error' ); }
 		};
 		const timer = window.setTimeout( load, 350 );
 		return () => { alive = false; window.clearTimeout( timer ); };
-	}, [ preview.key, nonce, attempt ] );
+	}, [ cacheKey, nonce, attempt ] );
 	useEffect( () => { closeRef.current?.focus(); return () => preview.origin?.focus?.(); }, [ preview ] );
 	return el( 'div', {
 		className: 'herd-modal',
@@ -67,6 +68,5 @@ export function PreviewDrawer( { preview, nonce, onClose, onEdit } ) {
 					el( 'button', { type: 'button', className: 'button-link', onClick: () => setAttempt( ( count ) => count + 1 ) }, 'Try again' ) ),
 				state === 'ready' && frameUrl && el( 'iframe', { className: `is-${ viewport }`, title: `${ preview.title } preview`, src: frameUrl, sandbox: 'allow-same-origin allow-popups allow-forms', loading: 'eager' } ) ),
 			el( 'footer', { className: 'herd-preview-dialog__footer' },
-				el( 'p', null, 'Rendered with the theme’s own styles.' ),
 				el( 'button', { type: 'button', className: 'button button-primary', onClick: onEdit }, 'Edit fields' ) ) ) );
 }

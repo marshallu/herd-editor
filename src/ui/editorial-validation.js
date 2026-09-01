@@ -23,6 +23,14 @@ function empty( value ) {
 	return value === null || value === undefined || value === '' || ( Array.isArray( value ) && ! value.length );
 }
 
+function ruleList( rules, name ) { return Array.isArray( rules?.[ name ] ) ? rules[ name ] : []; }
+function sectionRule( rule ) { return typeof rule === 'string' ? { block: rule, visible: false } : { block: String( rule?.block || '' ), visible: !!rule?.visible }; }
+function linkUrl( value ) { return typeof value === 'string' ? value : String( value?.url || '' ); }
+function isInternalUrl( url, siteUrl ) {
+	try { const target = new URL( url, siteUrl || window.location.origin ); const site = new URL( siteUrl || window.location.origin ); return target.origin === site.origin; } catch { return false; }
+}
+function blockIsHidden( block, field ) { return !!field && [ true, 1, '1' ].includes( block.attributes?.data?.[ field ] ); }
+
 /** Lightweight checks. More site-specific checks arrive as server results on publish. */
 export function validateEditorialDocument( blocks, config = {} ) {
 	const results = [];
@@ -41,6 +49,16 @@ export function validateEditorialDocument( blocks, config = {} ) {
 			const value = block.attributes?.data?.[ field ];
 			const image = typeof value === 'object' && value ? value : null;
 			if ( image && ! image.alt && ! image.alt_text ) results.push( editorialResult( { ruleId: 'missing-alt', severity: 'warning', blockId: block.clientId, field, message: 'This meaningful image has no alternative text.', help: 'Describe the image’s purpose for people who cannot see it.' } ) );
+		}
+	}
+	for ( const rule of ruleList( config.editorialRules, 'requiredSections' ).map( sectionRule ) ) {
+		const matches = collectBlocks( blocks ).filter( ( block ) => block.name === rule.block );
+		if ( !matches.length || ( rule.visible && !matches.some( ( block ) => !blockIsHidden( block, config.visibilityField ) ) ) ) results.push( editorialResult( { ruleId: 'required-section', severity: 'error', message: rule.visible ? `A visible ${ rule.block.replace( /^acf\//, '' ) } section is required.` : `A ${ rule.block.replace( /^acf\//, '' ) } section is required.`, help: 'Add the required section or make an existing one visible.' } ) );
+	}
+	for ( const block of collectBlocks( blocks ) ) {
+		for ( const field of ruleList( config.editorialRules, 'internalLinkFields' ) ) {
+			const url = linkUrl( block.attributes?.data?.[ field ] );
+			if ( url && isInternalUrl( url, config.siteUrl ) && !/^https?:|^\//.test( url ) ) results.push( editorialResult( { ruleId: 'invalid-internal-link', severity: 'warning', blockId: block.clientId, field, message: 'This internal link is not a valid URL.', help: 'Choose a published page or enter a valid internal URL.' } ) );
 		}
 	}
 	return results;
