@@ -2,9 +2,9 @@
 /**
  * Plugin Name: Herd Editor
  * Description: A dedicated Herd Editor mode for editing existing ACF blocks alongside Classic and Block Editor.
- * Version: 1.0.4
- * Requires at least: 7.1
- * Requires PHP: 7.4
+ * Version: 1.0.5
+ * Requires at least: 6.5
+ * Requires PHP: 8.2
  * Requires Plugins: advanced-custom-fields-pro
  * Text Domain: herd-editor
  *
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'HERD_EDITOR_VERSION', '1.0.4' );
+define( 'HERD_EDITOR_VERSION', '1.0.5' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
 /** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
 define( 'HERD_EDITOR_FILE', __FILE__ );
@@ -758,11 +758,20 @@ function herd_editor_validate_document_editorial( $content, $client_ids = array(
 			return ! $visible || ! $field || empty( $block['attrs']['data'][ $field ] );
 		} );
 		if ( ! $matches && $name ) {
-			$results[] = array( 'ruleId' => 'required-section', 'severity' => 'error', 'blockId' => '', 'field' => '', 'message' => sprintf( __( 'A%s section is required.', 'herd-editor' ), $visible ? __( ' visible', 'herd-editor' ) : '' ), 'help' => __( 'Add the required section or make an existing one visible.', 'herd-editor' ) );
+			$results[] = array(
+				'ruleId'  => 'required-section',
+				'severity' => 'error',
+				'blockId'  => '',
+				'field'    => '',
+				/* translators: %s: either " visible" or an empty string. */
+				'message'  => sprintf( __( 'A%s section is required.', 'herd-editor' ), $visible ? __( ' visible', 'herd-editor' ) : '' ),
+				'help'     => __( 'Add the required section or make an existing one visible.', 'herd-editor' ),
+			);
 		}
 	}
 	$relationship_fields = array_filter( array_map( 'sanitize_key', (array) ( $rules['relationshipFields'] ?? array() ) ) );
 	$link_fields = array_filter( array_map( 'sanitize_key', (array) ( $rules['internalLinkFields'] ?? array() ) ) );
+	$resolved_links = array();
 	foreach ( $flat as $index => $block ) {
 		$data = (array) ( $block['attrs']['data'] ?? array() );
 		foreach ( $link_fields as $field ) {
@@ -773,13 +782,17 @@ function herd_editor_validate_document_editorial( $content, $client_ids = array(
 			$internal = $parts && ( empty( $parts['host'] ) || ( $home['host'] ?? '' ) === $parts['host'] );
 			if ( ! $internal || ! empty( $parts['query'] ) || empty( $parts['path'] ) || '/' === $parts['path'] ) { continue; }
 			$target = empty( $parts['host'] ) ? home_url( $parts['path'] ) : $url;
-			if ( url_to_postid( $target ) ) { continue; }
+			if ( ! array_key_exists( $target, $resolved_links ) ) {
+				$resolved_links[ $target ] = url_to_postid( $target ); // phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.url_to_postid_url_to_postid -- cached above for this validation pass; the VIP-only replacement is not available on ordinary WordPress sites.
+			}
+			if ( $resolved_links[ $target ] ) { continue; }
 			$results[] = array( 'ruleId' => 'broken-internal-link', 'severity' => 'warning', 'blockId' => isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '', 'field' => $field, 'message' => __( 'This internal link could not be resolved.', 'herd-editor' ), 'help' => __( 'Choose a published page or enter a valid internal URL.', 'herd-editor' ) );
 		}
 		foreach ( $relationship_fields as $field ) {
 			foreach ( (array) ( $data[ $field ] ?? array() ) as $value ) {
 				$id = is_scalar( $value ) ? absint( $value ) : 0;
-				if ( ! $id || ( $status = get_post_status( $id ) ) && ! in_array( $status, array( 'trash', 'draft', 'pending', 'private' ), true ) ) { continue; }
+				$status = $id ? get_post_status( $id ) : false;
+				if ( ! $id || ( $status && ! in_array( $status, array( 'trash', 'draft', 'pending', 'private' ), true ) ) ) { continue; }
 				$results[] = array( 'ruleId' => 'unavailable-relationship', 'severity' => 'warning', 'blockId' => isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '', 'field' => $field, 'message' => __( 'This relationship points to content that is unavailable to visitors.', 'herd-editor' ), 'help' => __( 'Choose published content or remove this relationship.', 'herd-editor' ) );
 			}
 		}
@@ -1122,14 +1135,22 @@ function herd_editor_revision_records( $content ) {
 /** Conservative record matching: IDs, then unique exact content, then one unique type. */
 function herd_editor_revision_matches( $left, $right ) {
 	$pairs = array(); $used_left = array(); $used_right = array();
-	foreach ( $left as $li => $before ) foreach ( $right as $ri => $after ) {
-		if ( $before['id'] && $before['id'] === $after['id'] && ! isset( $used_right[ $ri ] ) ) { $pairs[] = array( $li, $ri ); $used_left[ $li ] = true; $used_right[ $ri ] = true; break; }
+	foreach ( $left as $li => $before ) {
+		foreach ( $right as $ri => $after ) {
+			if ( $before['id'] && $before['id'] === $after['id'] && ! isset( $used_right[ $ri ] ) ) { $pairs[] = array( $li, $ri ); $used_left[ $li ] = true; $used_right[ $ri ] = true; break; }
+		}
 	}
 	foreach ( array( 'fingerprint', 'name' ) as $field ) {
 		$left_groups = array(); $right_groups = array();
-		foreach ( $left as $li => $record ) if ( ! isset( $used_left[ $li ] ) ) { $left_groups[ $record[ $field ] ][] = $li; }
-		foreach ( $right as $ri => $record ) if ( ! isset( $used_right[ $ri ] ) ) { $right_groups[ $record[ $field ] ][] = $ri; }
-		foreach ( $left_groups as $value => $lis ) if ( 1 === count( $lis ) && isset( $right_groups[ $value ] ) && 1 === count( $right_groups[ $value ] ) ) { $li = $lis[0]; $ri = $right_groups[ $value ][0]; $pairs[] = array( $li, $ri ); $used_left[ $li ] = true; $used_right[ $ri ] = true; }
+		foreach ( $left as $li => $record ) {
+			if ( ! isset( $used_left[ $li ] ) ) { $left_groups[ $record[ $field ] ][] = $li; }
+		}
+		foreach ( $right as $ri => $record ) {
+			if ( ! isset( $used_right[ $ri ] ) ) { $right_groups[ $record[ $field ] ][] = $ri; }
+		}
+		foreach ( $left_groups as $value => $lis ) {
+			if ( 1 === count( $lis ) && isset( $right_groups[ $value ] ) && 1 === count( $right_groups[ $value ] ) ) { $li = $lis[0]; $ri = $right_groups[ $value ][0]; $pairs[] = array( $li, $ri ); $used_left[ $li ] = true; $used_right[ $ri ] = true; }
+		}
 	}
 	return array( $pairs, $used_left, $used_right );
 }
@@ -1182,8 +1203,12 @@ function herd_editor_revision_diff( $left_content, $right_content ) {
 		if ( $field_changes ) { $diff[] = array( 'type' => 'fields', 'id' => $id, 'name' => $after['name'], 'fields' => $field_changes );
 		}
 	}
-	foreach ( $left as $index => $before ) if ( ! isset( $used_left[ $index ] ) ) { $diff[] = array( 'type' => 'removed', 'id' => $before['id'] ?: 'revision-' . $index, 'before' => $before ); }
-	foreach ( $right as $index => $after ) if ( ! isset( $used_right[ $index ] ) ) { $diff[] = array( 'type' => 'added', 'id' => $after['id'] ?: 'revision-' . $index, 'after' => $after ); }
+	foreach ( $left as $index => $before ) {
+		if ( ! isset( $used_left[ $index ] ) ) { $diff[] = array( 'type' => 'removed', 'id' => $before['id'] ? $before['id'] : 'revision-' . $index, 'before' => $before ); }
+	}
+	foreach ( $right as $index => $after ) {
+		if ( ! isset( $used_right[ $index ] ) ) { $diff[] = array( 'type' => 'added', 'id' => $after['id'] ? $after['id'] : 'revision-' . $index, 'after' => $after ); }
+	}
 	return $diff;
 }
 

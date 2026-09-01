@@ -58,6 +58,8 @@
         never loaded by WordPress, and never deployed as runtime code.
     -->
     <exclude-pattern>tools/*</exclude-pattern>
+    <!-- Static-analysis declarations describe third-party ACF functions and are never shipped as runtime code. -->
+    <exclude-pattern>phpstan-stubs/*</exclude-pattern>
 
     <arg name="extensions" value="php"/>
     <arg name="colors"/>

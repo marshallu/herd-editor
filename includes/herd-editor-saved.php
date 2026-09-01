@@ -200,9 +200,8 @@ function herd_editor_message_table( $post ) {
 	);
 
 	/** This filter is documented in wp-admin/edit-form-advanced.php */
-	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core's own filter, read so Herd's notice says what post.php would have.
 	return apply_filters(
-		'post_updated_messages',
+		'post_updated_messages', // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core's own filter, read so Herd's notice says what post.php would have.
 		array(
 			'post'           => $messages,
 			$post->post_type => $messages,

@@ -1,0 +1,13 @@
+includes:
+	- vendor/szepeviktor/phpstan-wordpress/extension.neon
+
+parameters:
+	level: 0
+	paths:
+		- herd-editor.php
+		- includes
+		- uninstall.php
+	scanFiles:
+		- vendor/php-stubs/acf-pro-stubs/acf-pro-stubs.php
+	stubFiles:
+		- phpstan-stubs/acf.php

@@ -33,6 +33,6 @@
 	"scripts": {
 		"format": "phpcbf --extensions=php --standard=phpcs.xml.dist --report-summary --report-source",
 		"lint": "phpcs --extensions=php --standard=phpcs.xml.dist",
-		"analyse": "phpstan analyse --memory-limit=4G"
+		"analyse": "phpstan analyse --configuration=phpstan.neon --debug --memory-limit=4G"
 	}
 }
