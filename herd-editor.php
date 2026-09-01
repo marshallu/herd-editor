@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Herd Editor
  * Description: A dedicated Herd Editor mode for editing existing ACF blocks alongside Classic and Block Editor.
- * Version: 1.0.3
+ * Version: 1.0.4
  * Requires at least: 7.1
  * Requires PHP: 7.4
  * Requires Plugins: advanced-custom-fields-pro
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'HERD_EDITOR_VERSION', '1.0.3' );
+define( 'HERD_EDITOR_VERSION', '1.0.4' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
 /** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
 define( 'HERD_EDITOR_FILE', __FILE__ );
@@ -48,9 +48,14 @@ function herd_editor_has_acf_pro() {
 	return defined( 'ACF_VERSION' ) && version_compare( ACF_VERSION, HERD_EDITOR_MIN_ACF, '>=' );
 }
 
-/** Compact ACF schema for readable client-side search; it contains no form HTML. */
-function herd_editor_acf_field_map() {
-	if ( ! function_exists( 'acf_get_field_groups' ) || ! function_exists( 'acf_get_fields' ) ) {
+/**
+ * Compact schema for the ACF blocks this document actually contains.
+ *
+ * Loading every field group made the boot payload depend on unrelated site
+ * configuration, which can be both very large and impossible to JSON encode.
+ */
+function herd_editor_acf_field_map( $content ) {
+	if ( ! function_exists( 'acf_get_block_fields' ) ) {
 		return array();
 	}
 	$map = array();
@@ -68,7 +73,13 @@ function herd_editor_acf_field_map() {
 			foreach ( (array) ( $field['layouts'] ?? array() ) as $layout ) $add( isset( $layout['sub_fields'] ) ? $layout['sub_fields'] : array() );
 		}
 	};
-	foreach ( (array) acf_get_field_groups() as $group ) $add( acf_get_fields( $group ) );
+	$blocks = array();
+	herd_editor_acf_blocks_from_tree( parse_blocks( (string) $content ), $blocks );
+	foreach ( $blocks as $block ) {
+		$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+		$data = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? $block['attrs']['data'] : array();
+		$add( acf_get_block_fields( array( 'name' => $name, 'data' => $data ) ) );
+	}
 	return $map;
 }
 
@@ -1542,7 +1553,7 @@ function herd_editor_enqueue_assets() {
 				'icons' => herd_editor_icon_set(),
 				/* The field name that means "hidden", or '' where the site has none. */
 				'visibilityField' => herd_editor_visibility_field(),
-				'acfFields' => herd_editor_acf_field_map(),
+				'acfFields' => herd_editor_acf_field_map( $post->post_content ),
 				/* Per-block summary wording and choice rules; see src/ui/acf/profiles.js. */
 				'profiles' => herd_editor_block_profiles(),
 			)
@@ -2069,16 +2080,11 @@ add_filter( 'page_row_actions', 'herd_editor_add_list_table_link', 20, 2 );
  * @param WP_Post $post Post being edited.
  */
 function herd_editor_switch_link( $post ) {
-	global $herd_editor_screen_hook, $hook_suffix;
 	if ( ! herd_editor_has_acf_pro() || ! herd_editor_supports_post( $post ) ) {
 		return;
 	}
-	/* This callback runs while meta boxes render. `$_GET['page']` is not a
-	 * reliable screen identity there (and can be altered by a plugin); the admin
-	 * hook is the route WordPress actually selected. Keep the query fallback for
-	 * integrations that render the box before $hook_suffix is populated. */
-	// phpcs:ignore WordPress.Security.NonceVerification.Recommended
-	$on_herd = ( ! empty( $herd_editor_screen_hook ) && $hook_suffix === $herd_editor_screen_hook ) || ( isset( $_GET['page'] ) && 'herd-editor' === $_GET['page'] );
+	/* Covers both the hidden Herd route and the inline replacement of post.php. */
+	$on_herd = herd_editor_is_herd_screen();
 	$url     = $on_herd ? herd_editor_native_url( $post->ID, 'block' ) : herd_editor_url( $post->ID );
 	$label   = $on_herd ? __( 'Switch to Block Editor', 'herd-editor' ) : __( 'Switch to Herd Editor', 'herd-editor' );
 
