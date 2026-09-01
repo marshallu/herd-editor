@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Herd Editor
  * Description: A dedicated Herd Editor mode for editing existing ACF blocks alongside Classic and Block Editor.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Requires at least: 7.1
  * Requires PHP: 7.4
  * Requires Plugins: advanced-custom-fields-pro
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'HERD_EDITOR_VERSION', '1.0.0' );
+define( 'HERD_EDITOR_VERSION', '1.0.1' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
 /** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
 define( 'HERD_EDITOR_FILE', __FILE__ );
