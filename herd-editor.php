@@ -48,37 +48,22 @@ function herd_editor_has_acf_pro() {
 	return defined( 'ACF_VERSION' ) && version_compare( ACF_VERSION, HERD_EDITOR_MIN_ACF, '>=' );
 }
 
-/**
- * Compact schema for the ACF blocks this document actually contains.
- *
- * Loading every field group made the boot payload depend on unrelated site
- * configuration, which can be both very large and impossible to JSON encode.
- */
-function herd_editor_acf_field_map( $content ) {
-	if ( ! function_exists( 'acf_get_block_fields' ) ) {
-		return array();
-	}
-	$map = array();
-	$add = null;
-	$add = static function( $fields ) use ( &$map, &$add ) {
-		foreach ( (array) $fields as $field ) {
-			if ( empty( $field['key'] ) ) continue;
-			$map[ $field['key'] ] = array(
-				'name' => isset( $field['name'] ) ? (string) $field['name'] : '',
-				'label' => isset( $field['label'] ) ? wp_strip_all_tags( (string) $field['label'] ) : '',
-				'type' => isset( $field['type'] ) ? (string) $field['type'] : '',
-				'choices' => isset( $field['choices'] ) && is_array( $field['choices'] ) ? $field['choices'] : array(),
-			);
-			$add( isset( $field['sub_fields'] ) ? $field['sub_fields'] : array() );
-			foreach ( (array) ( $field['layouts'] ?? array() ) as $layout ) $add( isset( $layout['sub_fields'] ) ? $layout['sub_fields'] : array() );
-		}
-	};
+/** A JSON-safe schema map limited to the ACF blocks in this document. */
+function herd_editor_search_fields( $content ) {
+	if ( ! function_exists( 'acf_get_block_fields' ) ) return array();
 	$blocks = array();
 	herd_editor_acf_blocks_from_tree( parse_blocks( (string) $content ), $blocks );
+	$map = array();
 	foreach ( $blocks as $block ) {
-		$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
-		$data = isset( $block['attrs']['data'] ) && is_array( $block['attrs']['data'] ) ? $block['attrs']['data'] : array();
-		$add( acf_get_block_fields( array( 'name' => $name, 'data' => $data ) ) );
+		$fields = (array) acf_get_block_fields( array( 'name' => (string) $block['blockName'] ) );
+		foreach ( $fields as $field ) {
+			if ( empty( $field['key'] ) ) continue;
+			$choices = array();
+			foreach ( (array) ( $field['choices'] ?? array() ) as $value => $label ) {
+				if ( is_scalar( $value ) && is_scalar( $label ) ) $choices[ (string) $value ] = wp_strip_all_tags( (string) $label );
+			}
+			$map[ (string) $field['key'] ] = array( 'label' => wp_strip_all_tags( (string) ( $field['label'] ?? '' ) ), 'choices' => $choices );
+		}
 	}
 	return $map;
 }
@@ -1553,7 +1538,7 @@ function herd_editor_enqueue_assets() {
 				'icons' => herd_editor_icon_set(),
 				/* The field name that means "hidden", or '' where the site has none. */
 				'visibilityField' => herd_editor_visibility_field(),
-				'acfFields' => herd_editor_acf_field_map( $post->post_content ),
+				'acfFields' => herd_editor_search_fields( $post->post_content ),
 				/* Per-block summary wording and choice rules; see src/ui/acf/profiles.js. */
 				'profiles' => herd_editor_block_profiles(),
 			)

@@ -76,20 +76,39 @@ export function insertPositionForSlot( blocks, slot ) {
 	return named[ Math.max( 0, slot ) ].position;
 }
 
-/** Accessible Move dialog destinations for a top-level block. */
-export function moveDestinations( blocks, clientId, canMove = true ) {
-	if ( !canMove ) return [];
+/**
+ * Valid final positions for an accessible top-level Move dialog.
+ *
+ * Each destination carries the target block's own name and summary as separate
+ * fields rather than one prebaked sentence, so the dialog can draw a choice the
+ * way the block row it names is drawn — the name, then what the block actually
+ * says. `label` keeps the whole thing as one string for the button's aria-label,
+ * because a screen reader wants the sentence the two ranks add up to.
+ *
+ * @param {Array}    blocks   Raw top-level blocks.
+ * @param {string}   clientId Block being moved.
+ * @param {Function} describe Given a clientId, returns { title, summary }.
+ * @return {Array} Destinations as { id, slot, relation, name, summary, label }.
+ */
+export function moveDestinations( blocks, clientId, describe = ( id ) => ( { title: id } ) ) {
 	const named = topLevelPositions( blocks );
-	const from = named.findIndex( ( item ) => item.clientId === clientId );
+	const from = named.findIndex( ( entry ) => entry.clientId === clientId );
 	if ( from < 0 || named.length < 2 ) return [];
-	const destinations = [];
-	for ( let slot = 0; slot < named.length; slot++ ) {
-		if ( slot === from ) continue;
-		const target = named[ slot ];
-		if ( slot === 0 ) destinations.push( { id: 'beginning', label: 'Beginning of document', slot } );
-		if ( slot < from ) destinations.push( { id: `before-${ target.clientId }`, label: `Before ${ target.clientId }`, slot, targetId: target.clientId } );
-		if ( slot > from ) destinations.push( { id: `after-${ target.clientId }`, label: `After ${ target.clientId }`, slot, targetId: target.clientId } );
-		if ( slot === named.length - 1 ) destinations.push( { id: 'end', label: 'End of document', slot } );
-	}
-	return destinations;
+	const edge = ( id, slot, name ) => ( { id, slot, relation: 'edge', name, summary: '', label: name } );
+	return named.flatMap( ( entry, slot ) => {
+		if ( slot === from ) return [];
+		if ( slot === 0 ) return [ edge( 'beginning', slot, 'Beginning of document' ) ];
+		if ( slot === named.length - 1 ) return [ edge( 'end', slot, 'End of document' ) ];
+		const relation = slot < from ? 'before' : 'after';
+		const { title = '', summary = '' } = describe( entry.clientId ) || {};
+		const name = `${ relation === 'before' ? 'Before' : 'After' } ${ title }`;
+		return [ {
+			id: `${ relation }-${ entry.clientId }`,
+			slot,
+			relation,
+			name,
+			summary,
+			label: summary ? `${ name } — ${ summary }` : name,
+		} ];
+	} );
 }

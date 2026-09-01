@@ -1,17 +1,30 @@
-/* Block accordion: list head, cards, rows, tools, panels, inserter. */
+/* Block accordion: toolbar, cards, rows, tools, panels, inserter. */
+
+@use './field';
+@use './tokens';
 
 .herd-editor {
 	isolation: isolate;
 }
 
-.herd-listhead {
+/*
+ * The card the search, the count and the expand controls share. They were two
+ * stacked strips; on one row they read as the list's own header rather than as
+ * furniture that happens to sit above it.
+ */
+.herd-toolbar {
 	align-items: center;
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
 	display: flex;
-	gap: 10px;
-	margin-bottom: 10px;
+	flex-wrap: wrap;
+	gap: 14px;
+	margin-bottom: 12px;
+	padding: 10px 12px;
 }
 
-.herd-listhead__count {
+.herd-toolbar__count {
 	color: var(--herd-ink-3);
 	font-size: 11px;
 	font-weight: 600;
@@ -19,9 +32,9 @@
 	text-transform: uppercase;
 }
 
-.herd-listhead__acts {
+.herd-toolbar__acts {
 	display: flex;
-	gap: 6px;
+	gap: 12px;
 	margin-left: auto;
 }
 
@@ -31,24 +44,87 @@
 	padding: 0;
 }
 
-.herd-workspace { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) 240px; }
-.herd-search { display: block; margin-bottom: 10px; }
-.herd-search input { box-sizing: border-box; width: 100%; }
-.herd-outline { align-self: start; background: var(--herd-surface); border: 1px solid var(--herd-line); border-radius: var(--herd-r); position: sticky; top: 32px; }
-.herd-outline__head { display: flex; justify-content: space-between; padding: 10px; }
-.herd-outline__filters { display: flex; gap: 3px; padding: 0 10px 8px; }
-.herd-outline__filters button.is-active, .herd-outline button.is-current { background: var(--herd-green-tint); }
-.herd-outline ol { list-style: none; margin: 0; max-height: calc(100vh - 160px); overflow: auto; padding: 0 6px 8px; }
-.herd-outline li { margin-left: calc(var(--herd-outline-depth) * 12px); }
-.herd-outline li button { background: transparent; border: 0; cursor: pointer; display: block; padding: 6px; text-align: left; width: 100%; }
-.herd-outline small { color: var(--herd-ink-3); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.herd-outline em { color: var(--herd-danger); font-style: normal; }
-.herd-outline-trigger { display: none; }
-.herd-modal { align-items: center; background: rgba(0,0,0,.35); display: flex; inset: 0; justify-content: center; position: fixed; z-index: 100000; }
-.herd-modal > * { background: var(--herd-surface); max-height: 85vh; max-width: 520px; min-width: 280px; overflow: auto; padding: 14px; }
-.herd-move-dialog ol { list-style: none; margin: 12px 0; padding: 0; }
-.herd-move-dialog li button { margin: 2px 0; text-align: left; width: 100%; }
-@media (max-width: 782px) { .herd-workspace { display: block; } .herd-workspace > .herd-outline { display: none; } .herd-outline-trigger { display: block; margin: 12px 0; } .herd-outline--drawer { display: block; position: static; } }
+/*
+ * The pill takes whatever the row has left, so the count sits against it and the
+ * two actions stay at the far edge instead of stranding mid-row on a wide screen.
+ * `min-width: 0` is what lets it shrink at all — an input's intrinsic width would
+ * otherwise floor the flex item.
+ */
+.herd-search {
+	flex: 1 1 220px;
+	min-width: 0;
+	position: relative;
+}
+
+.herd-search__icon {
+	color: var(--herd-ink-3);
+	font-size: 16px;
+	height: 16px;
+	left: 10px;
+	pointer-events: none;
+	position: absolute;
+	top: 50%;
+	transform: translateY(-50%);
+	width: 16px;
+}
+
+/*
+ * The same control every block field wears, so a search box in the toolbar and a
+ * text field in an open block read as one family. Only the left padding differs,
+ * and only to clear the magnifier.
+ */
+.herd-search input {
+	@include field.control;
+
+	color: var(--herd-ink);
+	font-family: inherit;
+	padding-left: 32px;
+}
+
+.herd-search input:focus {
+	@include field.control-focus;
+}
+
+.herd-workspace {
+	display: block;
+}
+
+/*
+ * Two children, so neither column has to be placed by hand. The document column
+ * held five loose children, two of them conditional, and the outline beside it
+ * spanned a row count that was only ever right some of the time.
+ */
+.herd-workspace__main {
+	min-width: 0;
+}
+
+.herd-workspace > .herd-outline {
+	display: none;
+}
+
+.herd-outline {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	margin: 16px 0;
+	padding: 10px;
+}
+
+.herd-outline__title {
+	display: block;
+	font-size: 12px;
+	margin-bottom: 6px;
+	text-transform: uppercase;
+}
+
+.herd-outline ol { list-style: none; margin: 0; padding: 0; }
+.herd-outline li { margin-left: calc(var(--herd-outline-depth) * 16px); }
+.herd-outline li button { background: transparent; border: 0; cursor: pointer; padding: 5px; text-align: left; width: 100%; }
+.herd-outline small { color: var(--herd-ink-3); display: block; }
+
+.herd-block mark { background: #fff1a8; color: inherit; }
+.herd-search-match { color: var(--herd-ink-3); font-size: 11px; }
+
 
 /* ---------- card ---------- */
 
@@ -321,6 +397,206 @@
 	font-size: 16px;
 	height: 16px;
 	width: 16px;
+}
+
+/*
+ * The move dialog is portalled to <body>, so it sits outside .herd-editor-screen
+ * and inherits neither its tokens nor its font. The palette mixin supplies the
+ * first; the font shorthand below supplies the second, the same way .herd-preview
+ * does for the video dialog.
+ */
+.herd-modal {
+	@include tokens.palette;
+	align-items: center;
+	/* The weight both ::backdrop rules already use. */
+	background: rgba(29, 35, 39, .7);
+	display: flex;
+	inset: 0;
+	justify-content: center;
+	padding: 24px;
+	position: fixed;
+	z-index: 1000000;
+}
+
+.herd-move-dialog {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, .13);
+	color: var(--herd-ink);
+	display: flex;
+	flex-direction: column;
+	font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	max-height: calc(100vh - 48px);
+	overflow: hidden;
+	width: min(460px, 100%);
+}
+
+.herd-move-dialog__header {
+	align-items: flex-start;
+	border-bottom: 1px solid var(--herd-line-soft);
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	padding: 12px 14px;
+}
+
+.herd-move-dialog__heading { min-width: 0; }
+
+.herd-move-dialog__heading h2 {
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.3;
+	margin: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/*
+ * The block's own summary and its position. It carries a title of unknown length,
+ * so it truncates rather than wrapping the header to three lines.
+ */
+.herd-move-dialog__heading p {
+	color: var(--herd-ink-3);
+	font-size: 12px;
+	line-height: 1.35;
+	margin: 2px 0 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-move-dialog__close {
+	background: transparent;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	flex: 0 0 auto;
+	line-height: 1;
+	padding: 5px 6px;
+}
+
+.herd-move-dialog__close:hover {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-move-dialog__close .dashicons { font-size: 16px; height: 16px; width: 16px; }
+
+/*
+ * The ring is drawn inside the row: the list scrolls, so an outset ring on the
+ * first or last destination is clipped by the scroll edge.
+ */
+.herd-move-dialog__close:focus-visible,
+.herd-move-dialog__destinations button:focus-visible {
+	outline: 2px solid var(--herd-green);
+	outline-offset: -2px;
+}
+
+.herd-move-dialog__destinations {
+	flex: 1 1 auto;
+	list-style: none;
+	margin: 0;
+	min-height: 0;
+	overflow-y: auto;
+	padding: 4px 0;
+}
+
+.herd-move-dialog__destinations li { margin: 0; }
+
+.herd-move-dialog__destinations button {
+	align-items: baseline;
+	background: none;
+	border: 0;
+	color: var(--herd-ink);
+	cursor: pointer;
+	display: flex;
+	font: inherit;
+	gap: 6px;
+	min-height: 30px;
+	padding: 4px 14px;
+	text-align: left;
+	width: 100%;
+}
+
+.herd-move-dialog__destinations button:hover { background: var(--herd-tint); }
+
+/* The keyboard selection, drawn the way the inserter draws its own. */
+.herd-move-dialog__destinations button.is-selected {
+	background: var(--herd-green-tint);
+	box-shadow: inset 2px 0 0 var(--herd-green);
+}
+
+/*
+ * Where the block sits now. It is the one row that does nothing, so it is a band
+ * rather than a button — same rhythm as the destinations it sits between, no
+ * hover, no pointer.
+ */
+.herd-move-dialog__current {
+	align-items: baseline;
+	background: var(--herd-tint);
+	color: var(--herd-ink-2);
+	display: flex;
+	gap: 6px;
+	min-height: 30px;
+	padding: 4px 14px;
+}
+
+.herd-move-dialog__current .herd-badge {
+	align-self: center;
+	flex: none;
+	margin-right: 2px;
+}
+
+/*
+ * A destination is two ranks on one line, the way a block row is: what the
+ * choice is, then what the block it names actually says. Both truncate — a
+ * summary is arbitrary page copy and a title can be long — and the summary
+ * yields first, since the name is the part you choose by.
+ */
+.herd-move-dialog__name {
+	flex: 0 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-move-dialog__desc {
+	color: var(--herd-ink-3);
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The dash belongs to the join, not to the text either side of it. */
+.herd-move-dialog__desc::before { content: "— "; }
+
+.herd-move-dialog__footer {
+	align-items: center;
+	border-top: 1px solid var(--herd-line-soft);
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	padding: 12px 14px;
+}
+
+.herd-move-dialog__footer p {
+	color: var(--herd-ink-3);
+	font-size: 11px;
+	margin: 0;
+}
+
+/*
+ * The type scale is already at admin size, so only the room around the dialog
+ * changes on a narrow screen.
+ */
+@media (max-width: 600px) {
+	.herd-modal { padding: 12px; }
+	.herd-move-dialog { max-height: calc(100vh - 24px); }
 }
 
 /* ---------- panel ---------- */
@@ -628,6 +904,16 @@
 .herd-badge--muted {
 	background: var(--herd-line-soft);
 	color: var(--herd-ink-2);
+}
+
+/*
+ * The style guide's one accent: a flag that is on is green. The move dialog uses
+ * it for the position a block is being moved from — the only row in that list
+ * that is a statement rather than a choice.
+ */
+.herd-badge--accent {
+	background: var(--herd-green-tint);
+	color: var(--herd-green-ink);
 }
 
 /*

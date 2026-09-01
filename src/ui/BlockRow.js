@@ -5,6 +5,12 @@ import { BlockIcon, Dashicon, GripIcon, IconButton } from './primitives.js';
 
 const el = createElement;
 
+function highlighted( value, term ) {
+	if ( !term ) return value;
+	const expression = new RegExp( `(${ String( term ).replace( /[.*+?^${}()|[\]\\]/g, '\\$&' ) })`, 'ig' );
+	return String( value ).split( expression ).filter( Boolean ).map( ( part, index ) => part.toLowerCase() === String( term ).toLowerCase() ? el( 'mark', { key: index }, part ) : part );
+}
+
 export function BlockRow( {
 	block,
 	depth,
@@ -13,6 +19,9 @@ export function BlockRow( {
 	icon,
 	badge,
 	warning,
+	searchMatch,
+	matchLabel,
+	searchTerm,
 	hidden,
 	isOpen,
 	keepBodyMounted,
@@ -27,7 +36,6 @@ export function BlockRow( {
 	deleteDisabled,
 	tabIndex,
 	registerRef,
-	registerContainer,
 	onFocus,
 	onToggle,
 	onToggleChildren,
@@ -41,7 +49,6 @@ export function BlockRow( {
 	onDuplicate,
 	onDelete,
 	onMove,
-	searchMatch,
 	children,
 } ) {
 	const classes = [ 'herd-block' ];
@@ -54,15 +61,13 @@ export function BlockRow( {
 	if ( hidden ) classes.push( 'is-hidden' );
 
 	return el( 'li', {
-		ref: registerContainer,
-		'data-block-id': block.clientId,
 		className: classes.join( ' ' ),
 		style: { '--herd-depth': depth },
 		onDragOver: canReorder ? onDragOver : undefined,
 		onDragLeave: canReorder ? onDragLeave : undefined,
 		onDrop: canReorder ? onDrop : undefined,
 	},
-		el( 'div', { className: `herd-block__row${ searchMatch ? ' is-search-match' : '' }` },
+		el( 'div', { className: 'herd-block__row' },
 		canReorder
 			? el( 'button', {
 				type: 'button',
@@ -99,16 +104,17 @@ export function BlockRow( {
 		el( 'span', { className: 'herd-block__icon' }, el( BlockIcon, { icon } ) ),
 		el( 'span', { className: 'herd-block__main' },
 			el( 'span', { className: 'herd-block__name' },
-				el( 'span', { className: 'herd-block__title' }, title ),
+				el( 'span', { className: 'herd-block__title' }, highlighted( title, searchMatch ? searchTerm : '' ) ),
 				hidden && el( 'span', { className: 'herd-badge herd-badge--muted' }, 'Hidden' ),
 				badge && el( 'span', { className: 'herd-badge' }, badge ),
 				// The one pill that is a problem rather than a state, so it is the one
 				// that carries the validation red.
 				warning && el( 'span', { className: 'herd-badge herd-badge--danger' }, warning ) ),
-			summary && el( 'span', { className: 'herd-block__summary' }, summary ) ),
+			summary && el( 'span', { className: 'herd-block__summary' }, summary, searchMatch && matchLabel && el( 'span', { className: 'herd-search-match' }, ` · ${ matchLabel }` ) ) ),
 		el( Dashicon, { icon: 'arrow-down-alt2', className: 'herd-block__chev' } ) ),
 
 		structural && el( 'span', { className: 'herd-block__tools' },
+			onMove && el( IconButton, { icon: 'move', label: `Move ${ title }`, className: 'herd-block__tool herd-block__move', onClick: onMove } ),
 			el( IconButton, {
 				icon: 'admin-page',
 				label: `Duplicate ${ title }`,
@@ -116,7 +122,6 @@ export function BlockRow( {
 				disabled: duplicateDisabled,
 				onClick: onDuplicate,
 			} ),
-			onMove && el( 'button', { type: 'button', className: 'herd-block__tool herd-block__move', onClick: onMove }, 'Move…' ),
 			el( IconButton, {
 				icon: 'trash',
 				label: `Delete ${ title }`,

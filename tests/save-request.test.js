@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
-import { applySaveResult, buildSaveRequest, isPublishTransition } from '../src/save-request.js';
+import { applySaveResult, buildSaveRequest, classifySaveResult, isPublishTransition } from '../src/save-request.js';
 import { beginSave } from '../src/save-progress.js';
 
 /*
@@ -134,11 +134,26 @@ const result = ( over = {} ) => ( {
 	...over,
 } );
 
+test( 'a renewed lock token is part of a successful save', () => {
+	assert.equal( classifySaveResult( { ok: true, lock: '1788275595:1' } ), 'success' );
+} );
+
+test( 'a lock returned with a failed result is lock loss', () => {
+	assert.equal( classifySaveResult( { ok: false, lock: 'stale' } ), 'lock' );
+} );
+
 test( 'the next save gets a fresh nonce and the renewed lock', () => {
 	const win = build( screen() );
 	applySaveResult( result(), { doc: win.document, win } );
 	assert.equal( win.document.querySelector( 'input[name="_wpnonce"]' ).value, 'freshnonce' );
 	assert.equal( win.document.getElementById( 'active_post_lock' ).value, '2000:7' );
+} );
+
+test( 'a consecutive save sends the renewed lock', () => {
+	const win = build( screen() );
+	applySaveResult( result(), { doc: win.document, win } );
+	const body = buildSaveRequest( win.document.getElementById( 'post' ), win.document.getElementById( 'save-post' ) );
+	assert.equal( body.get( 'active_post_lock' ), '2000:7' );
 } );
 
 test( 'the status the post was loaded with becomes the status it was saved with', () => {

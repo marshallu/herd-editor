@@ -11,6 +11,7 @@ import { assembleRail } from './rail.js';
 import { enhanceBoxes } from './ui/acf/boxes.js';
 import { registerPortalNamespaces } from './ui/acf/portals.js';
 import { installPostLock } from './post-lock.js';
+import { reserveSaveWidth } from './save-progress.js';
 import './editor.scss';
 
 const config = window.HerdEditor;
@@ -40,6 +41,15 @@ try {
 		console.error( 'Herd Editor could not dress the settings fields.', error );
 	}
 	installPostLock();
+	/*
+	 * After the rail, because the button has to be in the command bar wearing the
+	 * bar's stylesheet before it is measured, and before the finally lifts
+	 * `herd-editor-booting` -- that class hides the actions with visibility, which
+	 * still lays out, so the measurement is both real and invisible. Reserving the
+	 * room here rather than at the press is the whole point: a button measured
+	 * once it has already been widened has already moved everything beside it.
+	 */
+	[ 'publish', 'save-post' ].forEach( ( id ) => reserveSaveWidth( document.getElementById( id ) ) );
 
 	if ( root && config ) {
 		render( createElement( HerdEditorApp, { config } ), root );

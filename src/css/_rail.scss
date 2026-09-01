@@ -106,12 +106,53 @@
 	padding: 0;
 }
 
-/* Save Draft is the only thing left in here; it needs to clear the status list.
- * The spinner is the one core already prints beside the button. */
+/*
+ * Save Draft is the only thing left in here; it needs to clear the status list.
+ * The same single cell the command bar's Update button gets: the button, and the
+ * icon reporting on it laid over the button's own left padding, so a save in
+ * flight cannot change the width of anything. See _shell.scss and
+ * reserveSaveWidth() in save-progress.js.
+ */
+#save-action {
+	align-items: center;
+	display: grid;
+	grid-template-columns: max-content;
+	justify-items: start;
+}
+
+#save-action > * {
+	grid-area: 1 / 1;
+}
+
+/* Core's GIF, which the ring replaces. Kept in the markup, never switched on. */
 #save-action .spinner {
-	float: none;
-	margin: 0 0 0 5px;
-	vertical-align: middle;
+	display: none;
+}
+
+#save-post {
+	box-sizing: border-box;
+}
+
+#save-post[aria-disabled="true"],
+#save-post[data-herd-settled] {
+	padding-left: 30px;
+	padding-right: 10px;
+}
+
+/* A button that is not green needs a ring that is not white. */
+#save-action .herd-saveicon.is-spinning {
+	border-color: var(--herd-line);
+	border-top-color: var(--herd-green-ink);
+}
+
+#save-action .herd-saveicon.dashicons {
+	color: var(--herd-ink-2);
+}
+
+/* Save Draft is not a green button to take the green off, so the icon is the
+ * only thing here that can say this one did not go through. */
+#save-action .herd-saveicon.dashicons-warning {
+	color: var(--herd-danger);
 }
 .herd-editor-screen .herd-rail__panel #minor-publishing-actions {
 	padding-bottom: 12px;

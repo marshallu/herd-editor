@@ -4,7 +4,18 @@
  * Scoped to .herd-editor-screen so nothing leaks into the rest of wp-admin.
  * Palette is ported from docs/herd-editor-a-accordion.html.
  */
-.herd-editor-screen {
+
+/*
+ * The palette, split out from the screen so a surface portalled to <body> can
+ * carry the same tokens. The move dialog kept a hand-copied subset of these and
+ * had already drifted from the list below; a mixin is one definition both
+ * include, so the copy cannot go stale again.
+ *
+ * Colours, radii and the disabled treatment only. Metrics that describe this
+ * screen's furniture — control heights, the bar, the rail — stay on the screen,
+ * because nothing outside it has a use for them.
+ */
+@mixin palette {
 	--herd-green: #00b140;
 	--herd-green-ink: #04742d;
 	--herd-green-ink-hover: #05622a;
@@ -47,6 +58,13 @@
 	/* Inner previews, thumbnails and icon-sized buttons. */
 	--herd-r-sm: 4px;
 
+	/* One disabled treatment; it was .5, .4 and .35 in three places. */
+	--herd-disabled: .45;
+}
+
+.herd-editor-screen {
+	@include palette;
+
 	/* The height every text input, select and segmented control lands on. */
 	--herd-control-h: 31px;
 	/*
@@ -74,9 +92,6 @@
 	 * is hidden, so the matching right edge has to be drawn from the same number.
 	 */
 	--herd-row-inset: 28px;
-
-	/* One disabled treatment; it was .5, .4 and .35 in three places. */
-	--herd-disabled: .45;
 
 	--herd-bar-top: var(--wp-admin--admin-bar--height, 32px);
 	/*

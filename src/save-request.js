@@ -73,6 +73,23 @@ export function buildSaveRequest( form, submitter, clientIds = [] ) {
 	return body;
 }
 
+/**
+ * Classify a save result before the app reconciles it with the editor.
+ *
+ * A successful response includes the renewed post-lock token. The same `lock`
+ * property carries the reason when a lock check fails, so `ok` must distinguish
+ * those two cases.
+ *
+ * @param {object|null|undefined} result The save response data.
+ * @return {'lock'|'validation'|'failure'|'success'} The result category.
+ */
+export function classifySaveResult( result ) {
+	if ( result?.ok === false && result.lock ) return 'lock';
+	if ( result?.errors?.length ) return 'validation';
+	if ( ! result?.ok ) return 'failure';
+	return 'success';
+}
+
 /** Set a form field's value where the screen has one, and say whether it did. */
 function setField( doc, selector, value ) {
 	const field = doc.querySelector( selector );

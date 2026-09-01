@@ -6,21 +6,25 @@ import { DocumentController } from '../controller.js';
 import { changedAttributeIds, parseDocument } from '../document.js';
 import { BarTools } from './CommandBar.js';
 import { BlockRow } from './BlockRow.js';
-import { BlockIndex } from './block-index.js';
-import { Outline } from './Outline.js';
 import { InsertPoint } from './InsertPoint.js';
 import { AcfForm, AdvancedPanel, CoreEditor, FallbackPanel } from './panels.js';
 import { anchorOf, duplicateAnchors } from './anchors.js';
 import { blockCounts, bodyFor, collectBlocks, iconOf, isHidden, titleFor, visibleRows } from './blocks.js';
 import { dropSlot, insertPositionForSlot, moveDestinations, moveTargetIndex, topLevelPositions, topLevelSlot } from './order.js';
 import { blockSummary } from './summary.js';
+import { searchRows } from './search.js';
+import { outlineRows } from './outline-data.js';
+import { DocumentOutline } from './DocumentOutline.js';
+import { MoveDialog } from './MoveDialog.js';
 import { Notice } from './primitives.js';
-import { beginSave, endSave, guardBusyClicks, watchRestore } from '../save-progress.js';
-import { applySaveResult, buildSaveRequest } from '../save-request.js';
+import { beginSave, endSave, guardBusyClicks, settleSave, watchRestore } from '../save-progress.js';
+import { applySaveResult, buildSaveRequest, classifySaveResult } from '../save-request.js';
 import { decryptRecovery, deleteRecovery, downloadRecovery, encryptionKey, nativeFormValues, readRecovery, recoveryRecordId, restoreNativeFormValues, writeRecovery, encryptRecovery } from '../recovery.js';
 
 const el = createElement;
 const CORE_ADAPTERS = [ 'paragraph', 'heading', 'html', 'shortcode' ];
+/* How long the button wears the answer before going back to naming its action. */
+const SETTLE_MS = 2000;
 
 export function HerdEditorApp( { config } ) {
 	const controller = useRef( new DocumentController( parseDocument( config.postContent ) ) ).current;
@@ -48,57 +52,60 @@ export function HerdEditorApp( { config } ) {
 	const [ recoveryDismissed, setRecoveryDismissed ] = useState( false );
 	const [ saveState, setSaveState ] = useState( 'idle' );
 	const [ lockFailure, setLockFailure ] = useState( null );
+	/* Only the failures that had nowhere to go. Validation renders against the
+	 * fields it belongs to and a lost lock has its own banner; either one here
+	 * would be the same failure said twice. */
+	const [ saveError, setSaveError ] = useState( null );
 	const [ search, setSearch ] = useState( '' );
-	const [ outlineFilter, setOutlineFilter ] = useState( 'all' );
-	const [ outlineOpen, setOutlineOpen ] = useState( false );
-	const [ currentVisible, setCurrentVisible ] = useState( null );
-	const [ moveBlockId, setMoveBlockId ] = useState( null );
-	const [ moveSearch, setMoveSearch ] = useState( '' );
+	const [ movingId, setMovingId ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
-	const rowContainers = useRef( new Map() );
 	const searchRef = useRef( null );
-	const outlineTriggerRef = useRef( null );
-	const index = useRef( new BlockIndex( { blockTypes: config.blockTypes, acfFields: config.acfFields } ) ).current;
+	const searchOrigin = useRef( null );
 	const mountedAcfForms = useRef( new Set() );
 	/* Held in a ref as well as state so the submit handler can persist a recovery
 	 * copy without listing the key as a dependency and re-binding every listener. */
 	const recoveryKeyRef = useRef( null );
 	const savedTimer = useRef( null );
+	/* What Try again should press. The two save controls do different things, and a
+	 * retry that guessed at Publish after a failed draft save would publish. */
+	const retrySubmitter = useRef( null );
 	// What core sent, captured on before-autosave so the response can be trusted against it.
 	const autosavingContent = useRef( null );
 	const normalRows = useMemo( () => visibleRows( controller.blocks, expandedChildren ), [ generation, expandedChildren ] );
-	const records = useMemo( () => index.update( controller.blocks, validationErrors ), [ generation, validationErrors ] );
-	const searchRecords = useMemo( () => index.query( search ), [ records, search ] );
-	const rows = search ? searchRecords.map( ( record ) => ( { block: record.block, ancestors: record.ancestors.map( ( id ) => controller.find( id ) ).filter( Boolean ), path: record.path, searchMatch: record.matched } ) ) : normalRows;
+	const duplicateIds = useMemo( () => duplicateAnchors( controller.blocks ), [ generation ] );
+	const movingBlock = movingId ? controller.find( movingId ) : null;
+	/* A destination previews the block it names, so it needs that block's summary as well as its title. */
+	const describeBlock = ( id ) => {
+		const block = controller.find( id );
+		if ( ! block ) return { title: '', summary: '' };
+		return { title: titleFor( block, config.blockTypes ), summary: blockSummary( block, adapterFor( block, config.blockTypes ).id, bodyFor( block ) ) };
+	};
+	const destinations = useMemo( () => movingId ? moveDestinations( controller.blocks, movingId, describeBlock ) : [], [ generation, movingId ] );
+	const rows = useMemo( () => search ? searchRows( controller.blocks, search, config.blockTypes, { acfFields: config.acfFields, validationErrors, duplicateIds } ) : normalRows, [ generation, normalRows, search, validationErrors, duplicateIds ] );
+	const outline = useMemo( () => outlineRows( controller.blocks, config.blockTypes ), [ generation ] );
 	const dirty = controller.dirty || nativeDirty;
 	const counts = blockCounts( controller.blocks );
 	const named = topLevelPositions( controller.blocks );
-	/* Whole-document, because a clash is only visible from outside the two blocks
-	 * that have it: neither one can tell it is the second. */
-	const duplicateIds = useMemo( () => duplicateAnchors( controller.blocks ), [ generation ] );
-	const movingBlock = moveBlockId ? controller.find( moveBlockId ) : null;
-	const destinations = movingBlock ? moveDestinations( controller.blocks, moveBlockId, blockMutationPolicy( movingBlock, config.templateLock ).move ) : [];
+	const movingPosition = movingId ? topLevelSlot( controller.blocks, movingId ) + 1 : 0;
 
 	useEffect( () => {
 		const onKeyDown = ( event ) => {
 			if ( event.key !== '/' || event.defaultPrevented ) return;
-			const target = event.target;
-			if ( target?.matches?.( 'input, textarea, select, [contenteditable="true"]' ) || target?.closest?.( '[role="dialog"]' ) ) return;
-			event.preventDefault(); searchRef.current?.focus();
+			if ( event.target?.matches?.( 'input, textarea, select, [contenteditable="true"]' ) ) return;
+			event.preventDefault();
+			searchRef.current?.focus();
 		};
 		window.addEventListener( 'keydown', onKeyDown );
 		return () => window.removeEventListener( 'keydown', onKeyDown );
 	}, [] );
+
 	useEffect( () => {
-		if ( !window.IntersectionObserver ) return undefined;
-		const observer = new IntersectionObserver( ( entries ) => {
-			const visible = entries.filter( ( entry ) => entry.isIntersecting ).sort( ( a, b ) => a.boundingClientRect.top - b.boundingClientRect.top )[ 0 ];
-			if ( visible ) setCurrentVisible( visible.target.dataset.blockId );
-		}, { rootMargin: '-20% 0px -65% 0px' } );
-		rowContainers.current.forEach( ( node ) => observer.observe( node ) );
-		return () => observer.disconnect();
-	}, [ rows, generation ] );
+		if ( !movingId ) return undefined;
+		const inactive = [ document.getElementById( 'herd-editor-root' ), document.getElementById( 'herd-rail' ) ].filter( Boolean );
+		inactive.forEach( ( node ) => { node.inert = true; node.setAttribute( 'aria-hidden', 'true' ); } );
+		return () => inactive.forEach( ( node ) => { node.inert = false; node.removeAttribute( 'aria-hidden' ); } );
+	}, [ movingId ] );
 
 	const refresh = () => setGeneration( ( value ) => value + 1 );
 	const syncContent = () => {
@@ -119,14 +126,49 @@ export function HerdEditorApp( { config } ) {
 	 * needs at pass one, in front of two round trips it cannot see the far side of.
 	 */
 	const markSaving = ( submitter ) => {
+		/* Before beginSave(), because a confirmation still counting down would
+		 * otherwise fire endSave() partway through this save and take the treatment
+		 * off a button that is very much still working. */
+		window.clearTimeout( savedTimer.current );
 		const intent = beginSave( submitter );
 		if ( ! intent ) return;
+		retrySubmitter.current = submitter;
+		setSaveError( null );
 		/* Nothing suspends core's autosave when the form is submitted, and an
 		 * autosave landing mid-publish would walk the bar through "Autosaving",
 		 * "Saved" and finally "unsaved changes" while the save it is talking over is
 		 * still in flight. Two of those three would be untrue. */
 		window.wp?.autosave?.server?.suspend?.();
 		setSaveState( intent.saveState );
+	};
+	/*
+	 * How a save ends: the answer on the button that asked it, and then, a beat
+	 * later, a button again. Two seconds is long enough to be read by somebody whose
+	 * eyes were on the document rather than on the bar, and short enough that the
+	 * control is naming its action again before anybody wants to press it -- and a
+	 * press inside the window starts a new save regardless, because settleSave()
+	 * takes the busy state off as it lands.
+	 *
+	 * endSave() is what dispatches herd:save-ended, so the command bar still comes
+	 * to rest in exactly one place rather than on a timer of its own.
+	 */
+	const settle = ( outcome ) => {
+		settleSave( outcome );
+		window.clearTimeout( savedTimer.current );
+		savedTimer.current = window.setTimeout( () => endSave(), SETTLE_MS );
+	};
+	/* A failure a sighted user can see. The announcement stays as well: the notice
+	 * carries no role of its own, so this is still one announcement per outcome. */
+	const failSave = ( message ) => {
+		setSaveError( message );
+		setAnnouncement( message );
+	};
+	/* A press rather than form.requestSubmit(): pressing the control is what every
+	 * other listener on this form is written against, publish-box.js's date
+	 * rejection included, and it is what the user would have done anyway. */
+	const retrySave = () => {
+		setSaveError( null );
+		retrySubmitter.current?.click();
 	};
 	const recoveryId = recoveryRecordId( config.currentUserId, config.postId );
 	const recoveryPayload = () => ( { content: controller.serialize(), fields: nativeFormValues( document.getElementById( 'post' ) ), savedMarker: config.saveMarker, createdAt: Date.now() } );
@@ -336,40 +378,43 @@ export function HerdEditorApp( { config } ) {
 				 * this is exactly the case it exists for.
 				 */
 				report( 'save', pressed );
-				endSave();
-				setAnnouncement( 'The save did not complete. Your changes are still here and have been backed up in this browser.' );
+				settle( 'failed' );
+				failSave( 'The save did not complete. Your changes are still here and have been backed up in this browser.' );
 				return;
 			}
 			report( 'save', pressed );
 
 			if ( ! payload?.success ) {
-				endSave();
-				setAnnouncement( payload?.data?.message || 'The save did not complete.' );
+				settle( 'failed' );
+				failSave( payload?.data?.message || 'The save did not complete.' );
 				return;
 			}
 
 			const result = payload.data || {};
+			const resultType = classifySaveResult( result );
 			/* A lost lock outranks a failed field. The save cannot happen at all,
 			 * so there is nothing useful to say about its contents. */
-			if ( result.lock ) {
+			if ( resultType === 'lock' ) {
 				endSave();
 				setLockFailure( result.lock );
 				window.dispatchEvent( new CustomEvent( 'herd:lock-lost', { detail: { reason: result.lock } } ) );
 				return;
 			}
-			if ( result.errors?.length ) {
-				endSave();
+			if ( resultType === 'validation' ) {
+				/* No banner: panels.js renders these against the fields they belong to,
+				 * and the button is what ties that back to the press. */
+				settle( 'failed' );
 				setValidationErrors( result.errors );
 				const first = result.errors[ 0 ];
 				if ( first.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
 				setAnnouncement( `Publishing blocked: ${ result.errors.length } ACF validation ${ result.errors.length === 1 ? 'error' : 'errors' } need attention.` );
 				return;
 			}
-			if ( ! result.ok ) {
+			if ( resultType === 'failure' ) {
 				/* _wp_translate_postdata() refusing the post data: an impossible
 				 * publish date, or a publish by somebody without the capability. */
-				endSave();
-				setAnnouncement( result.message || 'The save did not complete.' );
+				settle( 'failed' );
+				failSave( result.message || 'The save did not complete.' );
 				return;
 			}
 
@@ -406,10 +451,8 @@ export function HerdEditorApp( { config } ) {
 			 * to have, so they hear about a save the same way they hear about a
 			 * lost lock. */
 			window.dispatchEvent( new CustomEvent( 'herd:saved', { detail: result } ) );
-			endSave();
+			settle( 'saved' );
 			setSaveState( 'saved' );
-			window.clearTimeout( savedTimer.current );
-			savedTimer.current = window.setTimeout( () => setSaveState( 'idle' ), 1000 );
 			refresh();
 		};
 
@@ -441,8 +484,8 @@ export function HerdEditorApp( { config } ) {
 			 * treatment has to come off whatever happened.
 			 */
 			save( event.submitter ).catch( ( error ) => {
-				endSave();
-				setAnnouncement( 'The save did not complete. Your changes are still here.' );
+				settle( 'failed' );
+				failSave( 'The save did not complete. Your changes are still here.' );
 				window.dispatchEvent( new CustomEvent( 'herd:recovery-diagnostic', { detail: { type: 'save-failed', error: String( error ) } } ) );
 			} );
 		};
@@ -502,10 +545,9 @@ export function HerdEditorApp( { config } ) {
 	const toggleChildren = toggleIn( setExpandedChildren );
 
 	const focusId = ( id ) => requestAnimationFrame( () => rowRefs.current.get( id )?.focus() );
-	const revealAndFocus = ( id ) => {
-		const record = index.records.get( id );
-		if ( record ) setExpandedChildren( ( old ) => new Set( [ ...old, ...record.ancestors ] ) );
-		requestAnimationFrame( () => { rowContainers.current.get( id )?.scrollIntoView( { block: 'center' } ); focusId( id ); } );
+	const selectOutlineRow = ( row ) => {
+		setExpandedChildren( ( current ) => new Set( [ ...current, ...row.ancestors ] ) );
+		requestAnimationFrame( () => focusId( row.clientId ) );
 	};
 	const focusAt = ( index ) => focusId( rows[ Math.max( 0, Math.min( index, rows.length - 1 ) ) ]?.block.clientId );
 	// Inserting, duplicating and deleting rearrange the list without touching any
@@ -556,6 +598,16 @@ export function HerdEditorApp( { config } ) {
 		refresh();
 		setAnnouncement( `${ nameOf( block ) } moved to position ${ Math.max( 0, Math.min( toSlot, named.length - 1 ) ) + 1 } of ${ named.length }.` );
 		return true;
+	};
+	const moveFromDialog = ( slot ) => {
+		if ( !movingBlock || !moveToSlot( movingBlock, slot ) ) return;
+		setMovingId( null );
+		focusId( movingBlock.clientId );
+	};
+	const closeMoveDialog = () => {
+		const id = movingId;
+		setMovingId( null );
+		if ( id ) focusId( id );
 	};
 
 	/** Add a new block at a slot among the named top-level blocks. */
@@ -720,6 +772,12 @@ export function HerdEditorApp( { config } ) {
 				el( 'button', { type: 'button', className: 'button', onClick: discardRecovery }, 'Discard' ),
 				el( 'button', { type: 'button', className: 'button', onClick: () => downloadRecovery( recovery.payload, config.postId ) }, 'Export' ),
 				el( 'button', { type: 'button', className: 'button-link', onClick: () => setRecoveryDismissed( true ) }, 'Dismiss' ) ) ),
+		/* The three failures that used to be announced and then shown nowhere: a
+		 * dropped connection, a server that said no, and post data core refused. */
+		saveError && ! lockFailure && el( Notice, { status: 'error' },
+			`${ saveError } `,
+			el( 'button', { type: 'button', className: 'button-link', onClick: retrySave }, 'Try again' ), ' · ',
+			el( 'button', { type: 'button', className: 'button-link', onClick: () => downloadRecovery( recoveryPayload(), config.postId ) }, 'Export a copy' ) ),
 		lockFailure && el( Notice, { status: 'error' },
 			`The editing lock is no longer safe to save (${ lockFailure }). Your changes were kept in this browser. `,
 			el( 'a', { href: window.location.href }, 'Reload' ), ' · ',
@@ -731,14 +789,34 @@ export function HerdEditorApp( { config } ) {
 		el( 'p', { className: 'screen-reader-text', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' }, announcement ),
 
 		el( 'div', { className: 'herd-workspace' },
-		el( 'section', { className: 'herd-workspace__main' },
-		el( 'label', { className: 'herd-search' }, el( 'span', { className: 'screen-reader-text' }, 'Search blocks' ), el( 'input', { ref: searchRef, type: 'search', value: search, placeholder: 'Search blocks', onChange: ( event ) => setSearch( event.target.value ), onKeyDown: ( event ) => { if ( event.key === 'Escape' ) { setSearch( '' ); event.currentTarget.blur(); } } } ) ),
-			el( 'span', { className: 'herd-listhead__count' }, `${ named.length } ${ named.length === 1 ? 'block' : 'blocks' }` ),
-			el( 'span', { className: 'herd-listhead__acts' },
-				el( 'button', { type: 'button', className: 'herd-ghost', onClick: collapseAll }, 'Collapse all' ),
-				el( 'button', { type: 'button', className: 'herd-ghost', onClick: expandAll }, 'Expand all' ) ) ),
+		/* The document column. Wrapped rather than left as loose grid children:
+		 * two of them are conditional, so the outline beside it had no fixed row
+		 * count to span. One child leaves the grid nothing to count. */
+		el( 'div', { className: 'herd-workspace__main' },
+		/* Search, count and the expand controls do one job between them, so they
+		 * share a card rather than stacking as two unrelated strips. */
+		el( 'div', { className: 'herd-toolbar' },
+			el( 'label', { className: 'herd-search' },
+				el( 'span', { className: 'screen-reader-text' }, 'Search blocks' ),
+				// Decorative: the label above already names the field.
+				el( 'span', { className: 'herd-search__icon dashicons dashicons-search', 'aria-hidden': 'true' } ),
+				el( 'input', {
+					ref: searchRef,
+					type: 'search',
+					value: search,
+					placeholder: 'Search blocks',
+					onFocus: () => { searchOrigin.current = focusedId || normalRows[ 0 ]?.block.clientId || null; },
+					onChange: ( event ) => setSearch( event.target.value ),
+					onKeyDown: ( event ) => { if ( event.key === 'Escape' ) { setSearch( '' ); requestAnimationFrame( () => focusId( searchOrigin.current ) ); } },
+				} ) ),
+			/* Top-level blocks, not matched rows: this counts the document, and a
+			 * search that hides half of it has not made the document shorter. */
+			el( 'span', { className: 'herd-toolbar__count' }, `${ named.length } ${ named.length === 1 ? 'block' : 'blocks' }` ),
+			el( 'span', { className: 'herd-toolbar__acts' },
+				el( 'button', { type: 'button', className: 'herd-linkbtn', onClick: collapseAll }, 'Collapse all' ),
+				el( 'button', { type: 'button', className: 'herd-linkbtn', onClick: expandAll }, 'Expand all' ) ) ),
 
-		rows.length === 0 && el( Notice, { status: 'info' }, 'This document has no blocks. Add an ACF block to begin.' ),
+		rows.length === 0 && el( Notice, { status: 'info' }, search ? 'No blocks match this search.' : 'This document has no blocks. Add an ACF block to begin.' ),
 
 		el( 'ol', { className: 'herd-list' }, rows.flatMap( ( row, index ) => {
 			const { block } = row;
@@ -762,7 +840,9 @@ export function HerdEditorApp( { config } ) {
 				badge: adapter.editable ? null : ( metadata.readOnly ? 'Open in Block Editor' : ( metadata.registered ? 'Read only' : 'Unsupported' ) ),
 				hidden: isHidden( block ),
 				warning: duplicateIds.has( anchor ) ? 'Duplicate anchor' : null,
-				searchMatch: row.searchMatch,
+				searchMatch: row.matches,
+				matchLabel: row.match?.location,
+				searchTerm: search,
 				isOpen: openPanels.has( block.clientId ),
 				keepBodyMounted: retainAcfForm,
 				childrenExpanded: expandedChildren.has( block.clientId ),
@@ -776,7 +856,6 @@ export function HerdEditorApp( { config } ) {
 				deleteDisabled: ! policy.remove,
 				tabIndex: focusedId === null ? ( index === 0 ? 0 : -1 ) : ( focusedId === block.clientId ? 0 : -1 ),
 				registerRef: ( node ) => node ? rowRefs.current.set( block.clientId, node ) : rowRefs.current.delete( block.clientId ),
-				registerContainer: ( node ) => node ? rowContainers.current.set( block.clientId, node ) : rowContainers.current.delete( block.clientId ),
 				onFocus: () => setFocusedId( block.clientId ),
 				onToggle: () => togglePanel( block.clientId, adapter.id === 'acf' ),
 				onToggleChildren: () => toggleChildren( block.clientId ),
@@ -823,7 +902,7 @@ export function HerdEditorApp( { config } ) {
 						focusId( clone.clientId );
 					}
 				},
-				onMove: structural && policy.move && named.length > 1 ? () => { setMoveBlockId( block.clientId ); setMoveSearch( '' ); } : null,
+				onMove: structural && policy.move && named.length > 1 ? () => setMovingId( block.clientId ) : null,
 				onDelete: () => {
 					if ( ! policy.remove ) return;
 					if ( ! window.confirm( `Delete ${ title }? You can undo this action.` ) ) return;
@@ -877,9 +956,15 @@ export function HerdEditorApp( { config } ) {
 				setMenuOpen( false );
 			},
 		}, '+ Add block' ) ),
-		el( 'button', { ref: outlineTriggerRef, type: 'button', className: 'herd-outline-trigger', onClick: () => setOutlineOpen( true ) }, 'Outline' ),
-		el( Outline, { records, filter: outlineFilter, onFilter: setOutlineFilter, currentId: currentVisible, onSelect: revealAndFocus } ) ),
-		outlineOpen && el( 'div', { className: 'herd-modal', role: 'dialog', 'aria-modal': true, 'aria-label': 'Document outline' }, el( Outline, { records, filter: outlineFilter, onFilter: setOutlineFilter, currentId: currentVisible, drawer: true, onSelect: ( id ) => { setOutlineOpen( false ); revealAndFocus( id ); }, onClose: () => { setOutlineOpen( false ); requestAnimationFrame( () => outlineTriggerRef.current?.focus() ); } } ) ),
-		movingBlock && el( 'div', { className: 'herd-modal', role: 'dialog', 'aria-modal': true, 'aria-label': `Move ${ nameOf( movingBlock ) }` },
-			el( 'div', { className: 'herd-move-dialog' }, el( 'h2', null, `Move ${ nameOf( movingBlock ) }` ), el( 'input', { type: 'search', autoFocus: true, value: moveSearch, placeholder: 'Filter destinations', onChange: ( event ) => setMoveSearch( event.target.value ), onKeyDown: ( event ) => { if ( event.key === 'Escape' ) setMoveBlockId( null ); } } ), el( 'ol', null, destinations.filter( ( item ) => item.label.toLowerCase().includes( moveSearch.toLowerCase() ) ).map( ( item ) => el( 'li', { key: item.id }, el( 'button', { type: 'button', onClick: () => { moveToSlot( movingBlock, item.slot ); setMoveBlockId( null ); revealAndFocus( movingBlock.clientId ); } }, item.label ) ) ) ), el( 'button', { type: 'button', onClick: () => setMoveBlockId( null ) }, 'Cancel' ) ) );
+
+		el( DocumentOutline, { rows: outline, onSelect: selectOutlineRow } ) ),
+		movingBlock && createPortal( el( MoveDialog, {
+			title: nameOf( movingBlock ),
+			summary: blockSummary( movingBlock, adapterFor( movingBlock, config.blockTypes ).id, bodyFor( movingBlock ) ),
+			position: movingPosition,
+			total: named.length,
+			destinations,
+			onMove: moveFromDialog,
+			onClose: closeMoveDialog,
+		} ), document.body ) );
 }

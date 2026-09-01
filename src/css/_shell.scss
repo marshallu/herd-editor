@@ -421,16 +421,37 @@
 	gap: 8px;
 }
 
+/*
+ * The action is one cell: the button, and the icon that reports on it laid over
+ * the button's own left padding. Overlaid rather than placed beside it, because
+ * this button is the last item in a right-pinned row -- anything that appears
+ * next to it and takes width pushes the View menu, the history pair and the
+ * status line sideways, and pulls them back a moment later. An indicator that
+ * moves the page to say a save is happening is worse than no indicator.
+ */
 .herd-bar__native #publishing-action {
+	align-items: center;
+	display: grid;
 	float: none;
+	grid-template-columns: max-content;
+	justify-items: start;
 	margin: 0;
 	padding: 0;
 	text-align: left;
 }
 
-.herd-bar__native .spinner {
-	float: none;
-	margin: 0;
+.herd-bar__native #publishing-action > * {
+	grid-area: 1 / 1;
+}
+
+/*
+ * Core printed a spinner here (meta-boxes.php:57) and Herd used to switch it on.
+ * The ring replaces it: core's is an animated GIF that no CSS can slow down or
+ * stop, it reads as detached from the control that was pressed, and switching it
+ * on and off is 20px of space reserved beside a button with none to give.
+ */
+.herd-bar__native #publishing-action .spinner {
+	display: none;
 }
 
 .herd-bar__native .button {
@@ -438,10 +459,17 @@
 	margin: 0;
 }
 
+/*
+ * Border-box explicitly: the room reserved on this button is a pixel measurement
+ * (reserveSaveWidth in save-progress.js) and the padding swapped in below, to
+ * clear a space for the icon, has to come out of that width rather than be added
+ * to it. A button that widens to hold its own spinner is the thing this avoids.
+ */
 .herd-bar__native #publish {
 	background: var(--herd-green-ink);
 	border-color: var(--herd-green-ink);
 	box-shadow: none;
+	box-sizing: border-box;
 	color: #fff;
 	font-weight: 600;
 	text-shadow: none;
@@ -456,7 +484,7 @@
 
 /*
  * A submission in flight. The button keeps its green: greying it out would say
- * *unavailable* where the truth is *working*, and the spinner beside it is what
+ * *unavailable* where the truth is *working*, and the ring over it is what
  * carries the progress. Core agrees by omission -- .button-primary[aria-disabled]
  * sets a cursor and nothing else (buttons.css:329), where the `disabled`
  * property would have forced #8a8a8a on #e2e2e2 with !important and taken the
@@ -473,12 +501,75 @@
 }
 
 /*
- * Core's spinner is an animated GIF, which no CSS can slow down or stop -- so
- * under reduced motion it goes entirely. The label already says "Publishing…",
- * and the style guide asks that colour and motion never carry a meaning alone.
+ * The one outcome that cannot stay green. A green button reading "Not saved" has
+ * its colour and its label saying opposite things, and at a glance colour wins;
+ * the same argument that keeps the green while a save is *working* takes it away
+ * once the save did not happen. Danger rather than grey, because grey is what
+ * core paints an unavailable control and the control is not unavailable -- it is
+ * the thing to press again.
+ */
+.herd-bar__native #publish[data-herd-settled="failed"],
+.herd-bar__native #publish[data-herd-settled="failed"]:hover,
+.herd-bar__native #publish[data-herd-settled="failed"]:focus {
+	background: var(--herd-danger);
+	border-color: var(--herd-danger);
+	color: #fff;
+}
+
+/*
+ * Room for the icon, taken out of the padding rather than added to the width.
+ * The label is centred in what is left, which reads as the label having moved
+ * over for the icon -- and it moves in the same frame the label itself changes,
+ * so there is nothing there to notice.
+ */
+.herd-bar__native #publish[aria-disabled="true"],
+.herd-bar__native #publish[data-herd-settled] {
+	padding-left: 32px;
+	padding-right: 10px;
+}
+
+/*
+ * What a save looks like on the control that started it: a ring while it runs,
+ * then a tick or a warning for as long as the answer is worth reading. It has no
+ * width of its own to give -- it shares the button's grid cell -- so appearing
+ * and going are free.
+ */
+.herd-saveicon {
+	align-self: center;
+	/* Border-box, and the same 16px as the glyph that replaces it: the ring and
+	 * the tick occupy one slot, and a slot that changes size at the moment of
+	 * settling is the same flinch this whole treatment exists to remove. */
+	box-sizing: border-box;
+	height: 16px;
+	justify-self: start;
+	margin-left: 11px;
+	pointer-events: none;
+	width: 16px;
+}
+
+.herd-saveicon.is-spinning {
+	animation: herd-spin 1s linear infinite;
+	border: 2px solid rgb(255 255 255 / 40%);
+	border-radius: 50%;
+	border-top-color: #fff;
+}
+
+.herd-saveicon.dashicons {
+	color: #fff;
+	font-size: 16px;
+	line-height: 1;
+}
+
+/*
+ * The ring is the only motion left here, and the label already says
+ * "Publishing…" on its own -- the style guide asks that colour and motion never
+ * carry a meaning alone, so stopping it costs nothing.
  */
 @media (prefers-reduced-motion: reduce) {
-	.herd-bar__native .spinner,
+	.herd-saveicon.is-spinning {
+		animation: none;
+	}
+
 	#save-action .spinner {
 		background-image: none;
 	}
@@ -623,6 +714,32 @@
 .herd-ghost:hover {
 	background: #e4e5e6;
 	color: var(--herd-ink);
+}
+
+/*
+ * A button that reads as a link. .herd-ghost is the same job with a hit area
+ * around it; this is for actions sitting inline with text, where a hover plate
+ * would look like a control that had been left pressed.
+ */
+.herd-linkbtn {
+	background: transparent;
+	border: 0;
+	color: var(--herd-green-ink);
+	cursor: pointer;
+	font: inherit;
+	font-size: 13px;
+	padding: 0;
+	text-decoration: underline;
+}
+
+.herd-linkbtn:hover {
+	color: var(--herd-green-ink-hover);
+}
+
+.herd-linkbtn:focus-visible {
+	border-radius: var(--herd-r-sm);
+	outline: 2px solid var(--herd-green-ink);
+	outline-offset: 2px;
 }
 
 .herd-badge {

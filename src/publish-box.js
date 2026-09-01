@@ -26,7 +26,7 @@
  * rather than assumed.
  */
 
-import { endSave } from './save-progress.js';
+import { endSave, reserveSaveWidth, setSaveLabel } from './save-progress.js';
 
 /** Two digits, the way core pads the hour and minute it writes into the stamp. */
 const pad = ( value ) => ( '00' + value ).slice( -2 );
@@ -38,8 +38,15 @@ export function wirePublishBox() {
 
 	const publishButton = byId( 'publish' );
 	const saveDraft = byId( 'save-post' );
+	/*
+	 * Relabelling is also remeasuring. The room reserved on the button is the room
+	 * its own labels need -- "Update" has to hold "Updating…" and "Updated" -- and
+	 * a draft that has just been published becomes an Update button whose old
+	 * reservation was cut for "Publishing…". Left alone, the first save after that
+	 * is the one that lurches.
+	 */
 	const setButton = ( label ) => {
-		if ( publishButton ) publishButton.value = label;
+		if ( setSaveLabel( publishButton, label ) ) reserveSaveWidth( publishButton );
 	};
 
 	const statusPanel = byId( 'post-status-select' );
@@ -231,7 +238,11 @@ export function wirePublishBox() {
 				saveDraft.style.display = 'none';
 			} else {
 				saveDraft.style.display = '';
-				saveDraft.value = 'pending' === chosen ? 'Save as Pending' : 'Save Draft';
+				const draftLabel = 'pending' === chosen ? 'Save as Pending' : 'Save Draft';
+				/* Also when it has never been measured: a hidden control measures
+				 * nothing, so a post that opened published reserved no room here, and
+				 * this is the moment Save Draft comes back. */
+				if ( setSaveLabel( saveDraft, draftLabel ) || ! saveDraft.style.minWidth ) reserveSaveWidth( saveDraft );
 			}
 		}
 	};

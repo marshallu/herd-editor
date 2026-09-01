@@ -12,6 +12,20 @@
  * enqueue post.js. Save draft had been given the treatment by hand; Publish, the
  * slower of the two, had none.
  *
+ * The press is one of three states, not two. A save begins (beginSave), comes to
+ * rest wearing its own outcome for a moment (settleSave), and only then goes back
+ * to being a button (endSave). The middle state is what the command bar's one-word
+ * "Saved" could never be: an answer on the control that asked the question.
+ *
+ * Nothing in that cycle is allowed to change the width of anything. The label a
+ * save wears is longer than the label it starts from -- "Update" becomes
+ * "Updating…" -- and #publish is the last item in a right-pinned flex row, so a
+ * button that grows shoves the View menu, the history pair and the status line
+ * sideways and then pulls them back. reserveSaveWidth() measures every label the
+ * control will ever wear and reserves the widest, before the press; the icon is
+ * laid *over* the button by the stylesheet rather than placed beside it, so it
+ * costs nothing to appear. See the grid on #publishing-action in _shell.scss.
+ *
  * beginSave() also does something the labels do not advertise: the hidden input
  * it leaves in the form, so the busy label is not what posts, is what carries
  * the pressed button's name into a FormData that would not otherwise have it.
@@ -24,10 +38,10 @@
  */
 
 /*
- * Core's own button labels, each in the tense the action started in. The button
- * that says Update produces the state that says Updating, and post.php's notice
- * afterwards says Updated -- the style guide asks that an action keep its name
- * through the whole flow, so this cannot be one generic word.
+ * Core's own button labels, each in the tense the action is in at that moment.
+ * The button that says Update produces the state that says Updating and the
+ * answer that says Updated -- the style guide asks that an action keep its name
+ * through the whole flow, so neither of these can be one generic word.
  *
  * These are core's translated strings, so a site not running in English falls
  * through to the generic verb. That loses the continuity; telling somebody who
@@ -38,6 +52,39 @@ const BUSY = {
 	Update: 'Updating…',
 	Schedule: 'Scheduling…',
 	'Submit for Review': 'Submitting for review…',
+};
+
+const DONE = {
+	Publish: 'Published',
+	Update: 'Updated',
+	Schedule: 'Scheduled',
+	'Submit for Review': 'Submitted',
+};
+
+/*
+ * One word for every button, because there is no tense of "publish" that means
+ * it did not happen. What went wrong is the notice's job to say; the button's
+ * job is to be clear that nothing was written.
+ */
+const FAILED = 'Not saved';
+
+const busyLabel = ( resting ) => BUSY[ ( resting || '' ).trim() ] || 'Saving…';
+const doneLabel = ( resting ) => DONE[ ( resting || '' ).trim() ] || 'Saved';
+
+/**
+ * The label a control comes back to, which is not always the one on its face.
+ *
+ * A control mid-save is wearing "Publishing…" and one still confirming is wearing
+ * "Published", and both of those are labels the maps have no entry for. Reading
+ * the face instead of the record is how the second press of a publish is filed
+ * as a generic save, and how a button gets restored to "Published" for good.
+ *
+ * @param {HTMLElement|Object|null} submitter The control.
+ * @return {string} The label it rests at.
+ */
+const restingValue = ( submitter ) => {
+	const stored = submitter?.dataset?.herdRestore;
+	return undefined !== stored ? stored : ( submitter?.value || '' );
 };
 
 /**
@@ -65,12 +112,120 @@ export function submitIntent( submitter ) {
 	 * every Update on the site under Save draft.
 	 */
 	if ( 'publish' === id || 'publish' === name ) {
-		return { label: BUSY[ ( submitter.value || '' ).trim() ] || 'Saving…', saveState: 'saving' };
+		return { label: busyLabel( restingValue( submitter ) ), saveState: 'saving' };
 	}
 	if ( 'save-post' === id || 'save' === id || 'save' === name ) {
 		return { label: 'Saving…', saveState: 'saving-draft' };
 	}
 	return null;
+}
+
+/**
+ * The icon laid over the control, created on demand and reused after that.
+ *
+ * A sibling of the button rather than a child, because the control is an
+ * `<input type="submit">` and cannot have one. The stylesheet stacks the two in a
+ * single grid cell, so this element has no width of its own to give or take.
+ *
+ * @param {HTMLElement} submitter The control being dressed.
+ * @return {HTMLElement|null} The icon element.
+ */
+function saveIcon( submitter ) {
+	const container = submitter.parentElement;
+	if ( ! container ) return null;
+	let icon = container.querySelector( '[data-herd-save-icon]' );
+	if ( ! icon ) {
+		icon = container.ownerDocument.createElement( 'span' );
+		icon.dataset.herdSaveIcon = '1';
+		icon.setAttribute( 'aria-hidden', 'true' );
+		submitter.after( icon );
+	}
+	return icon;
+}
+
+/**
+ * Relabel a control that may be in the middle of a save.
+ *
+ * publish-box.js renames this button as the post's status changes, and one of
+ * those renames lands mid-save: a draft that has just been published adopts its
+ * new state from herd:saved, which arrives while the button is still wearing
+ * "Publishing…" and about to be restored from the record this module keeps. A
+ * write to the face would be overwritten by that restore, and the button that had
+ * just published a page would go back to saying Publish.
+ *
+ * So the face belongs to the save and the record belongs to the label: whichever
+ * of the two is the resting one is the one written.
+ *
+ * @param {HTMLElement|null} submitter The control to relabel.
+ * @param {string}           label     What it should come to rest saying.
+ * @return {boolean} Whether the label actually changed.
+ */
+export function setSaveLabel( submitter, label ) {
+	if ( ! submitter || restingValue( submitter ) === label ) return false;
+	if ( undefined !== submitter.dataset.herdRestore ) {
+		submitter.dataset.herdRestore = label;
+	} else {
+		submitter.value = label;
+	}
+	return true;
+}
+
+/**
+ * Reserve the room every label this control will ever wear needs.
+ *
+ * Measured on the control itself rather than on a copy of it. A clone is the
+ * tempting way to do this and it is wrong twice over: half the rules that decide
+ * how wide this button is are keyed on `#publish` (its weight, and the padding it
+ * swaps in to clear a space for the icon), and a copy carrying neither measures
+ * about a quarter narrower than the thing it is standing in for -- which reserves
+ * a floor the first save immediately walks through. So the labels are tried on
+ * the real control and taken off again, all in one synchronous pass: the browser
+ * has no opportunity to paint between the first line here and the last.
+ *
+ * Widest wins, and it is set as a floor rather than a width, so a site whose
+ * status label or translation needs more room still gets it.
+ *
+ * Called before the press -- at boot and again whenever publish-box.js relabels
+ * the button -- because measuring at the press is measuring too late.
+ *
+ * The width is read sub-pixel and rounded up. offsetWidth is a rounded integer,
+ * and rounding a 113.33px label down to a 113px floor is a floor the label spills
+ * over -- a third of a pixel of movement on every save, which is not visible but
+ * is not nothing either.
+ *
+ * `measure` is injectable because jsdom has no layout engine, and a reservation
+ * nothing can assert is a reservation nobody notices breaking.
+ *
+ * @param {HTMLElement|null}   submitter The control to reserve room for.
+ * @param {Function}           measure   How to read a rendered width.
+ * @return {number|null} The width reserved, or null if there was nothing to do.
+ */
+export function reserveSaveWidth( submitter, measure = ( node ) => node.getBoundingClientRect().width ) {
+	if ( ! submitter || ! submitIntent( submitter ) ) return null;
+	/*
+	 * The resting label, not whatever is on the face: publish-box.js calls this on
+	 * every relabel, and a draft that has just been published is relabelled while
+	 * it is still wearing "Publishing…".
+	 */
+	const resting = restingValue( submitter );
+	const face = submitter.value;
+	const busy = submitter.getAttribute( 'aria-disabled' );
+	const floor = submitter.style.minWidth;
+
+	// The widest state, so the padding that clears a space for the icon is counted.
+	submitter.style.minWidth = '0px';
+	submitter.setAttribute( 'aria-disabled', 'true' );
+	let widest = 0;
+	[ resting, busyLabel( resting ), doneLabel( resting ), FAILED ].forEach( ( label ) => {
+		submitter.value = label;
+		widest = Math.max( widest, measure( submitter ) || 0 );
+	} );
+
+	submitter.value = face;
+	if ( null === busy ) submitter.removeAttribute( 'aria-disabled' );
+	else submitter.setAttribute( 'aria-disabled', busy );
+	submitter.style.minWidth = widest ? `${ Math.ceil( widest ) }px` : floor;
+	return widest || null;
 }
 
 /**
@@ -93,6 +248,17 @@ export function submitIntent( submitter ) {
  * @return {{label: string, saveState: string}|null} The treatment applied, or null.
  */
 export function beginSave( submitter ) {
+	if ( ! submitter ) return null;
+	/*
+	 * Before the intent is resolved, not after. A press landing inside the moment
+	 * the last save is still confirming itself finds a button reading "Published",
+	 * and a label read off that face is a generic "Saving…" on a publish and a
+	 * button restored to "Published" for good.
+	 *
+	 * A no-op on the two re-entrant passes of one publish, which have nothing
+	 * settled to clear.
+	 */
+	clearSettled();
 	const intent = submitIntent( submitter );
 	if ( ! intent ) return null;
 	if ( submitter.dataset.herdBusy ) return intent;
@@ -103,18 +269,14 @@ export function beginSave( submitter ) {
 	submitter.value = intent.label;
 
 	/*
-	 * Both #publishing-action and #save-action already hold a spinner core
-	 * printed and nothing ever switched on (meta-boxes.php:57 and :377). Use it.
-	 * Building a second one is what used to leave #save-action with two.
+	 * Herd's own ring rather than the spinner core printed beside the button
+	 * (meta-boxes.php:57 and :377). Core's is an animated GIF that no CSS can slow
+	 * down or stop, it sits outside the control, and switching it on and off is
+	 * 20px of reserved space beside a button that has none to spare. The
+	 * stylesheet hides core's and lays this one over the button's left padding.
 	 */
-	const container = submitter.parentElement;
-	let spinner = container?.querySelector( '.spinner' );
-	if ( container && ! spinner ) {
-		spinner = document.createElement( 'span' );
-		spinner.className = 'spinner';
-		submitter.after( spinner );
-	}
-	spinner?.classList.add( 'is-active' );
+	const icon = saveIcon( submitter );
+	if ( icon ) icon.className = 'herd-saveicon is-spinning';
 
 	/*
 	 * The label is now sitting in the control's value, and the value is what gets
@@ -134,6 +296,67 @@ export function beginSave( submitter ) {
 }
 
 /**
+ * The answer, on the control that asked.
+ *
+ * Between the request landing and the button going back to being a button. The
+ * `disabled` state comes off immediately -- the save is over, and a control that
+ * has finished should be pressable again whatever it is currently saying -- but
+ * `data-herd-restore` and the hidden marker both stay, so a press inside this
+ * window still posts the name that was pressed rather than the word on the face.
+ *
+ * @param {string} outcome 'saved' or 'failed'.
+ * @return {number} How many controls were settled.
+ */
+export function settleSave( outcome = 'saved' ) {
+	const busy = Array.from( document.querySelectorAll( '[data-herd-busy]' ) );
+	busy.forEach( ( control ) => {
+		const resting = control.dataset.herdRestore;
+		control.value = 'failed' === outcome ? FAILED : doneLabel( resting );
+		control.removeAttribute( 'aria-disabled' );
+		delete control.dataset.herdBusy;
+		control.dataset.herdSettled = outcome;
+
+		const icon = saveIcon( control );
+		if ( icon ) icon.className = `herd-saveicon dashicons dashicons-${ 'failed' === outcome ? 'warning' : 'yes' }`;
+	} );
+	return busy.length;
+}
+
+/**
+ * Put one dressed control back, whichever state it was wearing.
+ *
+ * @param {HTMLElement} control The control to undress.
+ */
+function restoreControl( control ) {
+	if ( undefined !== control.dataset.herdRestore ) control.value = control.dataset.herdRestore;
+	control.removeAttribute( 'aria-disabled' );
+	delete control.dataset.herdBusy;
+	delete control.dataset.herdSettled;
+	delete control.dataset.herdRestore;
+	control.parentElement?.querySelector( '[data-herd-save-icon]' )?.remove();
+	control.parentElement?.querySelector( '.spinner' )?.classList.remove( 'is-active' );
+}
+
+/**
+ * End a confirmation early, without announcing anything.
+ *
+ * Its own function rather than a flag on endSave() because the two mean different
+ * things: this is one save getting out of the way of the next, and says nothing,
+ * where endSave() is the cycle coming to rest and is what the command bar listens
+ * for. Announcing here would put the bar at rest in the middle of a save.
+ *
+ * @return {number} How many controls were still confirming.
+ */
+export function clearSettled() {
+	const settled = Array.from( document.querySelectorAll( '[data-herd-settled]' ) );
+	settled.forEach( restoreControl );
+	if ( settled.length ) {
+		document.querySelectorAll( '[data-herd-busy-marker]' ).forEach( ( marker ) => marker.remove() );
+	}
+	return settled.length;
+}
+
+/**
  * Put every dressed control back, and say so.
  *
  * The DOM is the record rather than a closure variable, because the caller that
@@ -149,14 +372,8 @@ export function beginSave( submitter ) {
  * @return {boolean} Whether anything was actually wearing a save.
  */
 export function endSave( win = typeof window === 'undefined' ? null : window ) {
-	const busy = Array.from( document.querySelectorAll( '[data-herd-busy]' ) );
-	busy.forEach( ( control ) => {
-		if ( undefined !== control.dataset.herdRestore ) control.value = control.dataset.herdRestore;
-		control.removeAttribute( 'aria-disabled' );
-		delete control.dataset.herdBusy;
-		delete control.dataset.herdRestore;
-		control.parentElement?.querySelector( '.spinner' )?.classList.remove( 'is-active' );
-	} );
+	const dressed = Array.from( document.querySelectorAll( '[data-herd-busy], [data-herd-settled]' ) );
+	dressed.forEach( restoreControl );
 	document.querySelectorAll( '[data-herd-busy-marker]' ).forEach( ( marker ) => marker.remove() );
 	/*
 	 * And a sweep of the two containers that hold a submit action, whether or not
@@ -166,7 +383,7 @@ export function endSave( win = typeof window === 'undefined' ? null : window ) {
 	 */
 	document.querySelectorAll( '#publishing-action .spinner, #save-action .spinner' )
 		.forEach( ( spinner ) => spinner.classList.remove( 'is-active' ) );
-	if ( ! busy.length ) return false;
+	if ( ! dressed.length ) return false;
 	if ( win?.CustomEvent && win.dispatchEvent ) win.dispatchEvent( new win.CustomEvent( 'herd:save-ended' ) );
 	return true;
 }
@@ -178,6 +395,9 @@ export function endSave( win = typeof window === 'undefined' ? null : window ) {
  * approach (post.js:355). Capture phase, so it lands before the form's submit
  * path; and a click rather than a submit, because that is what both a pointer
  * and the Enter key on a focused submit button fire.
+ *
+ * A control that has settled is deliberately not guarded: the save it is
+ * reporting is over, and the press starts a new one.
  *
  * @param {Document} doc The document to guard.
  * @return {Function} Teardown.
