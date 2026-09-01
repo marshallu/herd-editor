@@ -70,13 +70,13 @@ function herd_editor_settings( $fresh = false ) {
 /**
  * One stored setting.
  *
- * @param string $key     Setting name.
- * @param mixed  $default Value when the site has never set it.
+ * @param string $key      Setting name.
+ * @param mixed  $fallback Value when the site has never set it.
  * @return mixed
  */
-function herd_editor_setting( $key, $default = null ) {
+function herd_editor_setting( $key, $fallback = null ) {
 	$settings = herd_editor_settings();
-	return array_key_exists( $key, $settings ) ? $settings[ $key ] : $default;
+	return array_key_exists( $key, $settings ) ? $settings[ $key ] : $fallback;
 }
 
 /* -------------------------------------------------------------------------
@@ -438,13 +438,14 @@ function herd_editor_settings_render() {
 		<?php endif; ?>
 
 		<?php if ( ! herd_editor_has_acf_pro() ) : ?>
-			<div class="notice notice-warning"><p><?php
-				printf(
+			<div class="notice notice-warning">
+				<p>
+					<?php
 					/* translators: %s: minimum ACF Pro version. */
-					esc_html__( 'Herd Editor needs ACF Pro %s or newer. Until it is active, these settings are stored but nothing reads them.', 'herd-editor' ),
-					esc_html( HERD_EDITOR_MIN_ACF )
-				);
-			?></p></div>
+					printf( esc_html__( 'Herd Editor needs ACF Pro %s or newer. Until it is active, these settings are stored but nothing reads them.', 'herd-editor' ), esc_html( HERD_EDITOR_MIN_ACF ) );
+					?>
+				</p>
+			</div>
 		<?php endif; ?>
 
 		<p class="description" style="max-width:52em">

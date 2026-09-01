@@ -9,6 +9,8 @@
  * nodes relocated into the command bar by src/rail.js.
  *
  * @var WP_Post $post
+ *
+ * @package herd-editor
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -282,7 +284,7 @@ $herd_saved       = herd_editor_saved_notice( $post );
 		</div>
 		<script>
 			/* If the editor bundle never runs, reveal the meta boxes so the publish
-			   box is still reachable. src/rail.js removes this element on success. */
+				box is still reachable. src/rail.js removes this element on success. */
 			window.addEventListener( 'load', function () {
 				var staging = document.getElementById( 'herd-staging' );
 				if ( staging ) {

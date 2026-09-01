@@ -182,12 +182,7 @@ function herd_editor_register_settings() {
 		)
 	);
 
-	$allowed = array( 'writing' => array( HERD_EDITOR_OPTION ) );
-	if ( function_exists( 'add_allowed_options' ) ) {
-		add_allowed_options( $allowed );
-	} else {
-		add_option_whitelist( $allowed );
-	}
+	add_allowed_options( array( 'writing' => array( HERD_EDITOR_OPTION ) ) );
 
 	/*
 	 * Re-registering under Classic Editor's own id rather than removing it and

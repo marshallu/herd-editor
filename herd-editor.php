@@ -7,6 +7,8 @@
  * Requires PHP: 7.4
  * Requires Plugins: advanced-custom-fields-pro
  * Text Domain: herd-editor
+ *
+ * @package herd-editor
  */
 
 defined( 'ABSPATH' ) || exit;
@@ -87,10 +89,21 @@ require_once HERD_EDITOR_DIR . 'includes/herd-editor-default.php';
  */
 require_once HERD_EDITOR_DIR . 'includes/herd-editor-saved.php';
 
+/**
+ * A post type list with the blanks and duplicates taken out.
+ *
+ * @param mixed $post_types Post type names, from a filter or a stored setting.
+ * @return string[]
+ */
 function herd_editor_post_types( $post_types ) {
 	return array_values( array_unique( array_filter( (array) $post_types ) ) );
 }
 
+/**
+ * The post types Herd is offered for.
+ *
+ * @return string[]
+ */
 function herd_editor_allowed_post_types() {
 	return herd_editor_post_types( apply_filters( 'herd_editor_post_types', herd_editor_setting( 'post_types', array( 'page', 'post' ) ) ) );
 }
@@ -133,6 +146,12 @@ function herd_editor_supports_post( $post ) {
 	return (bool) apply_filters( 'herd_editor_user_can_access', $allowed, $user, $post );
 }
 
+/**
+ * The Herd screen's URL for one post.
+ *
+ * @param int $post_id Post to edit.
+ * @return string
+ */
 function herd_editor_url( $post_id ) {
 	return add_query_arg( array( 'page' => 'herd-editor', 'post' => absint( $post_id ) ), admin_url( 'admin.php' ) );
 }
@@ -181,10 +200,18 @@ function herd_editor_validate_post_lock_before_save() {
 		return;
 	}
 	$post_id   = isset( $_POST['post_ID'] ) ? absint( $_POST['post_ID'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing
-	$submitted = isset( $_POST['active_post_lock'] ) ? (string) wp_unslash( $_POST['active_post_lock'] ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	// Not sanitized because it is not used as data: the next six lines require it
+	// to be exactly two integers separated by a colon, and hash_equals() compares
+	// it to what is stored. A sanitiser could only turn an invalid token into a
+	// different invalid token.
+	// phpcs:ignore WordPress.Security.NonceVerification.Missing, WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+	$submitted = isset( $_POST['active_post_lock'] ) ? (string) wp_unslash( $_POST['active_post_lock'] ) : '';
 	$current   = $post_id ? (string) get_post_meta( $post_id, '_edit_lock', true ) : '';
 	$parts     = explode( ':', $submitted );
-	$window    = (int) apply_filters( 'wp_check_post_lock_window', 150 );
+	// Core's own filter, applied so Herd measures the lock against the same
+	// window core does rather than a guess of its own.
+	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	$window = (int) apply_filters( 'wp_check_post_lock_window', 150 );
 	$valid     = 2 === count( $parts )
 		&& ctype_digit( $parts[0] )
 		&& ctype_digit( $parts[1] )
@@ -241,7 +268,10 @@ function herd_editor_recovery_key() {
 function herd_editor_post_lock_reason( $post_id, $token ) {
 	$current = (string) get_post_meta( $post_id, '_edit_lock', true );
 	$parts   = explode( ':', (string) $token );
-	$window  = (int) apply_filters( 'wp_check_post_lock_window', 150 );
+	// Core's own filter, applied so Herd measures the lock against the same
+	// window core does rather than a guess of its own.
+	// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound
+	$window = (int) apply_filters( 'wp_check_post_lock_window', 150 );
 	if ( '' === (string) $token ) { return 'missing'; }
 	if ( 2 !== count( $parts ) || ! ctype_digit( $parts[0] ) || ! ctype_digit( $parts[1] ) ) { return 'malformed'; }
 	if ( (int) $parts[1] !== get_current_user_id() ) { return 'another-user'; }
@@ -635,6 +665,9 @@ function herd_editor_ajax_save_post() {
 		wp_send_json_error( array( 'message' => __( 'You are not allowed to edit this item.', 'herd-editor' ) ), 403 );
 	}
 
+	// See herd_editor_validate_post_lock_before_save(): the token is validated by
+	// shape and compared with hash_equals(), never used as data.
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 	$lock = herd_editor_post_lock_reason( $post_id, isset( $_POST['active_post_lock'] ) ? wp_unslash( $_POST['active_post_lock'] ) : '' );
 	if ( $lock ) {
 		wp_send_json_success( array( 'ok' => false, 'lock' => $lock ) );
@@ -650,8 +683,18 @@ function herd_editor_ajax_save_post() {
 	 * would quietly stop being validated. src/save-request.js reads the id.
 	 */
 	if ( ! empty( $_POST['herd_validate'] ) ) {
+		/*
+		 * Deliberately raw. This is the serialized Gutenberg document, and it
+		 * goes only to parse_blocks() for validation -- nothing here writes it.
+		 * The save itself runs through edit_post(), where `content_save_pre` and
+		 * core's own kses apply exactly as they do for the other two editors.
+		 * Sanitising here would corrupt a document that is then not saved.
+		 */
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$content = isset( $_POST['content'] ) ? wp_unslash( $_POST['content'] ) : '';
-		$ids     = isset( $_POST['clientIds'] ) && is_array( $_POST['clientIds'] ) ? wp_unslash( $_POST['clientIds'] ) : array();
+		// Client ids are matched against the parsed tree, never echoed or stored.
+		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+		$ids = isset( $_POST['clientIds'] ) && is_array( $_POST['clientIds'] ) ? wp_unslash( $_POST['clientIds'] ) : array();
 		$errors  = herd_editor_validate_document_acf( $content, $ids );
 		if ( $errors ) {
 			wp_send_json_success( array( 'ok' => false, 'errors' => $errors ) );
@@ -744,11 +787,24 @@ function herd_editor_post_lock_dialog( $post, $list_url ) {
 	echo $dialog; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Core generated the markup above.
 }
 
+/**
+ * A built entry's dependencies and version, from the build manifest.
+ *
+ * @param string $entry Entry name, matching build/{entry}.asset.php.
+ * @return array{dependencies: string[], version: string}
+ */
 function herd_editor_asset( $entry ) {
 	$file = HERD_EDITOR_DIR . 'build/' . $entry . '.asset.php';
 	return file_exists( $file ) ? require $file : array( 'dependencies' => array(), 'version' => HERD_EDITOR_VERSION );
 }
 
+/**
+ * Every block name in a parsed tree, including inner blocks.
+ *
+ * @param array $blocks Parsed blocks.
+ * @param array $names  Collected names, by reference, keyed by name.
+ * @return void
+ */
 function herd_editor_collect_block_names( $blocks, &$names ) {
 	foreach ( $blocks as $block ) {
 		if ( ! empty( $block['blockName'] ) ) {
@@ -940,6 +996,17 @@ function herd_editor_acf_storage_mode( $name ) {
 	return ! empty( $type['usePostMeta'] ) ? 'post_meta' : 'comment';
 }
 
+/**
+ * What the editor needs to know about every block it might meet.
+ *
+ * Every registered block, plus any name present in the document that is no
+ * longer registered -- so a block Herd cannot edit is still described well
+ * enough to be preserved and explained rather than silently dropped.
+ *
+ * @param string       $content Post content, parsed for block names.
+ * @param WP_Post|null $post    Post being edited, for the eligibility policy.
+ * @return array<string,array>
+ */
 function herd_editor_block_metadata( $content, $post = null ) {
 	$names = array();
 	herd_editor_collect_block_names( parse_blocks( $content ), $names );
@@ -1135,7 +1202,7 @@ function herd_editor_meta_boxes( $screen_id, $post_type, $context, $post ) {
 	 * already *is* the post type, and every box would otherwise print twice.
 	 */
 	foreach ( array_unique( array( $screen_id, $post_type ) ) as $target ) {
-		$index++;
+		++$index;
 		ob_start();
 		do_meta_boxes( $target, $context, $post );
 		$html = ob_get_clean();
@@ -1213,6 +1280,10 @@ function herd_editor_current_post( $primed = false ) {
  */
 function herd_editor_prepare_post( $post ) {
 	if ( $post && 'auto-draft' === $post->post_status ) {
+		// Core's own string in core's own domain: this compares against a title
+		// WordPress generated, so translating it under Herd's domain would only
+		// ever fail to match.
+		// phpcs:ignore WordPress.WP.I18n.MissingArgDomain
 		if ( __( 'Auto Draft' ) === $post->post_title ) {
 			$post->post_title = '';
 		}
@@ -1349,7 +1420,7 @@ function herd_editor_body_class( $classes ) {
 add_filter( 'admin_body_class', 'herd_editor_body_class' );
 
 /** Load Herd-only assets on the dedicated mode, never on frontend requests. */
-function herd_editor_enqueue_assets( $hook_suffix ) {
+function herd_editor_enqueue_assets() {
 	if ( ! herd_editor_is_active_screen() ) {
 		return;
 	}
@@ -1391,13 +1462,14 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 		'if ( window.acf ) { acf.set( "ajaxurl", ' . wp_json_encode( admin_url( 'admin-ajax.php' ) ) . ' ); acf.set( "nonce", ' . wp_json_encode( wp_create_nonce( 'acf_nonce' ) ) . ' ); }',
 		'before'
 	);
+	$post_type_object = get_post_type_object( $post->post_type );
 	wp_add_inline_script(
 		'herd-editor-screen',
 		'window.HerdEditor = ' . wp_json_encode(
 			array(
 				'postId' => $post->ID,
 				'postType' => $post->post_type,
-				'templateLock' => ( $post_type = get_post_type_object( $post->post_type ) ) ? $post_type->template_lock : false,
+				'templateLock' => $post_type_object ? $post_type_object->template_lock : false,
 				'postContent' => $post->post_content,
 				'blockEditorUrl' => herd_editor_native_url( $post->ID, 'block' ),
 				/*
@@ -1428,6 +1500,7 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				'recoveryKey' => herd_editor_recovery_key(),
 				/* The window the server judges a lock by, so the browser watchdog
 				 * measures against the same number rather than a guess of its own. */
+				// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core's own filter.
 				'lockWindow' => (int) apply_filters( 'wp_check_post_lock_window', 150 ),
 				'currentUserId' => get_current_user_id(),
 				/* A post.php redirect with a message is a confirmed native save. */
@@ -1925,8 +1998,8 @@ function herd_editor_add_list_table_link( $actions, $post ) {
 		if ( isset( $actions[ $action ] ) ) {
 			$actions[ $action ] = preg_replace_callback(
 				'/href="([^"]+)"/',
-				static function ( $match ) {
-					return 'href="' . esc_url( add_query_arg( HERD_EDITOR_FORGET_ARG, '1', html_entity_decode( $match[1] ) ) ) . '"';
+				static function ( $found ) {
+					return 'href="' . esc_url( add_query_arg( HERD_EDITOR_FORGET_ARG, '1', html_entity_decode( $found[1] ) ) ) . '"';
 				},
 				$actions[ $action ]
 			);
@@ -1937,6 +2010,7 @@ function herd_editor_add_list_table_link( $actions, $post ) {
 	$actions['herd-editor'] = sprintf(
 		'<a href="%1$s" aria-label="%2$s">%3$s</a>',
 		esc_url( herd_editor_url( $post->ID ) ),
+		/* translators: %s: post title. */
 		esc_attr( sprintf( __( 'Edit &#8220;%s&#8221; in Herd Editor', 'herd-editor' ), $title ) ),
 		esc_html__( 'Edit (Herd Editor)', 'herd-editor' )
 	);
