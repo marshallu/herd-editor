@@ -49,6 +49,7 @@ export function BlockRow( {
 	onDuplicate,
 	onDelete,
 	onMove,
+	onPreview,
 	children,
 } ) {
 	const classes = [ 'herd-block' ];
@@ -114,6 +115,7 @@ export function BlockRow( {
 		el( Dashicon, { icon: 'arrow-down-alt2', className: 'herd-block__chev' } ) ),
 
 		structural && el( 'span', { className: 'herd-block__tools' },
+			onPreview && el( IconButton, { icon: 'visibility', label: `Preview ${ title }`, className: 'herd-block__tool', onClick: onPreview } ),
 			onMove && el( IconButton, { icon: 'move', label: `Move ${ title }`, className: 'herd-block__tool herd-block__move', onClick: onMove } ),
 			el( IconButton, {
 				icon: 'admin-page',

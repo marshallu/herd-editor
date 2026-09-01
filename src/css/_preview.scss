@@ -1,0 +1,119 @@
+/*
+ * Block preview. The surface is the move dialog's, widened: a block is authored
+ * for the full width of a page, and one rendered into a sidebar-sized frame
+ * reflows into something that is not what the block looks like. The overlay is
+ * .herd-modal (see _blocks.scss), which carries the palette this file's tokens
+ * come from.
+ */
+
+.herd-preview-dialog {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r);
+	box-shadow: 0 6px 20px rgba(0, 0, 0, .13);
+	color: var(--herd-ink);
+	display: grid;
+	font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+	/* The stage takes the slack; the header and footer keep their own height. */
+	grid-template-rows: auto minmax(0, 1fr) auto;
+	height: min(820px, 100%);
+	overflow: hidden;
+	width: min(1180px, 100%);
+}
+
+.herd-preview-dialog__header {
+	align-items: center;
+	border-bottom: 1px solid var(--herd-line-soft);
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	padding: 12px 14px;
+}
+
+.herd-preview-dialog__header h2 {
+	font-size: 15px;
+	font-weight: 600;
+	line-height: 1.3;
+	margin: 0;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.herd-preview-dialog__close {
+	background: none;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-ink-3);
+	cursor: pointer;
+	flex: none;
+	line-height: 0;
+	padding: 4px;
+}
+
+.herd-preview-dialog__close:hover {
+	background: var(--herd-canvas);
+	color: var(--herd-ink);
+}
+
+.herd-preview-dialog__close .dashicons {
+	font-size: 16px;
+	height: 16px;
+	width: 16px;
+}
+
+/*
+ * The canvas the frame sits on is the admin's grey, not white: a block with a
+ * white background needs an edge, and the theme will not draw one.
+ */
+.herd-preview-dialog__stage {
+	background: var(--herd-canvas);
+	display: grid;
+	min-height: 0;
+	padding: 12px 14px;
+}
+
+.herd-preview-dialog__stage iframe {
+	background: var(--herd-surface);
+	border: 1px solid var(--herd-line);
+	border-radius: var(--herd-r-sm);
+	height: 100%;
+	min-height: 0;
+	width: 100%;
+}
+.herd-preview-dialog__stage iframe.is-tablet { justify-self: center; width: min(768px, 100%); }
+.herd-preview-dialog__stage iframe.is-mobile { justify-self: center; width: min(390px, 100%); }
+
+/* Loading, empty and error all say their piece in the middle of the stage. */
+.herd-preview-dialog__note {
+	align-self: center;
+	color: var(--herd-ink-2);
+	justify-self: center;
+	margin: 0;
+	text-align: center;
+}
+
+.herd-preview-dialog__footer {
+	align-items: center;
+	border-top: 1px solid var(--herd-line-soft);
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	padding: 12px 14px;
+}
+
+.herd-preview-dialog__footer p {
+	color: var(--herd-ink-3);
+	margin: 0;
+}
+
+@media (max-width: 782px) {
+	.herd-preview-dialog {
+		height: 100%;
+	}
+
+	.herd-preview-dialog__stage {
+		padding: 8px;
+	}
+}

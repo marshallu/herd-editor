@@ -39,6 +39,13 @@
 	color: var(--herd-ink);
 }
 
+.herd-rail__dirty {
+	color: var(--herd-ink-3);
+	font-size: 10px;
+	font-weight: 500;
+	margin-left: 4px;
+}
+
 .herd-rail__tab[hidden] {
 	display: none;
 }
@@ -197,6 +204,25 @@
 .herd-main__boxes {
 	margin-top: 20px;
 }
+
+.herd-governance-notice {
+	background: #fff8e5;
+	border-left: 4px solid #dba617;
+	color: var(--herd-ink-2);
+	margin: 0 0 16px;
+	padding: 10px 12px;
+}
+
+.herd-history {
+	border-bottom: 1px solid var(--herd-line-soft);
+	padding: 14px;
+}
+
+.herd-history h3 { font-size: 13px; margin: 0 0 10px; }
+.herd-history select { max-width: 100%; width: 100%; }
+.herd-history__results { margin-top: 12px; }
+.herd-history__changes { margin: 0 0 12px 1.2em; }
+.herd-history__changes li { margin: 0 0 6px; }
 
 .herd-editor-screen .herd-main__boxes .postbox {
 	border-color: var(--herd-line);

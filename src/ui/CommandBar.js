@@ -29,16 +29,20 @@ const el = createElement;
  * @param {string}  savedLabel When it was last saved.
  * @return {string} The tail text.
  */
-export function saveStateLabel( saveState, dirty, savedLabel ) {
+export function saveStateLabel( saveState, dirty, savedLabel, dirtyDomains = {} ) {
 	if ( saveState === 'autosaving' ) return 'Autosaving';
 	if ( saveState === 'saving-draft' ) return 'Saving draft…';
 	if ( saveState === 'saving' ) return 'Saving';
 	if ( saveState === 'saved' ) return 'Saved';
-	return dirty ? 'unsaved changes' : savedLabel;
+	if ( dirtyDomains.core || dirtyDomains.acfMeta || dirtyDomains.nativeMeta ) return 'Unsaved page settings';
+	if ( dirtyDomains.block ) return 'Block changes autosaved';
+	if ( dirty ) return 'unsaved changes';
+	return savedLabel === 'saved' ? 'All changes saved' : savedLabel;
 }
 
 export function BarTools( {
 	dirty,
+	dirtyDomains,
 	saveState = 'idle',
 	savedLabel,
 	statusLabel,
@@ -66,7 +70,7 @@ export function BarTools( {
 		el( 'span', { className: `herd-bar__savestate${ dirty ? ' is-dirty' : '' }${ saveState !== 'idle' ? ` is-${ saveState }` : '' }` },
 			el( 'span', { className: `herd-bar__dot${ isPublished ? '' : ' is-draft' }`, 'aria-hidden': true } ),
 			el( 'strong', { className: 'herd-bar__state' }, statusLabel ),
-			el( 'span', { className: 'herd-bar__saved', role: 'status' }, ` · ${ saveStateLabel( saveState, dirty, savedLabel ) }` ) ),
+			el( 'span', { className: 'herd-bar__saved', role: 'status' }, ` · ${ saveStateLabel( saveState, dirty, savedLabel, dirtyDomains ) }` ) ),
 
 		el( 'span', { className: 'herd-bar__divider', 'aria-hidden': true } ),
 

@@ -100,6 +100,77 @@ function selectTab( tabs, panels, name ) {
 	} catch ( error ) {
 		// Private browsing; the tab choice simply is not remembered.
 	}
+	window.dispatchEvent( new CustomEvent( 'herd:rail-tab-selected', { detail: { tab: name } } ) );
+}
+
+function revisionChangeText( change ) {
+	const title = String( change.after?.name || change.before?.name || change.id || 'Block' ).replace( /^acf\//, '' ).replace( /[-_]/g, ' ' );
+	if ( change.type === 'added' ) return `${ title } added`;
+	if ( change.type === 'removed' ) return `${ title } removed`;
+	if ( change.type === 'moved' ) return `${ title } moved`;
+	if ( change.type === 'type' ) return `Block changed from ${ change.before } to ${ change.after }`;
+	if ( change.type === 'anchor' ) return `${ title } anchor changed`;
+	if ( change.type === 'fields' ) return `${ title } fields changed`;
+	return `${ title } changed`;
+}
+
+/** Load revision metadata only when History is opened, then keep restoration in
+ * WordPress's native revision screen. */
+export function wireRevisionHistory() {
+	const panel = document.getElementById( 'herd-panel-history' );
+	const config = window.HerdEditor;
+	if ( !panel || !config?.postId || !config?.revisionsNonce ) return;
+	let loaded = false;
+	const request = async ( action, fields = {} ) => {
+		const body = new URLSearchParams( { action, nonce: config.revisionsNonce, postId: String( config.postId ), ...fields } );
+		const result = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', body } ).then( ( response ) => response.json() );
+		if ( !result?.success ) throw new Error( result?.data?.message || 'History could not be loaded.' );
+		return result.data;
+	};
+	const renderChanges = ( host, changes, restoreUrl ) => {
+		host.replaceChildren();
+		if ( !changes.length ) host.append( Object.assign( document.createElement( 'p' ), { className: 'herd-history__empty', textContent: 'No block-level changes from the current version.' } ) );
+		else {
+			const list = document.createElement( 'ul' ); list.className = 'herd-history__changes';
+			changes.forEach( ( change ) => {
+				const item = Object.assign( document.createElement( 'li' ), { textContent: revisionChangeText( change ) } );
+				if ( change.type === 'fields' && change.fields?.length ) {
+					const fields = document.createElement( 'ul' );
+					change.fields.forEach( ( field ) => fields.append( Object.assign( document.createElement( 'li' ), { textContent: `${ field.label }: ${ field.before || 'empty' } → ${ field.after || 'empty' }` } ) ) );
+					item.append( fields );
+				}
+				list.append( item );
+			} );
+			host.append( list );
+		}
+		if ( restoreUrl ) {
+			const link = Object.assign( document.createElement( 'a' ), { className: 'button', href: restoreUrl, textContent: 'Open native revision restore' } );
+			host.append( link );
+		}
+	};
+	const load = async () => {
+		if ( loaded ) return;
+		loaded = true;
+		const module = document.createElement( 'section' ); module.className = 'herd-history';
+		module.append( Object.assign( document.createElement( 'p' ), { textContent: 'Loading revisions…' } ) ); panel.prepend( module );
+		try {
+			const { revisions } = await request( 'herd_editor_revisions' );
+			module.replaceChildren();
+			if ( !revisions.length ) { module.append( Object.assign( document.createElement( 'p' ), { textContent: 'No revisions yet.' } ) ); return; }
+			const select = document.createElement( 'select' ); select.setAttribute( 'aria-label', 'Compare revision' );
+			select.append( Object.assign( document.createElement( 'option' ), { value: '', textContent: 'Choose a revision…' } ) );
+			revisions.forEach( ( revision ) => select.append( Object.assign( document.createElement( 'option' ), { value: revision.id, textContent: `${ revision.date } · ${ revision.author }` } ) ) );
+			const results = document.createElement( 'div' ); results.className = 'herd-history__results';
+			select.addEventListener( 'change', async () => {
+				if ( !select.value ) return results.replaceChildren();
+				results.textContent = 'Comparing revisions…';
+				try { const comparison = await request( 'herd_editor_revision_compare', { revisionId: select.value } ); renderChanges( results, comparison.changes || [], comparison.restoreUrl ); } catch ( error ) { results.textContent = error.message; }
+			} );
+			module.append( Object.assign( document.createElement( 'h3' ), { textContent: 'Compare revisions' } ), select, results );
+		} catch ( error ) { module.textContent = error.message; }
+	};
+	window.addEventListener( 'herd:rail-tab-selected', ( event ) => { if ( event.detail?.tab === 'history' ) load(); } );
+	if ( document.getElementById( 'herd-tab-history' )?.getAttribute( 'aria-selected' ) === 'true' ) load();
 }
 
 function buildTabs() {
@@ -154,6 +225,21 @@ function buildTabs() {
 		else if ( step !== 'first' ) next = ( current + step + available.length ) % available.length;
 		selectTab( available, panels, available[ next ].dataset.tab );
 		available[ next ].focus();
+	} );
+	const markDirty = ( name ) => {
+		const tab = available.find( ( candidate ) => candidate.dataset.tab === name );
+		if ( !tab || tab.querySelector( '.herd-rail__dirty' ) ) return;
+		const marker = document.createElement( 'span' );
+		marker.className = 'herd-rail__dirty';
+		marker.textContent = 'Unsaved';
+		tab.appendChild( marker );
+	};
+	/* The originating field identifies its own tab. A domain only says that some
+	 * page setting is dirty and must never paint every tab as the old code did. */
+	window.addEventListener( 'herd:rail-tab-dirty', ( event ) => markDirty( event.detail?.tab ) );
+	window.addEventListener( 'herd:dirty-domains', ( event ) => {
+		const dirty = event.detail?.acfMeta || event.detail?.nativeMeta || event.detail?.core;
+		if ( !dirty ) available.forEach( ( tab ) => tab.querySelector( '.herd-rail__dirty' )?.remove() );
 	} );
 }
 
@@ -347,6 +433,7 @@ export function assembleRail() {
 		wirePublishBox();
 		wireSlugEditor();
 		wireSavedNotice();
+		wireRevisionHistory();
 	} catch ( error ) {
 		// Never strand the editor without a publish box, and never leave the
 		// boot guard holding back a rail that will now never be assembled.

@@ -88,6 +88,7 @@ $herd_saved       = herd_editor_saved_notice( $post );
 		<input type="hidden" name="original_post_status" id="original_post_status" value="<?php echo esc_attr( $post->post_status ); ?>" />
 		<input type="hidden" name="auto_draft" id="auto_draft" value="<?php echo 'auto-draft' === $post->post_status ? '1' : ''; ?>" />
 		<input type="hidden" name="herd-editor" value="1" />
+		<input type="hidden" id="herd_structural_baseline" name="herd_structural_baseline" value="<?php echo esc_attr( herd_editor_structural_baseline( $post ) ); ?>" />
 		<?php if ( ! empty( $herd_active_post_lock ) ) : ?>
 			<input type="hidden" id="active_post_lock" name="active_post_lock" value="<?php echo esc_attr( $herd_active_post_lock ); ?>" />
 		<?php endif; ?>
@@ -247,6 +248,11 @@ $herd_saved       = herd_editor_saved_notice( $post );
 
 		<div class="herd-cols">
 			<main class="herd-main">
+				<?php if ( current_user_can( 'manage_options' ) ) : ?>
+					<p class="herd-governance-notice">
+						<?php esc_html_e( 'Herd structural restrictions apply only in Herd Editor. Authors who can access the Block Editor can still change composition there.', 'herd-editor' ); ?>
+					</p>
+				<?php endif; ?>
 				<div id="herd-editor-root"></div>
 				<?php /* Destination for meta boxes the herd_editor_rail_tabs filter routes to 'main'. */ ?>
 				<div class="herd-main__boxes" id="herd-main-boxes"></div>

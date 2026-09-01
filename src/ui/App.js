@@ -3,7 +3,7 @@
 import { createElement, createPortal, useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { adapterFor, blockMutationPolicy, canAddBlock, createAcfBlock } from '../adapters.js';
 import { DocumentController } from '../controller.js';
-import { changedAttributeIds, parseDocument } from '../document.js';
+import { changedAttributeIds, ensureStructuralIds, parseDocument } from '../document.js';
 import { BarTools } from './CommandBar.js';
 import { BlockRow } from './BlockRow.js';
 import { InsertPoint } from './InsertPoint.js';
@@ -16,10 +16,16 @@ import { searchRows } from './search.js';
 import { outlineRows } from './outline-data.js';
 import { DocumentOutline } from './DocumentOutline.js';
 import { MoveDialog } from './MoveDialog.js';
+import { PreviewDrawer } from './PreviewDrawer.js';
 import { Notice } from './primitives.js';
+import { FormLifecycle } from './form-lifecycle.js';
+import { anyDirty, clearMatchingDomains, dirtyDomainFor, emptyDirtyDomains, markDomain } from './dirty-domains.js';
+import { promoteRecent } from './inserter-preferences.js';
 import { beginSave, endSave, guardBusyClicks, settleSave, watchRestore } from '../save-progress.js';
 import { applySaveResult, buildSaveRequest, classifySaveResult } from '../save-request.js';
 import { decryptRecovery, deleteRecovery, downloadRecovery, encryptionKey, nativeFormValues, readRecovery, recoveryRecordId, restoreNativeFormValues, writeRecovery, encryptRecovery } from '../recovery.js';
+import { normalizeEditorialResults, validateEditorialDocument } from './editorial-validation.js';
+import { duplicationProfile, duplicationReviewValues } from '../duplication.js';
 
 const el = createElement;
 const CORE_ADAPTERS = [ 'paragraph', 'heading', 'html', 'shortcode' ];
@@ -27,7 +33,9 @@ const CORE_ADAPTERS = [ 'paragraph', 'heading', 'html', 'shortcode' ];
 const SETTLE_MS = 2000;
 
 export function HerdEditorApp( { config } ) {
-	const controller = useRef( new DocumentController( parseDocument( config.postContent ) ) ).current;
+	/* IDs are saved with ACF blocks, giving the server a stable identity even
+	 * when two blocks have identical fields. */
+	const controller = useRef( new DocumentController( ensureStructuralIds( parseDocument( config.postContent ) ) ) ).current;
 	const [ generation, setGeneration ] = useState( 0 );
 	const [ formVersions, setFormVersions ] = useState( () => ( {} ) );
 	const [ openPanels, setOpenPanels ] = useState( () => new Set() );
@@ -41,13 +49,20 @@ export function HerdEditorApp( { config } ) {
 	const [ focusedId, setFocusedId ] = useState( null );
 	const [ liftedId, setLiftedId ] = useState( null );
 	const [ drag, setDrag ] = useState( null );
-	const [ nativeDirty, setNativeDirty ] = useState( false );
+	const [ dirtyDomains, setDirtyDomains ] = useState( emptyDirtyDomains );
 	const [ nativeVersion, setNativeVersion ] = useState( 0 );
+	const [ favorites, setFavorites ] = useState( () => config.favoriteBlockNames || [] );
+	const [ recent, setRecent ] = useState( () => {
+		try { return JSON.parse( window.localStorage.getItem( 'herd-editor-recent-blocks' ) || '[]' ); } catch { return []; }
+	} );
 	const [ announcement, setAnnouncement ] = useState( '' );
 	const [ openGap, setOpenGap ] = useState( null );
 	// The bar's View menu, held here so it and an inserter cannot both be open.
 	const [ menuOpen, setMenuOpen ] = useState( false );
-	const [ validationErrors, setValidationErrors ] = useState( [] );
+	const [ validationErrors, setValidationErrors ] = useState( () => validateEditorialDocument( controller.blocks, config ) );
+	// Derived checks can be visible on rows at any time; this records that a save
+	// was actually stopped, so the page-level outcome is not noisy while editing.
+	const [ validationBlocked, setValidationBlocked ] = useState( false );
 	const [ recovery, setRecovery ] = useState( { payload: null, key: null } );
 	const [ recoveryDismissed, setRecoveryDismissed ] = useState( false );
 	const [ saveState, setSaveState ] = useState( 'idle' );
@@ -58,11 +73,13 @@ export function HerdEditorApp( { config } ) {
 	const [ saveError, setSaveError ] = useState( null );
 	const [ search, setSearch ] = useState( '' );
 	const [ movingId, setMovingId ] = useState( null );
+	const [ preview, setPreview ] = useState( null );
 
 	const rowRefs = useRef( new Map() );
 	const searchRef = useRef( null );
 	const searchOrigin = useRef( null );
 	const mountedAcfForms = useRef( new Set() );
+	const formLifecycle = useRef( new FormLifecycle( { diagnostic: ( detail ) => window.dispatchEvent( new CustomEvent( 'herd:form-lifecycle', { detail } ) ) } ) ).current;
 	/* Held in a ref as well as state so the submit handler can persist a recovery
 	 * copy without listing the key as a dependency and re-binding every listener. */
 	const recoveryKeyRef = useRef( null );
@@ -84,10 +101,19 @@ export function HerdEditorApp( { config } ) {
 	const destinations = useMemo( () => movingId ? moveDestinations( controller.blocks, movingId, describeBlock ) : [], [ generation, movingId ] );
 	const rows = useMemo( () => search ? searchRows( controller.blocks, search, config.blockTypes, { acfFields: config.acfFields, validationErrors, duplicateIds } ) : normalRows, [ generation, normalRows, search, validationErrors, duplicateIds ] );
 	const outline = useMemo( () => outlineRows( controller.blocks, config.blockTypes ), [ generation ] );
-	const dirty = controller.dirty || nativeDirty;
+	const dirty = controller.dirty || anyDirty( dirtyDomains );
+	useEffect( () => {
+		window.dispatchEvent( new CustomEvent( 'herd:dirty-domains', { detail: dirtyDomains } ) );
+	}, [ dirtyDomains ] );
 	const counts = blockCounts( controller.blocks );
 	const named = topLevelPositions( controller.blocks );
 	const movingPosition = movingId ? topLevelSlot( controller.blocks, movingId ) + 1 : 0;
+
+	// Editorial results are derived state. Recalculate after structural or field edits;
+	// server preflight adds authoritative ACF/site-policy results before publishing.
+	useEffect( () => {
+		setValidationErrors( ( current ) => [ ...current.filter( ( result ) => result.ruleId === 'acf' || result.ruleId === 'editorial-server' ), ...validateEditorialDocument( controller.blocks, config ) ] );
+	}, [ generation ] );
 
 	useEffect( () => {
 		const onKeyDown = ( event ) => {
@@ -114,9 +140,15 @@ export function HerdEditorApp( { config } ) {
 		if ( content ) content.value = serialized;
 		return serialized;
 	};
-	const registerAcfForm = ( bridge, previous ) => {
+	const evictForms = ( ids ) => {
+		if ( !ids.length ) return;
+		setVisitedAcfPanels( ( current ) => new Set( [ ...current ].filter( ( id ) => !ids.includes( id ) ) ) );
+	};
+	const registerAcfForm = ( id, bridge, previous ) => {
 		if ( previous ) mountedAcfForms.current.delete( previous );
 		if ( bridge ) mountedAcfForms.current.add( bridge );
+		if ( previous ) formLifecycle.unregister( id, previous );
+		if ( bridge ) evictForms( formLifecycle.register( id, bridge, { open: openPanels.has( id ), validation: validationErrors.some( ( error ) => error.blockId === id ) } ) );
 	};
 	const flushAcfForms = () => mountedAcfForms.current.forEach( ( bridge ) => bridge.flush() );
 	/*
@@ -173,7 +205,7 @@ export function HerdEditorApp( { config } ) {
 	const recoveryId = recoveryRecordId( config.currentUserId, config.postId );
 	const recoveryPayload = () => ( { content: controller.serialize(), fields: nativeFormValues( document.getElementById( 'post' ) ), savedMarker: config.saveMarker, createdAt: Date.now() } );
 	const persistRecovery = async () => {
-		if ( ! recoveryKeyRef.current || !( controller.dirty || nativeDirty ) ) return;
+		if ( ! recoveryKeyRef.current || !( controller.dirty || anyDirty( dirtyDomains ) ) ) return;
 		try {
 			const payload = recoveryPayload();
 			const encrypted = await encryptRecovery( payload, recoveryKeyRef.current );
@@ -230,7 +262,7 @@ export function HerdEditorApp( { config } ) {
 		window.addEventListener( 'pagehide', immediate );
 		document.addEventListener( 'visibilitychange', onVisibility );
 		return () => { window.clearTimeout( timer ); window.removeEventListener( 'pagehide', immediate ); document.removeEventListener( 'visibilitychange', onVisibility ); };
-	}, [ generation, nativeDirty, nativeVersion, recovery.key ] );
+	}, [ generation, dirtyDomains, nativeVersion, recovery.key ] );
 
 	/*
 	 * Say that an autosave happened.
@@ -322,7 +354,9 @@ export function HerdEditorApp( { config } ) {
 		const form = document.getElementById( 'post' );
 		const changed = ( event ) => {
 			if ( event.target?.id !== 'content' && ! event.target?.closest?.( '#herd-editor-root' ) ) {
-				setNativeDirty( true );
+				setDirtyDomains( ( current ) => markDomain( current, dirtyDomainFor( event.target ) ) );
+				const panel = event.target?.closest?.( '.herd-rail__panel' );
+				if ( panel?.dataset.panel ) window.dispatchEvent( new CustomEvent( 'herd:rail-tab-dirty', { detail: { tab: panel.dataset.panel } } ) );
 				setNativeVersion( ( value ) => value + 1 );
 			}
 		};
@@ -360,10 +394,11 @@ export function HerdEditorApp( { config } ) {
 			 * would quietly call that edit saved and lose it.
 			 */
 			const snapshot = controller.serialize();
+			const domainSnapshot = { ...dirtyDomains };
 			await persistRecovery();
 
 			const pressed = performance.now();
-			const ids = collectBlocks( controller.blocks ).filter( ( block ) => block.name?.startsWith( 'acf/' ) ).map( ( block ) => block.clientId );
+			const ids = collectBlocks( controller.blocks ).map( ( block ) => block.clientId );
 			let payload;
 			try {
 				/* No Content-Type header: FormData has to set its own, boundary
@@ -401,10 +436,9 @@ export function HerdEditorApp( { config } ) {
 				return;
 			}
 			if ( resultType === 'validation' ) {
-				/* No banner: panels.js renders these against the fields they belong to,
-				 * and the button is what ties that back to the press. */
 				settle( 'failed' );
-				setValidationErrors( result.errors );
+				setValidationErrors( normalizeEditorialResults( result.errors ) );
+				setValidationBlocked( true );
 				const first = result.errors[ 0 ];
 				if ( first.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
 				setAnnouncement( `Publishing blocked: ${ result.errors.length } ACF validation ${ result.errors.length === 1 ? 'error' : 'errors' } need attention.` );
@@ -419,8 +453,9 @@ export function HerdEditorApp( { config } ) {
 			}
 
 			setValidationErrors( [] );
+			setValidationBlocked( false );
 			controller.cleanSource = snapshot;
-			setNativeDirty( false );
+			setDirtyDomains( ( current ) => clearMatchingDomains( current, domainSnapshot ) );
 			applySaveResult( result );
 			/*
 			 * The boot blob is what the command bar and the recovery comparison
@@ -435,7 +470,10 @@ export function HerdEditorApp( { config } ) {
 				isPublished: result.isPublished,
 				viewUrl: result.viewUrl,
 				permalink: result.permalink,
+				structuralBaseline: result.structuralBaseline || config.structuralBaseline,
 			} );
+			const baselineField = document.getElementById( 'herd_structural_baseline' );
+			if ( baselineField && result.structuralBaseline ) baselineField.value = result.structuralBaseline;
 			/* What config.successfulSave used to do on the way back in. The record
 			 * is deleted only on a save the server has confirmed -- doing it in a
 			 * finally, or before the reply, would throw away the copy that exists
@@ -498,7 +536,7 @@ export function HerdEditorApp( { config } ) {
 		 * back arrow -- which is precisely what should be asked about.
 		 */
 		const unload = ( event ) => {
-			if ( controller.dirty || nativeDirty ) {
+			if ( controller.dirty || anyDirty( dirtyDomains ) ) {
 				event.preventDefault();
 				event.returnValue = '';
 			}
@@ -518,7 +556,7 @@ export function HerdEditorApp( { config } ) {
 			window.removeEventListener( 'herd:lock-lost', onLost );
 			window.removeEventListener( 'beforeunload', unload );
 		};
-		}, [ nativeDirty ] );
+		}, [ dirtyDomains ] );
 
 	const restoreRecovery = () => {
 		if ( ! recovery.payload ) return;
@@ -526,7 +564,7 @@ export function HerdEditorApp( { config } ) {
 		controller.index = 0;
 		controller.cleanSource = config.postContent;
 		restoreNativeFormValues( document.getElementById( 'post' ), recovery.payload.fields );
-		setNativeDirty( true ); refresh(); setRecovery( ( current ) => ( { ...current, payload: null } ) );
+		setDirtyDomains( ( current ) => markDomain( current, 'nativeMeta' ) ); refresh(); setRecovery( ( current ) => ( { ...current, payload: null } ) );
 	};
 	const discardRecovery = async () => { await deleteRecovery( recoveryId ); setRecovery( ( current ) => ( { ...current, payload: null } ) ); };
 
@@ -541,6 +579,7 @@ export function HerdEditorApp( { config } ) {
 		 * which direction this press took. */
 		if ( retainAcfForm ) setVisitedAcfPanels( ( current ) => current.has( id ) ? current : new Set( current ).add( id ) );
 		toggleIn( setOpenPanels )( id );
+		if ( retainAcfForm ) evictForms( formLifecycle.update( id, { open: !openPanels.has( id ) } ) );
 	};
 	const toggleChildren = toggleIn( setExpandedChildren );
 
@@ -590,8 +629,14 @@ export function HerdEditorApp( { config } ) {
 	};
 
 	/** Move a top-level block to a slot among its named siblings. */
+	const allowed = ( action, block = null ) => {
+		const policy = config.structuralPolicy || {};
+		if ( policy[ action ] === false ) return false;
+		const blockPolicy = policy.blocks?.[ block?.name ];
+		return blockPolicy?.[ action ] !== false;
+	};
 	const moveToSlot = ( block, toSlot ) => {
-		if ( ! blockMutationPolicy( block, config.templateLock ).move ) return false;
+		if ( ! allowed( 'move', block ) || ! blockMutationPolicy( block, config.templateLock ).move ) return false;
 		const index = moveTargetIndex( controller.blocks, block.clientId, toSlot );
 		if ( index === null ) return false;
 		controller.moveBlock( block.clientId, null, index );
@@ -612,7 +657,7 @@ export function HerdEditorApp( { config } ) {
 
 	/** Add a new block at a slot among the named top-level blocks. */
 	const insertAt = ( slot, name ) => {
-		if ( ! blockMutationPolicy( null, config.templateLock ).insert || ! canAddBlock( name, config.blockTypes[ name ], counts ) ) return;
+		if ( ! allowed( 'insert', { name } ) || ! blockMutationPolicy( null, config.templateLock ).insert || ! canAddBlock( name, config.blockTypes[ name ], counts ) ) return;
 		const block = createAcfBlock( name );
 		const index = insertPositionForSlot( controller.blocks, slot );
 		setOpenGap( null );
@@ -622,6 +667,11 @@ export function HerdEditorApp( { config } ) {
 			block.clientId
 		);
 		setOpenPanels( ( current ) => new Set( current ).add( block.clientId ) );
+		setRecent( ( current ) => {
+			const next = promoteRecent( current, name );
+			try { window.localStorage.setItem( 'herd-editor-recent-blocks', JSON.stringify( next ) ); } catch {}
+			return next;
+		} );
 	};
 
 	/** Props shared by every insertion point; only the slot differs. */
@@ -635,8 +685,21 @@ export function HerdEditorApp( { config } ) {
 		},
 		onClose: () => setOpenGap( null ),
 		catalog: config.blockTypes,
+		structuralPolicy: config.structuralPolicy || {},
 		counts,
 		groupOrder: config.blockGroupOrder || [],
+		favorites,
+		recent,
+		onToggleFavorite: async ( name ) => {
+			const next = favorites.includes( name ) ? favorites.filter( ( item ) => item !== name ) : [ ...favorites, name ];
+			setFavorites( next );
+			try {
+				const body = new URLSearchParams( { action: 'herd_editor_save_favorite_blocks', nonce: config.favoriteBlocksNonce || '', favorites: JSON.stringify( next ) } );
+				const response = await fetch( window.ajaxurl, { method: 'POST', credentials: 'same-origin', body } );
+				const payload = await response.json();
+				if ( payload?.success ) setFavorites( payload.data.favorites || [] );
+			} catch {}
+		},
 		onInsert: ( name ) => insertAt( slot, name ),
 	} );
 
@@ -699,6 +762,10 @@ export function HerdEditorApp( { config } ) {
 		setOpenPanels( new Set() );
 		setAnnouncement( 'All blocks collapsed.' );
 	};
+	const collapseInactiveForms = () => {
+		evictForms( formLifecycle.collapseInactive() );
+		setAnnouncement( 'Safe inactive forms released.' );
+	};
 
 	const panelFor = ( row, adapter ) => {
 		if ( adapter.id === 'acf' ) {
@@ -709,9 +776,12 @@ export function HerdEditorApp( { config } ) {
 				generation: formVersions[ row.block.clientId ] || 0,
 				validationErrors: validationErrors.filter( ( error ) => error.blockId === row.block.clientId ),
 				getData: () => controller.find( row.block.clientId )?.attributes?.data || {},
-				onBridgeMount: registerAcfForm,
+				onBridgeMount: ( bridge, previous ) => registerAcfForm( row.block.clientId, bridge, previous ),
 				onAttributes: ( attributes ) => {
 					controller.replaceAttributes( row.block.clientId, attributes );
+					setPreview( ( current ) => current?.block.clientId === row.block.clientId
+						? { ...current, block: controller.find( row.block.clientId ), key: `${ row.block.name }-${ JSON.stringify( controller.find( row.block.clientId )?.attributes?.data || {} ) }` }
+						: current );
 					/* The sweep's verdict was about the values this edit has just
 					 * replaced. Left on screen beside a field that now holds an image,
 					 * it goes on saying the field is empty. */
@@ -719,6 +789,7 @@ export function HerdEditorApp( { config } ) {
 						? current.filter( ( error ) => error.blockId !== row.block.clientId )
 						: current );
 					refresh();
+					evictForms( formLifecycle.update( row.block.clientId, { validation: false } ) );
 				},
 			} );
 		}
@@ -743,6 +814,7 @@ export function HerdEditorApp( { config } ) {
 	const barTarget = document.getElementById( 'herd-bar-react' );
 	const barTools = el( BarTools, {
 		dirty,
+		dirtyDomains: { ...dirtyDomains, block: controller.dirty ? 1 : dirtyDomains.block },
 		saveState,
 		savedLabel: config.modifiedHuman || 'saved',
 		statusLabel: config.statusLabel || 'Draft',
@@ -785,6 +857,14 @@ export function HerdEditorApp( { config } ) {
 			document.querySelector( '#post-lock-dialog .wp-tab-last' )?.href && ' · ',
 			el( 'button', { type: 'button', className: 'button-link', onClick: restoreRecovery }, 'Restore' ), ' · ',
 			el( 'button', { type: 'button', className: 'button-link', onClick: () => downloadRecovery( recoveryPayload(), config.postId ) }, 'Export' ) ),
+		validationBlocked && validationErrors.length > 0 && el( Notice, { status: 'error' },
+			`Not saved: ${ validationErrors.filter( ( result ) => result.severity === 'error' ).length } ${ validationErrors.filter( ( result ) => result.severity === 'error' ).length === 1 ? 'issue needs' : 'issues need' } attention before this can be published. `,
+			el( 'button', {
+				type: 'button', className: 'button-link', onClick: () => {
+					const first = validationErrors.find( ( result ) => result.severity === 'error' ) || validationErrors[ 0 ];
+					if ( first?.blockId ) { setOpenPanels( ( current ) => new Set( current ).add( first.blockId ) ); focusId( first.blockId ); }
+				},
+			}, 'Show first issue' ) ),
 
 		el( 'p', { className: 'screen-reader-text', role: 'status', 'aria-live': 'polite', 'aria-atomic': 'true' }, announcement ),
 
@@ -814,6 +894,7 @@ export function HerdEditorApp( { config } ) {
 			el( 'span', { className: 'herd-toolbar__count' }, `${ named.length } ${ named.length === 1 ? 'block' : 'blocks' }` ),
 			el( 'span', { className: 'herd-toolbar__acts' },
 				el( 'button', { type: 'button', className: 'herd-linkbtn', onClick: collapseAll }, 'Collapse all' ),
+				el( 'button', { type: 'button', className: 'herd-linkbtn', onClick: collapseInactiveForms }, 'Collapse inactive forms' ),
 				el( 'button', { type: 'button', className: 'herd-linkbtn', onClick: expandAll }, 'Expand all' ) ) ),
 
 		rows.length === 0 && el( Notice, { status: 'info' }, search ? 'No blocks match this search.' : 'This document has no blocks. Add an ACF block to begin.' ),
@@ -824,7 +905,7 @@ export function HerdEditorApp( { config } ) {
 			const adapter = adapterFor( block, metadata );
 			const slot = row.ancestors.length ? -1 : topLevelSlot( controller.blocks, block.clientId );
 			const policy = blockMutationPolicy( block, config.templateLock );
-			const structural = adapter.structural && slot >= 0 && ( policy.move || policy.remove || policy.insert );
+			const structural = adapter.structural && slot >= 0 && ( ( policy.move && allowed( 'move', block ) ) || ( policy.remove && allowed( 'remove', block ) ) || ( policy.insert && allowed( 'insert', block ) ) );
 			const title = nameOf( block );
 			const anchor = anchorOf( block );
 			const retainAcfForm = adapter.id === 'acf' && visitedAcfPanels.has( block.clientId );
@@ -839,7 +920,7 @@ export function HerdEditorApp( { config } ) {
 				icon: iconOf( metadata ),
 				badge: adapter.editable ? null : ( metadata.readOnly ? 'Open in Block Editor' : ( metadata.registered ? 'Read only' : 'Unsupported' ) ),
 				hidden: isHidden( block ),
-				warning: duplicateIds.has( anchor ) ? 'Duplicate anchor' : null,
+				warning: validationErrors.some( ( result ) => result.blockId === block.clientId && result.severity === 'error' ) ? 'Needs attention' : ( duplicateIds.has( anchor ) ? 'Duplicate anchor' : null ),
 				searchMatch: row.matches,
 				matchLabel: row.match?.location,
 				searchTerm: search,
@@ -847,13 +928,13 @@ export function HerdEditorApp( { config } ) {
 				keepBodyMounted: retainAcfForm,
 				childrenExpanded: expandedChildren.has( block.clientId ),
 				hasChildren: block.innerBlocks.length > 0,
-				canReorder: structural && policy.move && named.length > 1,
+				canReorder: structural && policy.move && allowed( 'move', block ) && named.length > 1,
 				isLifted: liftedId === block.clientId,
 				isDragging: drag?.id === block.clientId,
 				dropEdge: drag && drag.overId === block.clientId && drag.id !== block.clientId ? ( drag.after ? 'after' : 'before' ) : null,
 				structural,
-				duplicateDisabled: ! policy.insert || metadata.multiple === false && counts[ block.name ] > 0,
-				deleteDisabled: ! policy.remove,
+				duplicateDisabled: ! policy.insert || ! allowed( 'duplicate', block ) || duplicationProfile( config.duplicationProfiles, block ).policy === 'blocked' || metadata.multiple === false && counts[ block.name ] > 0,
+				deleteDisabled: ! policy.remove || ! allowed( 'remove', block ),
 				tabIndex: focusedId === null ? ( index === 0 ? 0 : -1 ) : ( focusedId === block.clientId ? 0 : -1 ),
 				registerRef: ( node ) => node ? rowRefs.current.set( block.clientId, node ) : rowRefs.current.delete( block.clientId ),
 				onFocus: () => setFocusedId( block.clientId ),
@@ -891,9 +972,13 @@ export function HerdEditorApp( { config } ) {
 					moveToSlot( source, dropSlot( fromSlot, slot, drag.after ) );
 				},
 				onDuplicate: () => {
-					if ( ! policy.insert ) return;
+					if ( ! policy.insert || ! allowed( 'duplicate', block ) ) return;
+					const profile = duplicationProfile( config.duplicationProfiles, block );
+					if ( profile.policy === 'blocked' ) { setAnnouncement( profile.message || `${ title } cannot be duplicated.` ); return; }
+					const review = duplicationReviewValues( block, config.duplicationProfiles );
+					if ( profile.policy === 'review' && ! window.confirm( `${ profile.message || `Review ${ title } before duplicating.` }${ review.length ? ` The copy will retain: ${ review.join( ', ' ) }.` : '' }` ) ) return;
 					const before = new Set( controller.blocks.map( ( candidate ) => candidate.clientId ) );
-					controller.duplicateBlock( block.clientId );
+					controller.duplicateBlock( block.clientId, null, null, config.duplicationProfiles || {} );
 					const clone = controller.blocks.find( ( candidate ) => ! before.has( candidate.clientId ) );
 					refresh();
 					setAnnouncement( `${ title } duplicated.` );
@@ -902,9 +987,10 @@ export function HerdEditorApp( { config } ) {
 						focusId( clone.clientId );
 					}
 				},
-				onMove: structural && policy.move && named.length > 1 ? () => setMovingId( block.clientId ) : null,
+				onMove: structural && policy.move && allowed( 'move', block ) && named.length > 1 ? () => setMovingId( block.clientId ) : null,
+				onPreview: adapter.id === 'acf' && metadata.registered ? ( event ) => setPreview( { block, postId: config.postId, title, key: `${ block.name }-${ JSON.stringify( block.attributes?.data || {} ) }`, origin: event.currentTarget } ) : null,
 				onDelete: () => {
-					if ( ! policy.remove ) return;
+					if ( ! policy.remove || ! allowed( 'remove', block ) ) return;
 					if ( ! window.confirm( `Delete ${ title }? You can undo this action.` ) ) return;
 					const fallback = named[ slot + 1 ] || named[ slot - 1 ];
 					setOpenPanels( ( current ) => {
@@ -926,6 +1012,7 @@ export function HerdEditorApp( { config } ) {
 							permalink: config.permalink || config.viewUrl || '',
 							isDuplicate: duplicateIds.has( anchor ),
 							onAnchor: ( value ) => {
+								if ( ! allowed( 'anchor', block ) ) return;
 								controller.replaceAttributes( block.clientId, { anchor: value } );
 								refresh();
 							},
@@ -936,7 +1023,7 @@ export function HerdEditorApp( { config } ) {
 
 			// Only top-level rows carry an insertion point; an expanded child row
 			// sits inside its parent, where there is no slot to insert into.
-			return slot >= 0 && blockMutationPolicy( null, config.templateLock ).insert
+			return slot >= 0 && allowed( 'insert' ) && blockMutationPolicy( null, config.templateLock ).insert
 				? [ el( InsertPoint, insertPointFor( slot, titleAt( slot - 1 ) ) ), blockRow ]
 				: [ blockRow ];
 		} ).concat( !search && el( InsertPoint, {
@@ -948,7 +1035,7 @@ export function HerdEditorApp( { config } ) {
 			preferAbove: true,
 		} ) ) ),
 
-		!search && el( 'button', {
+		!search && allowed( 'insert' ) && el( 'button', {
 			type: 'button',
 			className: 'herd-inserter__tail',
 			onClick: () => {
@@ -958,6 +1045,14 @@ export function HerdEditorApp( { config } ) {
 		}, '+ Add block' ) ),
 
 		el( DocumentOutline, { rows: outline, onSelect: selectOutlineRow } ) ),
+		/* Portalled for the reason the move dialog is: rendered inside .herd-main,
+		 * this drew underneath the sticky rail. */
+		preview && createPortal( el( PreviewDrawer, {
+			preview,
+			nonce: config.previewNonce,
+			onClose: () => setPreview( null ),
+			onEdit: () => { setOpenPanels( ( current ) => new Set( current ).add( preview.block.clientId ) ); setPreview( null ); },
+		} ), document.body ),
 		movingBlock && createPortal( el( MoveDialog, {
 			title: nameOf( movingBlock ),
 			summary: blockSummary( movingBlock, adapterFor( movingBlock, config.blockTypes ).id, bodyFor( movingBlock ) ),

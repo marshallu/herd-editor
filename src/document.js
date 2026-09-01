@@ -6,6 +6,32 @@ export function createClientId() {
 	return `herd-${ Date.now().toString( 36 ) }-${ nextClientId++ }`;
 }
 
+/** An opaque, serialized identity for Herd-managed blocks. It is intentionally
+ * unrelated to the ephemeral clientId used by React. */
+export function createStructuralId() {
+	if ( globalThis.crypto?.randomUUID ) return `herd-${ globalThis.crypto.randomUUID() }`;
+	return `herd-${ Date.now().toString( 36 ) }-${ Math.random().toString( 36 ).slice( 2 ) }`;
+}
+
+export function ensureStructuralIds( blocks ) {
+	let changed = false;
+	const next = ( blocks || [] ).map( ( block ) => {
+		const children = ensureStructuralIds( block.innerBlocks || [] );
+		const managed = block.name?.startsWith( 'acf/' );
+		const needsId = managed && !/^[a-z0-9-]{12,}$/i.test( String( block.attributes?.herdStructuralId || '' ) );
+		if ( !needsId && children === block.innerBlocks ) return block;
+		changed = true;
+		return {
+			...block,
+			attributes: needsId ? { ...block.attributes, herdStructuralId: createStructuralId() } : block.attributes,
+			innerBlocks: children,
+			changed: block.changed || needsId || children !== block.innerBlocks,
+			attributesChanged: block.attributesChanged || needsId,
+		};
+	} );
+	return changed ? next : blocks;
+}
+
 function attributesFromToken( token ) {
 	if ( ! token.attrsSource ) return {};
 	try { return JSON.parse( token.attrsSource.trim() ); } catch { return {}; }
@@ -192,6 +218,7 @@ export function cloneBlock( block ) {
 	const attributes = structuredClone( block.attributes || {} );
 	const hadAnchor = 'anchor' in attributes;
 	delete attributes.anchor;
+	if ( block.name?.startsWith( 'acf/' ) ) attributes.herdStructuralId = createStructuralId();
 	const innerBlocks = ( block.innerBlocks || [] ).map( cloneBlock );
 	// A parent that re-serializes from `source` would put a child's anchor back,
 	// so a drop anywhere below has to reach every ancestor of it.

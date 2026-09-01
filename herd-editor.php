@@ -50,17 +50,20 @@ function herd_editor_has_acf_pro() {
 
 /** A JSON-safe schema map limited to the ACF blocks in this document. */
 function herd_editor_search_fields( $content ) {
-	if ( ! function_exists( 'acf_get_block_fields' ) ) return array();
+	if ( ! function_exists( 'acf_get_block_fields' ) ) { return array();
+	}
 	$blocks = array();
 	herd_editor_acf_blocks_from_tree( parse_blocks( (string) $content ), $blocks );
 	$map = array();
 	foreach ( $blocks as $block ) {
 		$fields = (array) acf_get_block_fields( array( 'name' => (string) $block['blockName'] ) );
 		foreach ( $fields as $field ) {
-			if ( empty( $field['key'] ) ) continue;
+			if ( empty( $field['key'] ) ) { continue;
+			}
 			$choices = array();
 			foreach ( (array) ( $field['choices'] ?? array() ) as $value => $label ) {
-				if ( is_scalar( $value ) && is_scalar( $label ) ) $choices[ (string) $value ] = wp_strip_all_tags( (string) $label );
+				if ( is_scalar( $value ) && is_scalar( $label ) ) { $choices[ (string) $value ] = wp_strip_all_tags( (string) $label );
+				}
 			}
 			$map[ (string) $field['key'] ] = array( 'label' => wp_strip_all_tags( (string) ( $field['label'] ?? '' ) ), 'choices' => $choices );
 		}
@@ -209,6 +212,96 @@ function herd_editor_active_post_lock( $post_id ) {
 }
 
 /**
+ * The composition permissions Herd applies. Gutenberg remains deliberately
+ * outside this policy; administrators are told that this is a Herd-only guard.
+ * A site can set a default or per-block action map with this filter.
+ */
+function herd_editor_structural_policy( $post ) {
+	$policy = array(
+		'insert' => true, 'remove' => true, 'duplicate' => true, 'move' => true,
+		'anchor' => true, 'visibility' => true, 'blocks' => array(),
+	);
+	$policy = (array) apply_filters( 'herd_editor_structural_policy', $policy, $post, wp_get_current_user() );
+	foreach ( array( 'insert', 'remove', 'duplicate', 'move', 'anchor', 'visibility' ) as $action ) {
+		$policy[ $action ] = ! isset( $policy[ $action ] ) || (bool) $policy[ $action ];
+	}
+	$policy['blocks'] = is_array( isset( $policy['blocks'] ) ? $policy['blocks'] : null ) ? $policy['blocks'] : array();
+	return $policy;
+}
+
+/** Return structural facts keyed by serialized Herd IDs. */
+function herd_editor_structural_facts( $blocks, $parent_path = '', &$facts = array() ) {
+	foreach ( (array) $blocks as $index => $block ) {
+		$name = isset( $block['blockName'] ) ? (string) $block['blockName'] : '';
+		$attrs = isset( $block['attrs'] ) ? (array) $block['attrs'] : array();
+		$id = isset( $attrs['herdStructuralId'] ) ? (string) $attrs['herdStructuralId'] : '';
+		$path = $parent_path . '/' . $index;
+		if ( 0 === strpos( $name, 'acf/' ) && preg_match( '/^herd-[a-z0-9-]{8,}$/i', $id ) ) {
+			$data = isset( $attrs['data'] ) && is_array( $attrs['data'] ) ? $attrs['data'] : array();
+			$facts[ $id ] = array( 'name' => $name, 'path' => $path, 'anchor' => isset( $attrs['anchor'] ) ? (string) $attrs['anchor'] : '', 'visibility' => $data );
+		}
+		herd_editor_structural_facts( isset( $block['innerBlocks'] ) ? $block['innerBlocks'] : array(), $path, $facts );
+	}
+	return $facts;
+}
+
+/** Issue a signed user/post-bound snapshot of structural facts. */
+function herd_editor_structural_baseline( $post ) {
+	$facts = herd_editor_structural_facts( parse_blocks( (string) $post->post_content ) );
+	$payload = array( 'post' => (int) $post->ID, 'user' => get_current_user_id(), 'facts' => $facts );
+	return base64_encode( wp_json_encode( $payload ) ) . '.' . hash_hmac( 'sha256', wp_json_encode( $payload ), wp_salt( 'auth' ) );
+}
+
+/** Validate a supplied baseline and reject policy-prohibited changes. */
+function herd_editor_validate_structural_change( $post, $content, $token ) {
+	$parts = explode( '.', (string) $token, 2 );
+	$encoded = base64_decode( $parts[0], true );
+	if ( false === $encoded ) {
+		$encoded = '';
+	}
+	if ( 2 !== count( $parts ) || ! hash_equals( hash_hmac( 'sha256', $encoded, wp_salt( 'auth' ) ), $parts[1] ) ) { return __( 'The structural baseline has expired. Reload before saving.', 'herd-editor' );
+	}
+	$baseline = json_decode( base64_decode( $parts[0], true ), true );
+	if ( ! is_array( $baseline ) || (int) ( $baseline['post'] ?? 0 ) !== (int) $post->ID || (int) ( $baseline['user'] ?? 0 ) !== get_current_user_id() ) { return __( 'The structural baseline does not belong to this editor session.', 'herd-editor' );
+	}
+	$before = (array) ( $baseline['facts'] ?? array() );
+	$after = herd_editor_structural_facts( parse_blocks( (string) $content ) );
+	/* Legacy documents receive IDs on their first Herd save. There is no stable
+	 * identity to compare during that one migration save; later saves are fully
+	 * enforced from the serialized IDs. */
+	if ( empty( $before ) ) {
+		return '';
+	}
+	$policy = herd_editor_structural_policy( $post );
+	$visibility_field = (string) apply_filters( 'herd_editor_structural_visibility_field', herd_editor_visibility_field(), $post );
+	$allowed = function( $action, $fact ) use ( $policy ) {
+		if ( empty( $policy[ $action ] ) ) { return false;
+		}
+		$name_policy = isset( $policy['blocks'][ $fact['name'] ] ) && is_array( $policy['blocks'][ $fact['name'] ] ) ? $policy['blocks'][ $fact['name'] ] : array();
+		return ! isset( $name_policy[ $action ] ) || (bool) $name_policy[ $action ];
+	};
+	foreach ( $before as $id => $fact ) {
+		if ( ! isset( $after[ $id ] ) && ! $allowed( 'remove', $fact ) ) { return __( 'Removing this block is not permitted in Herd Editor.', 'herd-editor' );
+		}
+		if ( isset( $after[ $id ] ) ) {
+			$next = $after[ $id ];
+			if ( $next['name'] !== $fact['name'] && ! $allowed( 'move', $fact ) ) { return __( 'Changing the block structure is not permitted in Herd Editor.', 'herd-editor' );
+			}
+			if ( $next['path'] !== $fact['path'] && ! $allowed( 'move', $fact ) ) { return __( 'Moving this block is not permitted in Herd Editor.', 'herd-editor' );
+			}
+			if ( $next['anchor'] !== $fact['anchor'] && ! $allowed( 'anchor', $fact ) ) { return __( 'Changing block anchors is not permitted in Herd Editor.', 'herd-editor' );
+			}
+			if ( $visibility_field && ( $next['visibility'][ $visibility_field ] ?? null ) !== ( $fact['visibility'][ $visibility_field ] ?? null ) && ! $allowed( 'visibility', $fact ) ) { return __( 'Changing block visibility is not permitted in Herd Editor.', 'herd-editor' );
+			}
+		}
+	}
+	foreach ( $after as $id => $fact ) { if ( ! isset( $before[ $id ] ) && ! $allowed( 'insert', $fact ) ) { return __( 'Adding blocks is not permitted in Herd Editor.', 'herd-editor' );
+	}
+	}
+	return '';
+}
+
+/**
  * Reject a stale Herd submission before post.php can write post content or meta.
  *
  * Core's lock check deliberately reports only *other* users. Herd also verifies
@@ -308,6 +401,14 @@ function herd_editor_acf_blocks_from_tree( $blocks, &$result ) {
 			$result[] = $block;
 		}
 		herd_editor_acf_blocks_from_tree( isset( $block['innerBlocks'] ) ? $block['innerBlocks'] : array(), $result );
+	}
+}
+
+/** Flatten every block in document order for client-id result mapping. */
+function herd_editor_blocks_from_tree( $blocks, &$result ) {
+	foreach ( (array) $blocks as $block ) {
+		$result[] = $block;
+		herd_editor_blocks_from_tree( isset( $block['innerBlocks'] ) ? $block['innerBlocks'] : array(), $result );
 	}
 }
 
@@ -566,12 +667,16 @@ function herd_editor_normalize_saved_blocks_callback( $matches ) {
 /** Validate all ACF block values, including forms that Herd has not mounted. */
 function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
 	$blocks = array();
-	herd_editor_acf_blocks_from_tree( parse_blocks( (string) $content ), $blocks );
+	$all_blocks = array();
+	$tree = parse_blocks( (string) $content );
+	herd_editor_acf_blocks_from_tree( $tree, $blocks );
+	herd_editor_blocks_from_tree( $tree, $all_blocks );
 	$errors = array();
 	if ( ! function_exists( 'acf_get_block_fields' ) || ! function_exists( 'acf_validate_value' ) || ! function_exists( 'acf_setup_meta' ) ) {
 		return $errors;
 	}
 	foreach ( $blocks as $index => $block ) {
+		$document_index = array_search( $block, $all_blocks, true );
 		/* The document under validation has not been through content_save_pre, so
 		 * its blocks still carry whatever the browser last wrote — for an edited
 		 * block, field keys over the flat data it was loaded with. Handed to ACF
@@ -604,15 +709,61 @@ function herd_editor_validate_document_acf( $content, $client_ids = array() ) {
 			$reported = acf_get_validation_errors();
 			if ( true === $valid && empty( $reported ) ) { continue; }
 			$errors[] = array(
-				'blockId' => isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '',
+				'ruleId' => 'acf',
+				'severity' => 'error',
+				'blockId' => false !== $document_index && isset( $client_ids[ $document_index ] ) ? sanitize_key( $client_ids[ $document_index ] ) : '',
 				'field' => $field['key'],
 				'message' => ! empty( $reported[0]['message'] ) ? (string) $reported[0]['message'] : __( 'This field is required.', 'herd-editor' ),
+				'help' => '',
 			);
 		}
 		acf_reset_validation_errors();
 		acf_reset_meta( $block_id );
 	}
 	return $errors;
+}
+
+/** Built-in editorial checks which can be evaluated from serialized blocks. */
+function herd_editor_validate_document_editorial( $content, $client_ids = array() ) {
+	$flat = array();
+	herd_editor_blocks_from_tree( parse_blocks( (string) $content ), $flat );
+	$anchors = array();
+	$results = array();
+	foreach ( $flat as $index => $block ) {
+		$anchor = isset( $block['attrs']['anchor'] ) ? trim( (string) $block['attrs']['anchor'] ) : '';
+		if ( '' === $anchor ) { continue; }
+		$id = isset( $client_ids[ $index ] ) ? sanitize_key( $client_ids[ $index ] ) : '';
+		if ( isset( $anchors[ $anchor ] ) ) {
+			foreach ( array( $anchors[ $anchor ], $id ) as $block_id ) {
+				$results[] = array(
+					'ruleId' => 'duplicate-anchor',
+					'severity' => 'error',
+					'blockId' => $block_id,
+					'field' => '',
+					/* translators: %s: duplicate anchor value. */
+					'message' => sprintf( __( 'The anchor "%s" is used more than once.', 'herd-editor' ), $anchor ),
+					'help' => __( 'Anchors must be unique so jump links reach the intended block.', 'herd-editor' ),
+				);
+			}
+		} else { $anchors[ $anchor ] = $id; }
+	}
+	/** Filter normalized editorial results. Rules must be JSON-safe data. */
+	return (array) apply_filters( 'herd_editor_editorial_results', $results, $content, $client_ids );
+}
+
+/** Declarative duplication policies published to the browser. */
+function herd_editor_duplication_profiles() {
+	$profiles = (array) apply_filters( 'herd_editor_duplication_profiles', array() );
+	foreach ( $profiles as $name => $profile ) {
+		if ( ! is_array( $profile ) ) { unset( $profiles[ $name ] ); continue; }
+		$profiles[ $name ] = array(
+			'policy' => in_array( isset( $profile['policy'] ) ? $profile['policy'] : 'safe', array( 'safe', 'review', 'blocked' ), true ) ? $profile['policy'] : 'safe',
+			'clear' => array_values( array_filter( array_map( 'sanitize_key', isset( $profile['clear'] ) ? (array) $profile['clear'] : array() ) ) ),
+			'warn' => array_values( array_filter( array_map( 'sanitize_key', isset( $profile['warn'] ) ? (array) $profile['warn'] : array() ) ) ),
+			'message' => isset( $profile['message'] ) ? sanitize_text_field( $profile['message'] ) : '',
+		);
+	}
+	return $profiles;
 }
 
 /**
@@ -701,6 +852,14 @@ function herd_editor_ajax_save_post() {
 	if ( $lock ) {
 		wp_send_json_success( array( 'ok' => false, 'lock' => $lock ) );
 	}
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Gutenberg markup is parsed, never output here.
+	$submitted_content = isset( $_POST['content'] ) ? wp_unslash( $_POST['content'] ) : '';
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- signed opaque session value.
+	$structural_baseline = isset( $_POST['herd_structural_baseline'] ) ? wp_unslash( $_POST['herd_structural_baseline'] ) : '';
+	$structural_error = herd_editor_validate_structural_change( $post, $submitted_content, $structural_baseline );
+	if ( $structural_error ) {
+		wp_send_json_success( array( 'ok' => false, 'message' => $structural_error ) );
+	}
 
 	/*
 	 * Whether this is a publish transition is the browser's answer to give.
@@ -724,8 +883,9 @@ function herd_editor_ajax_save_post() {
 		// Client ids are matched against the parsed tree, never echoed or stored.
 		// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
 		$ids = isset( $_POST['clientIds'] ) && is_array( $_POST['clientIds'] ) ? wp_unslash( $_POST['clientIds'] ) : array();
-		$errors  = herd_editor_validate_document_acf( $content, $ids );
-		if ( $errors ) {
+		$errors  = array_merge( herd_editor_validate_document_acf( $content, $ids ), herd_editor_validate_document_editorial( $content, $ids ) );
+		$blocking = array_filter( $errors, function( $error ) { return ! isset( $error['severity'] ) || 'error' === $error['severity']; } );
+		if ( $blocking ) {
 			wp_send_json_success( array( 'ok' => false, 'errors' => $errors ) );
 		}
 	}
@@ -791,11 +951,239 @@ function herd_editor_ajax_save_post() {
 			/* The save renewed the lock; hand the new token back so the
 			 * watchdog in src/post-lock.js measures against this one. */
 			'lock'          => herd_editor_active_post_lock( $saved_id ),
+			'structuralBaseline' => herd_editor_structural_baseline( $post ),
 			'editUrl'       => herd_editor_url( $saved_id ),
 		)
 	);
 }
 add_action( 'wp_ajax_herd_editor_save_post', 'herd_editor_ajax_save_post' );
+
+/** Create a short-lived, user-bound iframe preview of unsaved ACF attributes. */
+function herd_editor_ajax_create_preview() {
+	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$post = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) { wp_send_json_error( array( 'message' => __( 'You cannot preview this post.', 'herd-editor' ) ), 403 );
+	}
+	check_ajax_referer( 'herd_editor_preview_' . $post_id, 'nonce' );
+	$name = isset( $_POST['blockName'] ) ? sanitize_text_field( wp_unslash( $_POST['blockName'] ) ) : '';
+	$type = $name ? WP_Block_Type_Registry::get_instance()->get_registered( $name ) : null;
+	if ( ! $type || 0 !== strpos( $name, 'acf/' ) ) { wp_send_json_error( array( 'message' => __( 'Only registered ACF blocks can be previewed.', 'herd-editor' ) ), 400 );
+	}
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- decoded JSON becomes block attributes, never HTML.
+	$data = isset( $_POST['data'] ) ? json_decode( wp_unslash( $_POST['data'] ), true ) : array();
+	if ( ! is_array( $data ) ) { wp_send_json_error( array( 'message' => __( 'The preview data was invalid.', 'herd-editor' ) ), 400 );
+	}
+	$token = wp_generate_password( 32, false, false );
+	set_transient( 'herd_preview_' . $token, array( 'post' => $post_id, 'user' => get_current_user_id(), 'name' => $name, 'data' => $data ), 10 * MINUTE_IN_SECONDS );
+	wp_send_json_success( array(
+		'token' => $token,
+		'frameUrl' => add_query_arg( array( 'action' => 'herd_editor_preview_frame', 'token' => $token ), admin_url( 'admin-ajax.php' ) ),
+		'description' => wp_strip_all_tags( (string) $type->description ),
+		'empty' => empty( $data ),
+	) );
+}
+add_action( 'wp_ajax_herd_editor_create_preview', 'herd_editor_ajax_create_preview' );
+
+/** Same-origin frame target; token ownership is checked again when it renders. */
+function herd_editor_ajax_preview_frame() {
+	$token = isset( $_GET['token'] ) ? sanitize_text_field( wp_unslash( $_GET['token'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$preview = $token ? get_transient( 'herd_preview_' . $token ) : false;
+	if ( ! is_array( $preview ) || (int) $preview['user'] !== get_current_user_id() || ! current_user_can( 'edit_post', (int) $preview['post'] ) ) { wp_die( esc_html__( 'This preview has expired.', 'herd-editor' ), 403 );
+	}
+	$block = array( 'blockName' => $preview['name'], 'attrs' => array( 'name' => $preview['name'], 'data' => $preview['data'] ), 'innerBlocks' => array(), 'innerHTML' => '', 'innerContent' => array() );
+	nocache_headers();
+	header( 'Content-Type: text/html; charset=' . get_option( 'blog_charset' ) );
+
+	/*
+	 * The frame is a front-end document, and a block styled by nothing is a
+	 * preview of nothing -- the theme's stylesheet is what decides how the block
+	 * looks. `wp_enqueue_scripts` is the hook a real front-end request fires
+	 * before wp_head(), so firing it here is what gets the theme to register the
+	 * same assets; `enqueue_block_assets` is its counterpart for block styles.
+	 *
+	 * Both run *before* the render, and nothing is printed until after it,
+	 * because a block's own render callback routinely enqueues a stylesheet of
+	 * its own -- printing first would drop exactly the sheet that block needs.
+	 *
+	 * The limit worth knowing: this is still admin-ajax, so `is_admin()` is true
+	 * and a theme that guards its enqueues on that opts itself out of its own
+	 * preview. Nothing here can change that; WP_ADMIN is a constant.
+	 */
+	$herd_styles   = '';
+	$herd_rendered = '';
+	$herd_buffered = false;
+	try {
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core's own hook, fired so the theme registers its front-end assets.
+		do_action( 'wp_enqueue_scripts' );
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core's own hook, fired for the same reason.
+		do_action( 'enqueue_block_assets' );
+		$herd_rendered = do_blocks( serialize_block( $block ) );
+		ob_start();
+		$herd_buffered = true;
+		/* Styles only. The frame is sandboxed without allow-scripts, so a printed
+		 * script is a request that can never run. */
+		wp_print_styles();
+		$herd_styles   = ob_get_clean();
+		$herd_buffered = false;
+	} catch ( Throwable $herd_error ) {
+		/*
+		 * A theme that cannot enqueue outside a real front-end request should cost
+		 * the preview its styling, not the preview itself. Only this function's own
+		 * buffer is discarded -- admin-ajax may be inside one of its own.
+		 */
+		if ( $herd_buffered ) {
+			ob_end_clean();
+		}
+		$herd_styles = '';
+		if ( '' === $herd_rendered ) {
+			$herd_rendered = do_blocks( serialize_block( $block ) );
+		}
+	}
+
+	echo '<!doctype html><html ' . get_language_attributes() . '><head><meta charset="utf-8">'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- core-built attribute string.
+	echo '<meta name="viewport" content="width=device-width, initial-scale=1"><base target="_blank">';
+	echo $herd_styles; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- link and style tags built by the style registry.
+	/*
+	 * Printed last, so it beats the theme on the two things a frame has to settle
+	 * for itself.
+	 *
+	 * Containment: the frame is narrower than a page, and without it an authored
+	 * desktop-width asset makes the preview look like a broken crop.
+	 *
+	 * Resting state: a reveal-on-scroll convention starts its elements at
+	 * `opacity: 0` and has a script un-hide them once they scroll into view. No
+	 * script runs here -- the frame is sandboxed without allow-scripts -- so those
+	 * elements would stay invisible forever, and the preview would be missing
+	 * exactly the content it was opened to show. Forcing the resting state is also
+	 * what the frame wants regardless: a preview is a still, not a performance.
+	 */
+	echo '<style>html,body{margin:0;width:100%;overflow-x:hidden}body>*{box-sizing:border-box;max-width:100%}img,svg,video,iframe{max-width:100%;height:auto}'
+		. '[data-animate],[data-animate-group],[data-aos],[data-scroll]{opacity:1!important;transform:none!important}'
+		. '*,*::before,*::after{animation:none!important;transition:none!important}</style></head><body>';
+	echo $herd_rendered; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- normal registered block renderer output.
+	echo '</body></html>';
+	exit;
+}
+add_action( 'wp_ajax_herd_editor_preview_frame', 'herd_editor_ajax_preview_frame' );
+
+/** Normalize a document into stable structural records for revision comparison. */
+function herd_editor_revision_records( $content ) {
+	$records = array();
+	foreach ( herd_editor_structural_facts( parse_blocks( (string) $content ) ) as $id => $fact ) { $records[ $id ] = $fact;
+	}
+	return $records;
+}
+
+/** Values safe to put in a read-only revision response. */
+function herd_editor_revision_value( $value ) {
+	if ( is_bool( $value ) ) {
+		return $value ? __( 'On', 'herd-editor' ) : __( 'Off', 'herd-editor' );
+	}
+	if ( is_scalar( $value ) ) {
+		return wp_strip_all_tags( (string) $value );
+	}
+	if ( is_array( $value ) ) {
+		return implode( ', ', array_map( 'herd_editor_revision_value', array_slice( $value, 0, 8 ) ) );
+	}
+	return '';
+}
+
+/** Resolve changed ACF values to safe, author-facing field labels. */
+function herd_editor_revision_field_changes( $before, $after, $field_map ) {
+	$changes = array();
+	$keys = array_unique( array_merge( array_keys( (array) $before ), array_keys( (array) $after ) ) );
+	foreach ( $keys as $key ) {
+		if ( 0 === strpos( (string) $key, '_' ) || ( $before[ $key ] ?? null ) === ( $after[ $key ] ?? null ) ) {
+			continue;
+		}
+		$label = isset( $field_map[ $key ]['label'] ) ? $field_map[ $key ]['label'] : (string) $key;
+		$changes[] = array(
+			'label' => wp_strip_all_tags( (string) $label ),
+			'before' => herd_editor_revision_value( $before[ $key ] ?? '' ),
+			'after' => herd_editor_revision_value( $after[ $key ] ?? '' ),
+		);
+	}
+	return $changes;
+}
+
+/** Read-only revision comparison. IDs win; same-type/data fallback is allowed only once. */
+function herd_editor_revision_diff( $left_content, $right_content ) {
+	$left = herd_editor_revision_records( $left_content ); $right = herd_editor_revision_records( $right_content ); $diff = array();
+	$field_map = herd_editor_search_fields( $left_content . $right_content );
+	foreach ( $left as $id => $before ) {
+		if ( ! isset( $right[ $id ] ) ) { $diff[] = array( 'type' => 'removed', 'id' => $id, 'before' => $before ); continue; }
+		$after = $right[ $id ];
+		if ( $before['name'] !== $after['name'] ) { $diff[] = array( 'type' => 'type', 'id' => $id, 'before' => $before['name'], 'after' => $after['name'] );
+		} elseif ( $before['path'] !== $after['path'] ) { $diff[] = array( 'type' => 'moved', 'id' => $id, 'before' => $before['path'], 'after' => $after['path'] );
+		}
+		if ( $before['anchor'] !== $after['anchor'] ) { $diff[] = array( 'type' => 'anchor', 'id' => $id, 'before' => $before['anchor'], 'after' => $after['anchor'] );
+		}
+		$field_changes = herd_editor_revision_field_changes( $before['visibility'], $after['visibility'], $field_map );
+		if ( $field_changes ) { $diff[] = array( 'type' => 'fields', 'id' => $id, 'name' => $after['name'], 'fields' => $field_changes );
+		}
+	}
+	foreach ( $right as $id => $after ) { if ( ! isset( $left[ $id ] ) ) { $diff[] = array( 'type' => 'added', 'id' => $id, 'after' => $after );
+	}
+	}
+	return $diff;
+}
+
+/** List revisions available to the current Herd editor. */
+function herd_editor_ajax_revisions() {
+	$post_id = isset( $_REQUEST['postId'] ) ? absint( $_REQUEST['postId'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+	$post = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) { wp_send_json_error( array( 'message' => __( 'You cannot view these revisions.', 'herd-editor' ) ), 403 );
+	}
+	check_ajax_referer( 'herd_editor_revisions_' . $post_id, 'nonce' );
+	$revisions = array_map( function( $revision ) {
+		return array(
+			'id' => (int) $revision->ID,
+			'date' => get_the_modified_date( '', $revision ),
+			'author' => get_the_author_meta( 'display_name', $revision->post_author ),
+			'nativeUrl' => admin_url( 'revision.php?revision=' . (int) $revision->ID ),
+		);
+	}, wp_get_post_revisions( $post_id ) );
+	wp_send_json_success( array( 'revisions' => array_values( $revisions ) ) );
+}
+add_action( 'wp_ajax_herd_editor_revisions', 'herd_editor_ajax_revisions' );
+
+/** Compare one owned revision to the current document without restoring it. */
+function herd_editor_ajax_revision_compare() {
+	$post_id = isset( $_POST['postId'] ) ? absint( $_POST['postId'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$post = $post_id ? get_post( $post_id ) : null;
+	if ( ! $post || ! herd_editor_supports_post( $post ) ) { wp_send_json_error( array( 'message' => __( 'You cannot compare these revisions.', 'herd-editor' ) ), 403 );
+	}
+	check_ajax_referer( 'herd_editor_revisions_' . $post_id, 'nonce' );
+	$revision_id = isset( $_POST['revisionId'] ) ? absint( $_POST['revisionId'] ) : 0; // phpcs:ignore WordPress.Security.NonceVerification.Missing
+	$revision = $revision_id ? get_post( $revision_id ) : null;
+	if ( $revision && (int) $revision->post_parent !== $post_id ) { wp_send_json_error( array( 'message' => __( 'That revision does not belong to this post.', 'herd-editor' ) ), 400 );
+	}
+	wp_send_json_success( array( 'changes' => herd_editor_revision_diff( $revision ? $revision->post_content : $post->post_content, $post->post_content ), 'restoreUrl' => $revision ? admin_url( 'revision.php?revision=' . $revision->ID ) : '' ) );
+}
+add_action( 'wp_ajax_herd_editor_revision_compare', 'herd_editor_ajax_revision_compare' );
+
+/** Keep a user's ordered inserter favorites, without making them site options. */
+function herd_editor_ajax_save_favorite_blocks() {
+	check_ajax_referer( 'herd_editor_favorite_blocks', 'nonce' );
+	if ( ! current_user_can( 'edit_posts' ) ) {
+		wp_send_json_error( array( 'message' => __( 'You are not allowed to change favorites.', 'herd-editor' ) ), 403 );
+	}
+	// phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- decoded then validated against block names.
+	$requested = isset( $_POST['favorites'] ) ? json_decode( wp_unslash( $_POST['favorites'] ), true ) : array();
+	$requested = is_array( $requested ) ? $requested : array();
+	$registered = WP_Block_Type_Registry::get_instance()->get_all_registered();
+	$favorites = array();
+	foreach ( $requested as $name ) {
+		$name = is_string( $name ) ? sanitize_text_field( $name ) : '';
+		if ( ! $name || ! isset( $registered[ $name ] ) || 0 !== strpos( $name, 'acf/' ) || in_array( $name, $favorites, true ) ) {
+			continue;
+		}
+		$favorites[] = $name;
+	}
+	update_user_meta( get_current_user_id(), 'herd_editor_favorite_blocks', $favorites );
+	wp_send_json_success( array( 'favorites' => $favorites ) );
+}
+add_action( 'wp_ajax_herd_editor_save_favorite_blocks', 'herd_editor_ajax_save_favorite_blocks' );
 
 /** Render core's lock dialog while keeping every return path in Herd or its list. */
 function herd_editor_post_lock_dialog( $post, $list_url ) {
@@ -1509,6 +1897,8 @@ function herd_editor_enqueue_assets() {
 				'classicEditorUrl' => class_exists( 'Classic_Editor' ) ? herd_editor_native_url( $post->ID, 'classic' ) : '',
 				'blockTypes' => herd_editor_block_metadata( $post->post_content, $post ),
 				'blockGroupOrder' => herd_editor_block_group_order( $post ),
+				'favoriteBlockNames' => array_values( array_filter( (array) get_user_meta( get_current_user_id(), 'herd_editor_favorite_blocks', true ), 'is_string' ) ),
+				'favoriteBlocksNonce' => wp_create_nonce( 'herd_editor_favorite_blocks' ),
 				'modifiedHuman' => herd_editor_saved_label( $post ),
 				'statusLabel' => herd_editor_status_label( $post ),
 				'isPublished' => 'publish' === $post->post_status,
@@ -1538,7 +1928,13 @@ function herd_editor_enqueue_assets() {
 				'icons' => herd_editor_icon_set(),
 				/* The field name that means "hidden", or '' where the site has none. */
 				'visibilityField' => herd_editor_visibility_field(),
+				'previewNonce' => wp_create_nonce( 'herd_editor_preview_' . $post->ID ),
+				'revisionsNonce' => wp_create_nonce( 'herd_editor_revisions_' . $post->ID ),
+				'structuralPolicy' => herd_editor_structural_policy( $post ),
+				'structuralBaseline' => herd_editor_structural_baseline( $post ),
 				'acfFields' => herd_editor_search_fields( $post->post_content ),
+				'duplicationProfiles' => herd_editor_duplication_profiles(),
+				'editorialRules' => (array) apply_filters( 'herd_editor_editorial_rules', array() ),
 				/* Per-block summary wording and choice rules; see src/ui/acf/profiles.js. */
 				'profiles' => herd_editor_block_profiles(),
 			)

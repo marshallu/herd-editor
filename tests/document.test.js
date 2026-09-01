@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { changedAttributeIds, cloneBlock, createBlock, findBlockByClientId, insertBlock, moveBlock, parseDocument, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeBlockAttributes, serializeDocument } from '../src/document.js';
+import { changedAttributeIds, cloneBlock, createBlock, ensureStructuralIds, findBlockByClientId, insertBlock, moveBlock, parseDocument, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeBlockAttributes, serializeDocument } from '../src/document.js';
 import { DocumentController } from '../src/controller.js';
 
 const source = 'before\n<!-- wp:group {  "className":"wide"  } -->\n<p>A</p>\n<!-- wp:acf/hero {"name":"acf/hero","data":{"title":"A \\"quote\\""}} /-->\n<!-- wp:paragraph --> <p>Child</p> <!-- /wp:paragraph -->\n<!-- /wp:group -->\nafter';
@@ -165,13 +165,21 @@ test( 'a block emptied of every attribute serializes without a JSON payload', ()
 	assert.equal( serializeDocument( cleared ), '<!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->' );
 } );
 
+test( 'legacy ACF blocks gain one opaque structural ID while core blocks stay unchanged', () => {
+	const blocks = parseDocument( '<!-- wp:acf/card {"name":"acf/card","data":{}} /--><!-- wp:paragraph --><p>Hi</p><!-- /wp:paragraph -->' );
+	const identified = ensureStructuralIds( blocks );
+	assert.match( identified[ 0 ].attributes.herdStructuralId, /^herd-/ );
+	assert.equal( identified[ 1 ].attributes.herdStructuralId, undefined );
+	assert.equal( ensureStructuralIds( identified ), identified );
+} );
+
 test( 'duplicating a block drops its anchor and leaves the original alone', () => {
 	const blocks = parseDocument( '<!-- wp:acf/card {"name":"acf/card","anchor":"apply","data":{"title":"A"}} /-->' );
 	const clone = cloneBlock( blocks[ 0 ] );
 	assert.equal( 'anchor' in clone.attributes, false );
 	assert.deepEqual( clone.attributes.data, { title: 'A' } );
 	assert.equal( blocks[ 0 ].attributes.anchor, 'apply' );
-	assert.equal( serializeDocument( [ clone ] ), '<!-- wp:acf/card {"name":"acf/card","data":{"title":"A"}} /-->' );
+	assert.match( serializeDocument( [ clone ] ), /^<!-- wp:acf\/card {"name":"acf\/card","data":{"title":"A"},"herdStructuralId":"herd-/ );
 } );
 
 test( 'a duplicate with no anchor still re-serializes byte for byte', () => {
@@ -186,5 +194,5 @@ test( 'a nested anchor is dropped and its ancestors regenerate to prove it', () 
 	const clone = cloneBlock( parseDocument( original )[ 0 ] );
 	assert.equal( clone.changed, true );
 	assert.equal( serializeDocument( [ clone ] ).includes( 'anchor' ), false );
-	assert.equal( serializeDocument( [ clone ] ), '<!-- wp:group --><!-- wp:acf/card {"name":"acf/card","data":{}} /--><!-- /wp:group -->' );
+	assert.match( serializeDocument( [ clone ] ), /^<!-- wp:group --><!-- wp:acf\/card {"name":"acf\/card","data":{},"herdStructuralId":"herd-/ );
 } );

@@ -790,6 +790,31 @@
 	text-transform: uppercase;
 }
 
+/*
+ * Favorites and Recent are the same blocks a category below already lists, so a
+ * rule under them says where the shortcuts stop and the catalogue starts.
+ */
+.herd-inserter__group.is-preferred:not(:last-child) {
+	border-bottom: 1px solid var(--herd-line-soft);
+	margin-bottom: 4px;
+	padding-bottom: 4px;
+}
+
+/*
+ * A result is a row, not a button: the star has to be a sibling of the choice
+ * because a button may not nest a button. The row owns the highlight so the
+ * tint and its green edge run the full width, past the star.
+ */
+.herd-inserter__row {
+	align-items: center;
+	display: flex;
+}
+
+.herd-inserter__row.is-selected {
+	background: var(--herd-green-tint);
+	box-shadow: inset 2px 0 0 var(--herd-green);
+}
+
 .herd-inserter__choice {
 	align-items: center;
 	background: none;
@@ -797,18 +822,15 @@
 	color: var(--herd-ink);
 	cursor: pointer;
 	display: flex;
+	flex: 1 1 auto;
 	font: inherit;
 	font-size: 13px;
 	gap: 8px;
 	min-height: 30px;
-	padding: 4px 12px;
+	/* The title ellipses against the star rather than shoving it off the row. */
+	min-width: 0;
+	padding: 4px 4px 4px 12px;
 	text-align: left;
-	width: 100%;
-}
-
-.herd-inserter__choice.is-selected {
-	background: var(--herd-green-tint);
-	box-shadow: inset 2px 0 0 var(--herd-green);
 }
 
 .herd-inserter__choice:disabled {
@@ -841,6 +863,45 @@
 
 .herd-inserter__choice .herd-badge {
 	margin-left: auto;
+}
+
+/*
+ * Always drawn, on every row: an outline star is the affordance that says a row
+ * can be favourited at all, which a hover-only control never gets to say.
+ */
+.herd-inserter__favorite {
+	align-items: center;
+	background: none;
+	border: 0;
+	border-radius: var(--herd-r-sm);
+	color: var(--herd-line-strong);
+	cursor: pointer;
+	display: flex;
+	flex: none;
+	height: 24px;
+	justify-content: center;
+	margin-right: 8px;
+	padding: 0;
+	width: 28px;
+}
+
+.herd-inserter__favorite svg {
+	height: 15px;
+	width: 15px;
+}
+
+.herd-inserter__favorite:hover {
+	color: var(--herd-ink-2);
+}
+
+.herd-inserter__favorite.is-on,
+.herd-inserter__favorite.is-on:hover {
+	color: var(--herd-green-ink);
+}
+
+.herd-inserter__favorite:focus-visible {
+	box-shadow: 0 0 0 1px var(--herd-green);
+	outline: none;
 }
 
 .herd-empty {

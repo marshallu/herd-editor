@@ -9,7 +9,8 @@
 import { createElement, useEffect, useMemo, useRef, useState } from '@wordpress/element';
 import { canAddBlock } from '../adapters.js';
 import { iconOf, titleFor } from './blocks.js';
-import { BlockIcon } from './primitives.js';
+import { BlockIcon, StarIcon } from './primitives.js';
+import { orderedEligible } from './inserter-preferences.js';
 
 const el = createElement;
 let instances = 0;
@@ -26,7 +27,7 @@ function highlight( name, term, key ) {
 	];
 }
 
-export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose } ) {
+export function Inserter( { catalog, counts, groupOrder = [], favorites = [], recent = [], structuralPolicy = {}, onToggleFavorite, onInsert, onClose } ) {
 	const [ query, setQuery ] = useState( '' );
 	const [ highlighted, setHighlighted ] = useState( 0 );
 	const [ baseId ] = useState( () => `herd-inserter-${ ++instances }` );
@@ -52,7 +53,7 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 			.filter( ( [ name, metadata ] ) => name.startsWith( 'acf/' ) && metadata.registered )
 			// `inserter: false` is an explicit policy decision, unlike a block
 			// that is merely at its one-instance limit and should explain why.
-			.filter( ( [ , metadata ] ) => metadata.inserter !== false );
+			.filter( ( [ name, metadata ] ) => metadata.inserter !== false && structuralPolicy.insert !== false && structuralPolicy.blocks?.[ name ]?.insert !== false );
 
 		/*
 		 * Search is two passes, because a description is too blunt to be part
@@ -75,6 +76,17 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 
 		const nextFlat = [];
 		const nextGroups = [];
+		/* Preferences are useful browsing shortcuts, never a search-ranking rule. */
+		if ( !term ) {
+			const preferred = [ [ 'Favorites', orderedEligible( favorites, catalog, counts ) ], [ 'Recent', orderedEligible( recent, catalog, counts ) ] ];
+			for ( const [ label, names ] of preferred ) {
+				const items = names.map( ( name ) => {
+					const metadata = catalog[ name ]; const index = nextFlat.length; nextFlat.push( name );
+					return { name, metadata, disabled: false, index };
+				} );
+				if ( items.length ) nextGroups.push( { label, items, preferred: true } );
+			}
+		}
 		for ( const label of [ ...new Set( labels ) ] ) {
 			const items = matches
 				.filter( ( [ , metadata ] ) => ( metadata.group || '' ) === label )
@@ -87,7 +99,7 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 			if ( items.length ) nextGroups.push( { label, items } );
 		}
 		return { groups: nextGroups, flat: nextFlat };
-	}, [ catalog, counts, groupOrder, term ] );
+	}, [ catalog, counts, favorites, recent, groupOrder, term ] );
 
 	useEffect( () => setHighlighted( 0 ), [ term ] );
 
@@ -150,7 +162,9 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 		// choices under it are wrapped in a labelled role="group".
 		? groups.map( ( group ) => el( 'div', {
 			key: group.label,
-			className: 'herd-inserter__group',
+			// Favorites and Recent are shortcuts into the same catalogue below, so
+			// they are ruled off from the categories rather than blending into them.
+			className: `herd-inserter__group${ group.preferred ? ' is-preferred' : '' }`,
 			role: 'group',
 			'aria-label': group.label,
 		},
@@ -163,14 +177,28 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 		groups.length > 1
 			? el( 'div', { className: 'herd-inserter__grouplabel', 'aria-hidden': true }, group.label )
 			: null,
-		group.items.map( ( { name, metadata, disabled, index } ) => el( 'button', {
+		/*
+		 * The star cannot live inside the choice -- a button may not nest a button
+		 * -- so the two sit side by side in a row wrapper. role="presentation"
+		 * keeps that wrapper out of the accessibility tree, so the role="group"
+		 * still owns the options directly, which is the whole point of the note
+		 * above. The wrapper carries `is-selected` only so the highlight spans the
+		 * star column too; `aria-selected` stays on the option itself.
+		 */
+		group.items.map( ( { name, metadata, disabled, index } ) => {
+			const starred = favorites.includes( name );
+			return el( 'div', {
 				key: name,
+				className: `herd-inserter__row${ index === highlighted ? ' is-selected' : '' }`,
+				role: 'presentation',
+			},
+			el( 'button', {
 				id: disabled ? undefined : `${ baseId }-opt-${ index }`,
 				type: 'button',
 				role: 'option',
 				'aria-selected': index === highlighted,
 				'aria-disabled': disabled || undefined,
-				className: `herd-inserter__choice${ index === highlighted ? ' is-selected' : '' }`,
+				className: 'herd-inserter__choice',
 				disabled,
 				onMouseEnter: () => { if ( ! disabled ) setHighlighted( index ); },
 				onClick: () => onInsert( name ),
@@ -178,7 +206,17 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 			el( BlockIcon, { icon: iconOf( metadata ) } ),
 			el( 'span', { className: 'herd-inserter__title' },
 				highlight( metadata.title || titleFor( { name } ), term, name ) ),
-			disabled && el( 'span', { className: 'herd-badge' }, 'Already added' ) ) ) ) )
+			disabled && el( 'span', { className: 'herd-badge' }, 'Already added' ) ),
+			// Enabled even on a block at its limit: what you can favourite and what
+			// you can insert right now are different questions.
+			onToggleFavorite && el( 'button', {
+				type: 'button',
+				className: `herd-inserter__favorite${ starred ? ' is-on' : '' }`,
+				'aria-pressed': starred,
+				'aria-label': starred ? `Remove ${ metadata.title || name } from favorites` : `Add ${ metadata.title || name } to favorites`,
+				onClick: () => onToggleFavorite( name ),
+			}, el( StarIcon, { filled: starred } ) ) );
+		} ) ) )
 		: el( 'p', { className: 'herd-empty' },
 			query ? `No block matches “${ query }”.` : 'No matching ACF blocks.' ) ) );
 }

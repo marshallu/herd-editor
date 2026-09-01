@@ -1,4 +1,5 @@
 import { cloneBlock, findBlockByClientId, insertBlock, moveBlock, removeBlock, replaceAttributes, replaceAttributesExact, replaceBlockBody, serializeDocument } from './document.js';
+import { duplicateWithProfile } from './duplication.js';
 
 export class DocumentController {
 	constructor( blocks, { limit = 50, coalesceMs = 750, now = Date.now } = {} ) {
@@ -25,12 +26,14 @@ export class DocumentController {
 	replaceAttributesExact( id, attrs ) { return this.commit( replaceAttributesExact( this.blocks, id, attrs ), id ); }
 	replaceBlockBody( id, body ) { return this.commit( replaceBlockBody( this.blocks, id, body ), id ); }
 	insertBlock( parentId, index, block ) { return this.commit( insertBlock( this.blocks, parentId, index, block ) ); }
-	duplicateBlock( id, parentId = null, index = null ) {
+	duplicateBlock( id, parentId = null, index = null, profiles = {}, clear = [] ) {
 		const block = this.find( id );
 		if ( ! block ) return this.blocks;
 		const siblings = parentId === null ? this.blocks : this.find( parentId )?.innerBlocks || [];
 		const sourceIndex = siblings.findIndex( ( candidate ) => candidate.clientId === id );
-		return this.commit( insertBlock( this.blocks, parentId, index === null ? sourceIndex + 1 : index, cloneBlock( block ) ) );
+		const copy = Object.keys( profiles ).length || clear.length ? duplicateWithProfile( block, profiles, clear ) : cloneBlock( block );
+		if ( ! copy ) return this.blocks;
+		return this.commit( insertBlock( this.blocks, parentId, index === null ? sourceIndex + 1 : index, copy ) );
 	}
 	removeBlock( id ) { return this.commit( removeBlock( this.blocks, id ) ); }
 	moveBlock( id, parentId, index ) { return this.commit( moveBlock( this.blocks, id, parentId, index ) ); }
