@@ -260,7 +260,7 @@ $host: ".herd-editor__field-host";
  *
  * What is left in this file is the two rules that are about a block rather
  * than about a switch: `.herd-switchrow` above, which spans a gating toggle
- * across the field grid, and the `hide_block` on-state below.
+ * across the field grid, and the visibility-switch on-state below.
  */
 
 
@@ -347,15 +347,17 @@ $host: ".herd-editor__field-host";
 /* ---------- hidden on front end ---------- */
 
 /*
- * `hide_block` is the one switch that is not an enabled feature. The theme's Block
- * Visibility group attaches it to every registered block, and a hidden block is
- * a state rather than something switched on, so the on-state is grey instead of
- * green. src/ui/blocks.js reads the same value to dim the block row.
+ * A visibility switch is the one switch that is not an enabled feature: a
+ * hidden block is a state rather than something switched on, so its on-state is
+ * grey instead of green. src/ui/blocks.js reads the same value to dim the row.
+ *
+ * The selector is not here, because the field's name belongs to the theme --
+ * see the `herd_editor_visibility_field` filter. herd_editor_visibility_style()
+ * prints these two rules inline against whatever name the site supplies, and
+ * prints nothing at all when there is none. The declarations live in
+ * `--herd-visibility-*` so the values stay with the rest of the design system.
  */
-#{$host} .acf-field-true-false[data-name="hide_block"] input[type="checkbox"]:checked {
-	background: var(--herd-ink-3);
-}
-
-#{$host} .acf-field-true-false[data-name="hide_block"] input[type="checkbox"]:checked:hover {
-	background: var(--herd-ink-2);
+#{$host} {
+	--herd-visibility-off: var(--herd-ink-3);
+	--herd-visibility-off-hover: var(--herd-ink-2);
 }

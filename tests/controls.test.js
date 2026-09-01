@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { decorateControls } from '../src/ui/acf/controls.js';
 import { profileFor } from '../src/ui/acf/profiles.js';
+import { installProfiles } from './fixtures/profiles.js';
 
 /*
  * The Profiles block's Background field as ACF renders it: a plain `select`,
@@ -39,6 +40,8 @@ function build( markup ) {
 	const dom = new JSDOM( `<div class="wrap herd-editor-screen"><div class="acf-block-fields acf-fields">${ markup }</div></div>` );
 	global.document = dom.window.document;
 	global.window = dom.window;
+	// The profiles ride on window, and each build() installs a fresh one.
+	installProfiles();
 	opens = 0;
 	// jsdom has no dialog implementation, so the editor's one browser call is
 	// stubbed rather than worked around in the module under test.
@@ -59,12 +62,13 @@ function choose( form, value ) {
 	select.dispatchEvent( new global.window.Event( 'change', { bubbles: true } ) );
 }
 
-const profile = profileFor( 'acf/profiles' );
+// Lazy: the profiles live on window, which build() installs per test.
+const profile = () => profileFor( 'acf/profiles' );
 const dialog = () => global.document.querySelector( '.herd-alert' );
 
 test( 'choosing Black says the background belongs to the Cyber site', () => {
 	const form = build( background() );
-	decorateControls( form, profile );
+	decorateControls( form, profile() );
 
 	choose( form, 'black' );
 
@@ -75,7 +79,7 @@ test( 'choosing Black says the background belongs to the Cyber site', () => {
 
 test( 'the notice warns and nothing more — Black stays chosen', () => {
 	const form = build( background() );
-	decorateControls( form, profile );
+	decorateControls( form, profile() );
 
 	choose( form, 'black' );
 
@@ -87,7 +91,7 @@ test( 'the notice warns and nothing more — Black stays chosen', () => {
 test( 'a block already set to Black does not warn on open', () => {
 	// Reopening a post is not a decision to re-examine; only the change is.
 	const form = build( background( 'black' ) );
-	decorateControls( form, profile );
+	decorateControls( form, profile() );
 
 	assert.equal( opens, 0 );
 	assert.equal( dialog(), null );
@@ -95,7 +99,7 @@ test( 'a block already set to Black does not warn on open', () => {
 
 test( 'choosing White does not warn', () => {
 	const form = build( background( 'black' ) );
-	decorateControls( form, profile );
+	decorateControls( form, profile() );
 
 	choose( form, 'white' );
 
@@ -104,7 +108,7 @@ test( 'choosing White does not warn', () => {
 
 test( 'the dialog is reused rather than stacked', () => {
 	const form = build( background() );
-	decorateControls( form, profile );
+	decorateControls( form, profile() );
 
 	choose( form, 'black' );
 	dialog().querySelector( 'button' ).click();
@@ -118,8 +122,8 @@ test( 'the dialog is reused rather than stacked', () => {
 test( 'decorating twice leaves one listener, so one choice is one warning', () => {
 	const form = build( background() );
 	// A repeater row arriving re-runs the decorators over the whole form.
-	decorateControls( form, profile );
-	decorateControls( form, profile );
+	decorateControls( form, profile() );
+	decorateControls( form, profile() );
 
 	choose( form, 'black' );
 

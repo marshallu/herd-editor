@@ -40,14 +40,34 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 	 * and explained without ever becoming a dead stop in the keyboard path.
 	 */
 	const { groups, flat } = useMemo( () => {
-		const matches = Object.entries( catalog )
+		const candidates = Object.entries( catalog )
+			/*
+			 * ACF blocks only, and this is load-bearing rather than vestigial:
+			 * a panel is ACF's own form, fetched over `acf/ajax/fetch-block`.
+			 * A core block has no such form, so offering one here would list a
+			 * choice that cannot open. The block's category decides its group,
+			 * which means Herd's groups are only ever the categories ACF blocks
+			 * declare -- and why the curated-map filter still has a job.
+			 */
 			.filter( ( [ name, metadata ] ) => name.startsWith( 'acf/' ) && metadata.registered )
 			// `inserter: false` is an explicit policy decision, unlike a block
 			// that is merely at its one-instance limit and should explain why.
-			.filter( ( [ , metadata ] ) => metadata.inserter !== false )
-			.filter( ( [ name, metadata ] ) => ! term
-				|| `${ metadata.title } ${ name } ${ metadata.group }`.toLowerCase().includes( term ) )
-			.sort( ( a, b ) => ( a[ 1 ].title || a[ 0 ] ).localeCompare( b[ 1 ].title || b[ 0 ] ) );
+			.filter( ( [ , metadata ] ) => metadata.inserter !== false );
+
+		/*
+		 * Search is two passes, because a description is too blunt to be part
+		 * of the first one: a theme that gives every block "<Theme> <Name>
+		 * block." would match its whole catalogue on the theme's own name. So
+		 * titles, names, groups and block.json keywords answer first, and the
+		 * description only gets a say when that found nothing at all.
+		 */
+		const primary = ( name, m ) => `${ m.title } ${ name } ${ m.group } ${ ( m.keywords || [] ).join( ' ' ) }`
+			.toLowerCase().includes( term );
+		const secondary = ( name, m ) => String( m.description || '' ).toLowerCase().includes( term );
+
+		let matches = candidates.filter( ( [ name, m ] ) => ! term || primary( name, m ) );
+		if ( term && ! matches.length ) matches = candidates.filter( ( [ name, m ] ) => secondary( name, m ) );
+		matches = matches.sort( ( a, b ) => ( a[ 1 ].title || a[ 0 ] ).localeCompare( b[ 1 ].title || b[ 0 ] ) );
 
 		// Any group the order does not name still gets drawn, after the ones it does.
 		const seen = matches.map( ( [ , metadata ] ) => metadata.group || '' );
@@ -134,7 +154,15 @@ export function Inserter( { catalog, counts, groupOrder = [], onInsert, onClose 
 			role: 'group',
 			'aria-label': group.label,
 		},
-		el( 'div', { className: 'herd-inserter__grouplabel', 'aria-hidden': true }, group.label ),
+		/*
+		 * A heading over the only list on screen is noise -- and on a theme
+		 * whose blocks all share one category it is also the label most likely
+		 * to be a slug nobody meant an editor to read. role="group" keeps its
+		 * aria-label either way, so a screen reader loses nothing.
+		 */
+		groups.length > 1
+			? el( 'div', { className: 'herd-inserter__grouplabel', 'aria-hidden': true }, group.label )
+			: null,
 		group.items.map( ( { name, metadata, disabled, index } ) => el( 'button', {
 				key: name,
 				id: disabled ? undefined : `${ baseId }-opt-${ index }`,

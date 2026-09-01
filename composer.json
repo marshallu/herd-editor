@@ -1,0 +1,38 @@
+{
+	"name": "marshallu/herd-editor",
+	"description": "A third editing mode for WordPress, alongside Classic and the Block Editor, for sites whose pages are built from ACF blocks.",
+	"keywords": ["wordpress", "plugin", "acf", "editor", "blocks"],
+	"homepage": "https://github.com/marshallu/herd-editor",
+	"license": "MIT",
+	"authors": [
+		{
+			"name": "Christopher McComas"
+		}
+	],
+	"type": "wordpress-plugin",
+	"require": {
+		"php": ">=8.2"
+	},
+	"require-dev": {
+		"squizlabs/php_codesniffer": "^3.13",
+		"wp-coding-standards/wpcs": "^3.1",
+		"automattic/vipwpcs": "^3.0",
+		"dealerdirect/phpcodesniffer-composer-installer": "^1.0",
+		"php-stubs/acf-pro-stubs": "^6.0",
+		"phpstan/phpstan": "^2.1",
+		"szepeviktor/phpstan-wordpress": "^2.0",
+		"php-stubs/wordpress-stubs": "^6.9",
+		"php-stubs/wp-cli-stubs": "^2.12",
+		"phpcompatibility/phpcompatibility-wp": "^2.1"
+	},
+	"config": {
+		"allow-plugins": {
+			"dealerdirect/phpcodesniffer-composer-installer": true
+		}
+	},
+	"scripts": {
+		"format": "phpcbf --extensions=php --standard=phpcs.xml.dist --report-summary --report-source",
+		"lint": "phpcs --extensions=php --standard=phpcs.xml.dist",
+		"analyse": "phpstan analyse --memory-limit=4G"
+	}
+}

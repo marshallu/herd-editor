@@ -35,14 +35,21 @@ const HERD_EDITOR_FORGET_ARG = 'herd-editor__forget';
  *
  * Named once so the radios, the sanitiser and the redirect cannot drift apart.
  *
+ * Classic is offered only where something can honour it. WordPress has had no
+ * classic editing screen of its own since the Block editor landed -- the
+ * Classic Editor plugin is what restores it -- so on a site without that plugin
+ * the radio would be a choice that silently does nothing.
+ *
  * @return array<string,string> Value to label.
  */
 function herd_editor_editor_choices() {
-	return array(
-		'classic' => _x( 'Classic editor', 'Editor Name', 'herd-editor' ),
-		'block'   => _x( 'Block editor', 'Editor Name', 'herd-editor' ),
-		'herd'    => _x( 'Herd editor', 'Editor Name', 'herd-editor' ),
-	);
+	$choices = array();
+	if ( class_exists( 'Classic_Editor' ) ) {
+		$choices['classic'] = _x( 'Classic editor', 'Editor Name', 'herd-editor' );
+	}
+	$choices['block'] = _x( 'Block editor', 'Editor Name', 'herd-editor' );
+	$choices['herd']  = _x( 'Herd editor', 'Editor Name', 'herd-editor' );
+	return $choices;
 }
 
 /**
@@ -52,12 +59,19 @@ function herd_editor_editor_choices() {
  * read what Classic Editor is already doing, so the first render of the setting
  * shows the site as it actually behaves today.
  *
+ * Without Classic Editor there is nothing to read and only one honest answer:
+ * the site is on the Block editor, because that is what WordPress does. The old
+ * fallback said `classic`, which named an editor such a site does not have.
+ *
  * @return string One of herd_editor_editor_choices().
  */
 function herd_editor_site_editor() {
 	$value = get_option( HERD_EDITOR_OPTION );
 	if ( isset( herd_editor_editor_choices()[ $value ] ) ) {
 		return $value;
+	}
+	if ( ! class_exists( 'Classic_Editor' ) ) {
+		return 'block';
 	}
 	return 'block' === get_option( 'classic-editor-replace' ) ? 'block' : 'classic';
 }
@@ -126,7 +140,15 @@ function herd_editor_mirror_value( $value ) {
  */
 function herd_editor_sanitize_editor( $value ) {
 	$value = is_string( $value ) && isset( herd_editor_editor_choices()[ $value ] ) ? $value : herd_editor_site_editor();
-	update_option( 'classic-editor-replace', herd_editor_mirror_value( $value ) );
+	/*
+	 * Only where there is something to mirror into. Writing this on a site
+	 * without Classic Editor would leave an option behind that nothing reads
+	 * and that would quietly become authoritative if the plugin were ever
+	 * installed later.
+	 */
+	if ( class_exists( 'Classic_Editor' ) ) {
+		update_option( 'classic-editor-replace', herd_editor_mirror_value( $value ) );
+	}
 	return $value;
 }
 

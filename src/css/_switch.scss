@@ -16,7 +16,7 @@
  *
  *   - `.herd-switchrow`, which spans a toggle across the 12-column field grid.
  *     There is no grid in a postbox; the rail is one column.
- *   - the `hide_block` exception, which greys the on-state of the one switch
+ *   - the visibility exception, which greys the on-state of the one switch
  *     that is not an enabled feature. There is no block in the rail to hide.
  *
  * Load order matters and is set in editor.scss: this comes after `acf`, so the

@@ -1,7 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PROFILES, profileFor } from '../src/ui/acf/profiles.js';
+import { profileFor } from '../src/ui/acf/profiles.js';
 import { blockSummary } from '../src/ui/summary.js';
+import { PROFILES, installProfiles } from './fixtures/profiles.js';
+
+installProfiles();
 
 test( 'reads a cards collection the way the style guide asks', () => {
 	const block = {
@@ -51,9 +54,18 @@ test( 'falls back when a profile has nothing to say about this block', () => {
 	assert.equal( blockSummary( block, 'acf' ), 'Second line' );
 } );
 
-test( 'only the blocks that need one carry a profile', () => {
+test( 'a block the site said nothing about has no profile', () => {
 	assert.deepEqual( Object.keys( PROFILES ).sort(), [ 'acf/billboard', 'acf/cards-collection', 'acf/profiles' ] );
 	assert.equal( profileFor( 'acf/hero' ), null );
+} );
+
+test( 'a site that publishes no profiles is not an error', () => {
+	installProfiles( {} );
+	assert.equal( profileFor( 'acf/cards-collection' ), null );
+	const block = { name: 'acf/cards-collection', attributes: { data: { heading: 'Visit', card_style: 'icon' } } };
+	// Straight to the generic derivation, which is the point of the fallback.
+	assert.equal( blockSummary( block, 'acf' ), 'Visit \u00b7 Icon' );
+	installProfiles();
 } );
 
 test( 'Profiles names Black as the Cyber site\'s background', () => {

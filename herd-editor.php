@@ -47,6 +47,14 @@ function herd_editor_has_acf_pro() {
 }
 
 /*
+ * The site's answers to the questions Herd's filters ask, and the screen that
+ * asks them. First of the includes, because every one of those filters takes a
+ * stored setting as its default -- so this has to be readable by the time
+ * anything asks.
+ */
+require_once HERD_EDITOR_DIR . 'includes/herd-editor-settings.php';
+
+/*
  * Width as a layout control. Loaded unconditionally and on every admin request,
  * not just Herd's own screen: the control it replaces belongs to the ACF field
  * group editor, which is a screen Herd does not own. Its one filter checks for
@@ -84,7 +92,7 @@ function herd_editor_post_types( $post_types ) {
 }
 
 function herd_editor_allowed_post_types() {
-	return herd_editor_post_types( apply_filters( 'herd_editor_post_types', array( 'page', 'post' ) ) );
+	return herd_editor_post_types( apply_filters( 'herd_editor_post_types', herd_editor_setting( 'post_types', array( 'page', 'post' ) ) ) );
 }
 
 /**
@@ -98,9 +106,25 @@ function herd_editor_supports_post( $post ) {
 		return false;
 	}
 	$user = wp_get_current_user();
-	$allowed = user_can( $user, 'manage_options' ) && user_can( $user, 'edit_post', $post->ID );
+	/*
+	 * Whoever may edit the post may edit it here. Herd writes the same
+	 * post_content through the same edit_post() as the other two editors, so a
+	 * capability of its own would be claiming this editor is more dangerous
+	 * than the ones it sits beside.
+	 *
+	 * This used to also require `manage_options`, which was a pilot gate rather
+	 * than a policy: on a site whose editors are not administrators it meant
+	 * nobody but an admin could open Herd at all. The filter below is how a site
+	 * narrows it again -- for a pilot, or for a role that should stay on Classic.
+	 */
+	$allowed = user_can( $user, 'edit_post', $post->ID );
+	/* A site may narrow it again from the settings screen; empty means it has not. */
+	$extra = (string) herd_editor_setting( 'capability', '' );
+	if ( $allowed && '' !== $extra ) {
+		$allowed = user_can( $user, $extra );
+	}
 	/**
-	 * Filter access to Herd Editor for pilot users.
+	 * Filter access to Herd Editor.
 	 *
 	 * @param bool    $allowed Whether access is allowed by default.
 	 * @param WP_User $user    Current user.
@@ -737,145 +761,156 @@ function herd_editor_collect_block_names( $blocks, &$names ) {
 }
 
 /**
+ * Block category slug to label, in WordPress's own display order.
+ *
+ * `get_block_categories()` is the same list the native inserter groups by, and
+ * the same one `block_categories_all` lets a theme add to, so asking it keeps
+ * the two inserters agreeing about what a block is. A block that declares
+ * `"category": "media"` lands under Media here for the same reason it does
+ * over there, and a theme that registers a category of its own gets its title
+ * without telling Herd about it separately.
+ *
+ * Memoised: both the grouping and the group order need the answer, and the
+ * call runs two filters.
+ *
+ * @param WP_Post|null $post Post being edited, for the editor context.
+ * @return array<string,string> Category slug to title, in display order.
+ */
+function herd_editor_block_categories( $post = null ) {
+	static $cache = null;
+	if ( null !== $cache ) {
+		return $cache;
+	}
+	$cache = array();
+	if ( ! function_exists( 'get_block_categories' ) || ! class_exists( 'WP_Block_Editor_Context' ) ) {
+		return $cache;
+	}
+	$context = new WP_Block_Editor_Context( $post instanceof WP_Post ? array( 'post' => $post ) : array() );
+	foreach ( (array) get_block_categories( $context ) as $category ) {
+		if ( empty( $category['slug'] ) ) {
+			continue;
+		}
+		$slug  = (string) $category['slug'];
+		$title = isset( $category['title'] ) ? (string) $category['title'] : '';
+		$cache[ $slug ] = '' !== $title ? $title : herd_editor_humanize_slug( $slug );
+	}
+	return $cache;
+}
+
+/**
+ * "call-to-action" becomes "Call To Action".
+ *
+ * The last resort, for a block whose category nothing ever registered. A theme
+ * that names a category in sixty-five block.json files and never calls
+ * `block_categories_all` is the common case, and a humanized slug is a better
+ * heading than the slug itself.
+ *
+ * @param string $slug Category slug.
+ * @return string
+ */
+function herd_editor_humanize_slug( $slug ) {
+	return ucwords( trim( str_replace( array( '-', '_' ), ' ', (string) $slug ) ) );
+}
+
+/**
  * Display order of the inserter's groups.
  *
- * The last entry is the fallback: any block the map below does not name lands
- * there, so a newly registered block still appears in the inserter rather than
- * vanishing until someone remembers to classify it.
+ * WordPress's own category order first, then any category a registered block
+ * declares that WordPress does not know about -- sorted, so the order is the
+ * same on every request -- then the fallback, which is always last.
  *
+ * The unregistered labels are worked out here rather than left to the browser
+ * on purpose: src/ui/Inserter.js appends groups this list does not name *after*
+ * all of it, which would push a real group below "Other".
+ *
+ * The Inserter drops groups that nothing landed in, so naming a category no
+ * block uses costs nothing.
+ *
+ * @param WP_Post|null $post Post being edited.
  * @return string[]
  */
-function herd_editor_block_group_order() {
-	return apply_filters(
-		'herd_editor_block_group_order',
-		array(
-			__( 'Layout', 'herd-editor' ),
-			__( 'Content', 'herd-editor' ),
-			__( 'Media', 'herd-editor' ),
-			__( 'Lists', 'herd-editor' ),
-			__( 'Calls to action', 'herd-editor' ),
-			__( 'Embeds', 'herd-editor' ),
-			__( 'Other', 'herd-editor' ),
-		)
-	);
+function herd_editor_block_group_order( $post = null ) {
+	$known = herd_editor_block_categories( $post );
+	$order = array_values( $known );
+
+	$extra = array();
+	if ( class_exists( 'WP_Block_Type_Registry' ) ) {
+		foreach ( WP_Block_Type_Registry::get_instance()->get_all_registered() as $type ) {
+			$slug = (string) $type->category;
+			if ( '' === $slug || isset( $known[ $slug ] ) ) {
+				continue;
+			}
+			$extra[ $slug ] = herd_editor_humanize_slug( $slug );
+		}
+	}
+	ksort( $extra );
+	$order   = array_merge( $order, array_values( $extra ) );
+	$order[] = __( 'Other', 'herd-editor' );
+
+	/**
+	 * Filter the display order of the inserter's groups.
+	 *
+	 * These are labels, not category slugs -- the same strings
+	 * `herd_editor_block_groups()` maps blocks to. A curated set of groups need
+	 * not correspond to registered block categories at all.
+	 *
+	 * @param string[]     $order Group labels, in display order.
+	 * @param WP_Post|null $post  Post being edited.
+	 */
+	$stored = (array) herd_editor_setting( 'group_order', array() );
+	if ( $stored ) {
+		/* A curated list still gets the fallback, so nothing can vanish from the inserter. */
+		$order = array_merge( $stored, array( __( 'Other', 'herd-editor' ) ) );
+	}
+
+	return apply_filters( 'herd_editor_block_group_order', array_values( array_unique( $order ) ), $post );
 }
 
 /**
- * Block name to inserter group.
+ * Block name to inserter group, overriding the block's own category.
  *
- * Every theme block declares `"category": "herdpress"`, so the registry cannot
- * group sixty-five blocks into anything an editor can scan. This map is the
- * grouping, and it lives here rather than in sixty-five block.json files so that
- * regrouping is one edit and so the plugin does not depend on a theme
- * convention. It does not have to be exhaustive — see the fallback above.
+ * Empty by default: a block's group is its registered category, resolved to a
+ * label through WordPress's block category list. This filter is for a theme
+ * whose blocks all declare one category -- the common shape, since a category
+ * is usually a vendor namespace -- and which would rather curate a map here
+ * than edit sixty-five block.json files.
  *
- * @return array<string,string>
+ * It does not have to be exhaustive. Anything it does not name falls back to
+ * the block's category, and then to the fallback group.
+ *
+ * @param WP_Post|null $post Post being edited.
+ * @return array<string,string> Block name to group label.
  */
-function herd_editor_block_groups() {
-	$layout  = __( 'Layout', 'herd-editor' );
-	$content = __( 'Content', 'herd-editor' );
-	$media   = __( 'Media', 'herd-editor' );
-	$lists   = __( 'Lists', 'herd-editor' );
-	$cta     = __( 'Calls to action', 'herd-editor' );
-	$embeds  = __( 'Embeds', 'herd-editor' );
-
-	return apply_filters(
-		'herd_editor_block_groups',
-		array(
-			'acf/accordion'            => $layout,
-			'acf/tabs'                 => $layout,
-			'acf/expandable-content'   => $layout,
-			'acf/content-with-sidebar' => $layout,
-			'acf/page-with-sidebar'    => $layout,
-			'acf/split-feature'        => $layout,
-			'acf/media-and-text'       => $layout,
-			'acf/alternator'           => $layout,
-			'acf/scrolling-content'    => $layout,
-
-			'acf/basic-content'        => $content,
-			'acf/visual-editor'        => $content,
-			'acf/hero'                 => $content,
-			'acf/price-hero'           => $content,
-			'acf/splash'               => $content,
-			'acf/billboard'            => $content,
-			'acf/billboard-fact-row'   => $content,
-			'acf/banner'               => $content,
-			'acf/blockquote'           => $content,
-			'acf/testimonial'          => $content,
-			'acf/teaser'               => $content,
-			'acf/icon-box'             => $content,
-			'acf/highlights'           => $content,
-			'acf/value'                => $content,
-			'acf/moments'              => $content,
-			'acf/dean-note'            => $content,
-			'acf/professor-spotlight'  => $content,
-			'acf/accreditation-block'  => $content,
-			'acf/table'                => $content,
-
-			'acf/photo-grid'           => $media,
-			'acf/video-grid'           => $media,
-			'acf/feature-video'        => $media,
-			'acf/logo-grid'            => $media,
-			'acf/mosaic'               => $media,
-			'acf/portraits'            => $media,
-
-			'acf/cards-collection'     => $lists,
-			'acf/stacked-cards'        => $lists,
-			'acf/feature-items'        => $lists,
-			'acf/blog'                 => $lists,
-			'acf/posts'                => $lists,
-			'acf/news-lists'           => $lists,
-			'acf/localist'             => $lists,
-			'acf/profiles'             => $lists,
-			'acf/contact-grid'         => $lists,
-			'acf/program-listing'      => $lists,
-			'acf/categorized-list'     => $lists,
-			'acf/checklist'            => $lists,
-			'acf/highlight-list'       => $lists,
-			'acf/link-collection'      => $lists,
-			'acf/list-with-content'    => $lists,
-			'acf/rankings'             => $lists,
-			'acf/timeline'             => $lists,
-
-			'acf/call-to-action'       => $cta,
-			'acf/blog-cta'             => $cta,
-			'acf/social'               => $cta,
-			'acf/alerts'               => $cta,
-			'acf/gravity-form'         => $cta,
-			'acf/slate-form'           => $cta,
-			'acf/salesforce-form'      => $cta,
-			'acf/find-my-counselor'    => $cta,
-			'acf/major-search'         => $cta,
-			'acf/metro-tuition-checker' => $cta,
-
-			'acf/html'                 => $embeds,
-			'acf/iframe'               => $embeds,
-			'acf/shortcode'            => $embeds,
-		)
-	);
+function herd_editor_block_groups( $post = null ) {
+	/**
+	 * Filter the block-to-group map.
+	 *
+	 * @param array<string,string> $groups Block name to group label.
+	 * @param WP_Post|null         $post   Post being edited.
+	 */
+	return (array) apply_filters( 'herd_editor_block_groups', (array) herd_editor_setting( 'groups', array() ), $post );
 }
 
 /**
- * Registered blocks that Herd must keep out of its inserter.
+ * Registered blocks Herd keeps out of its inserter.
  *
- * These blocks may remain registered for older documents and the native editor,
- * but are not choices for creating new Herd content. Keeping this policy
- * separate from the grouping map prevents an omitted block from falling into
- * the inserter's "Other" group.
+ * Empty by default, because WordPress already has the general mechanisms: a
+ * block that should never be inserted declares
+ * `"supports": { "inserter": false }`, which herd_editor_block_metadata()
+ * honours alongside this list, and one that only belongs inside another
+ * declares `parent` or `ancestor`.
+ *
+ * This filter is for the remaining case -- a block still valid in the native
+ * editors and in older documents, but not a choice for new Herd content.
+ *
+ * Keeping this policy separate from the grouping map is deliberate: it means an
+ * omitted block falls into the fallback group rather than silently disappearing
+ * from the inserter.
  *
  * @return string[]
  */
 function herd_editor_hidden_inserter_blocks() {
-	return apply_filters(
-		'herd_editor_hidden_inserter_blocks',
-		array(
-			'acf/split-feature',
-			'acf/blockquote',
-			'acf/slate-form',
-			'acf/salesforce-form',
-			'acf/program-page-content',
-		)
-	);
+	return (array) apply_filters( 'herd_editor_hidden_inserter_blocks', (array) herd_editor_setting( 'hidden', array() ) );
 }
 
 /**
@@ -910,9 +945,10 @@ function herd_editor_block_metadata( $content, $post = null ) {
 	herd_editor_collect_block_names( parse_blocks( $content ), $names );
 	$registry = WP_Block_Type_Registry::get_instance();
 	$result = array();
-	$groups = herd_editor_block_groups();
-	$order = herd_editor_block_group_order();
+	$groups = herd_editor_block_groups( $post );
+	$order = herd_editor_block_group_order( $post );
 	$fallback = end( $order );
+	$labels = herd_editor_block_categories( $post );
 	$registered = $registry->get_all_registered();
 	$allowed = $post instanceof WP_Post ? herd_editor_allowed_block_types( $post ) : true;
 	$hidden_inserter_blocks = herd_editor_hidden_inserter_blocks();
@@ -923,11 +959,41 @@ function herd_editor_block_metadata( $content, $post = null ) {
 		$type = $registry->get_registered( $name );
 		$storage_mode = 0 === strpos( $name, 'acf/' ) ? herd_editor_acf_storage_mode( $name ) : 'comment';
 		$allowed_here = true === $allowed || ( is_array( $allowed ) && in_array( $name, $allowed, true ) );
+		/*
+		 * A curated map wins, then the block's registered category resolved to
+		 * its label, then that category humanized for a theme that named one
+		 * without ever registering it, and only then the fallback group.
+		 */
+		$slug = $type ? (string) $type->category : '';
+		if ( isset( $groups[ $name ] ) ) {
+			$group = $groups[ $name ];
+		} elseif ( isset( $labels[ $slug ] ) ) {
+			$group = $labels[ $slug ];
+		} elseif ( '' !== $slug ) {
+			$group = herd_editor_humanize_slug( $slug );
+		} else {
+			$group = $fallback;
+		}
+		/*
+		 * A group the order does not name goes to the fallback instead. The
+		 * Inserter draws an unnamed group after every named one -- so below
+		 * "Other", which reads as a bug rather than as a choice. It happens
+		 * wherever a site curates the order: a block the curated map forgot
+		 * would otherwise be filed under its own vendor namespace, in a heading
+		 * nobody asked for, at the bottom of the list. "Other" is what that
+		 * block is.
+		 */
+		if ( ! in_array( $group, $order, true ) ) {
+			$group = $fallback;
+		}
 		$result[ $name ] = array(
 			'title'            => $type ? $type->title : '',
 			'icon'             => herd_editor_block_icon( $type ),
-			'category'         => $type ? (string) $type->category : '',
-			'group'            => isset( $groups[ $name ] ) ? $groups[ $name ] : $fallback,
+			'category'         => $slug,
+			'group'            => $group,
+			/* block.json's own search terms, already translated through the block's textdomain. */
+			'keywords'         => $type ? array_values( array_filter( array_map( 'strval', (array) $type->keywords ) ) ) : array(),
+			'description'      => $type ? (string) $type->description : '',
 			'registered'       => (bool) $type,
 			'multiple'         => ! $type || ! isset( $type->supports['multiple'] ) || false !== $type->supports['multiple'],
 			'anchor'           => (bool) $type && isset( $type->supports['anchor'] ) && false !== $type->supports['anchor'],
@@ -1240,25 +1306,42 @@ function herd_editor_screen_id( $post ) {
 }
 
 /**
+ * Is this request the Herd screen, actually able to run?
+ *
+ * The one answer the body class, both asset enqueues and the theme-style
+ * suppressor all need. Kept in one place because they must agree: a screen that
+ * marks itself Herd on `<body>` but declines to load Herd's stylesheet is a
+ * theme's ACF overrides painting an unstyled page.
+ *
+ * @return bool
+ */
+function herd_editor_is_active_screen() {
+	return herd_editor_is_herd_screen()
+		&& herd_editor_has_acf_pro()
+		&& herd_editor_supports_post( herd_editor_current_post() );
+}
+
+/**
  * Mark the Herd screen on `<body>`.
  *
  * `.herd-editor-screen` sits on the `div.wrap` this screen renders, which is
- * where every Herd stylesheet scopes itself. The theme's admin CSS has to make
+ * where every Herd stylesheet scopes itself. A theme's admin CSS has to make
  * the opposite statement -- "not here" -- and a `:not()` on an ancestor it
- * cannot name is not a selector. So the screen says so on the body, and
- * `admin-marshall.css` fences its ACF overrides behind
- * `body:not(.herd-editor-active)`: those rules were written for the Classic and
- * Block editors, they carry `!important`, and on this screen they paint over
- * everything Herd renders.
+ * cannot name is not a selector. So the screen says so on the body, and a theme
+ * can fence its own ACF overrides behind `body:not(.herd-editor-active)`.
+ *
+ * herd_editor_suppress_theme_styles() now makes that fence unnecessary, and
+ * this class is no longer the mechanism. It stays for two reasons. It is a
+ * compatibility affordance for a theme that already fences itself, which keeps
+ * working whether or not suppression is on, and it is the only handle for the
+ * one thing suppression cannot reach: CSS echoed as an inline `<style>` on
+ * `admin_head`, which never enters the style queue and so cannot be dequeued.
  *
  * @param string $classes Space-separated body classes.
  * @return string The classes, with Herd's own appended when this is its screen.
  */
 function herd_editor_body_class( $classes ) {
-	if ( ! herd_editor_is_herd_screen() || ! herd_editor_has_acf_pro() ) {
-		return $classes;
-	}
-	if ( ! herd_editor_supports_post( herd_editor_current_post() ) ) {
+	if ( ! herd_editor_is_active_screen() ) {
 		return $classes;
 	}
 	return trim( $classes . ' herd-editor-active' );
@@ -1267,13 +1350,10 @@ add_filter( 'admin_body_class', 'herd_editor_body_class' );
 
 /** Load Herd-only assets on the dedicated mode, never on frontend requests. */
 function herd_editor_enqueue_assets( $hook_suffix ) {
-	if ( ! herd_editor_is_herd_screen() || ! herd_editor_has_acf_pro() ) {
+	if ( ! herd_editor_is_active_screen() ) {
 		return;
 	}
 	$post = herd_editor_current_post();
-	if ( ! herd_editor_supports_post( $post ) ) {
-		return;
-	}
 
 	wp_enqueue_media();
 	wp_enqueue_script( 'heartbeat' );
@@ -1306,7 +1386,6 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 		true
 	);
 
-	wp_enqueue_style( 'herd-editor', HERD_EDITOR_URL . 'build/herd-editor.css', array( 'acf-input', 'dashicons' ), $asset['version'] );
 	wp_add_inline_script(
 		'herd-editor-screen',
 		'if ( window.acf ) { acf.set( "ajaxurl", ' . wp_json_encode( admin_url( 'admin-ajax.php' ) ) . ' ); acf.set( "nonce", ' . wp_json_encode( wp_create_nonce( 'acf_nonce' ) ) . ' ); }',
@@ -1321,9 +1400,14 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				'templateLock' => ( $post_type = get_post_type_object( $post->post_type ) ) ? $post_type->template_lock : false,
 				'postContent' => $post->post_content,
 				'blockEditorUrl' => herd_editor_native_url( $post->ID, 'block' ),
-				'classicEditorUrl' => herd_editor_native_url( $post->ID, 'classic' ),
+				/*
+				 * Empty where nothing can honour it: without the Classic Editor
+				 * plugin the URL resolves to Gutenberg, and a "Classic editor"
+				 * link that opens the block editor is worse than no link.
+				 */
+				'classicEditorUrl' => class_exists( 'Classic_Editor' ) ? herd_editor_native_url( $post->ID, 'classic' ) : '',
 				'blockTypes' => herd_editor_block_metadata( $post->post_content, $post ),
-				'blockGroupOrder' => herd_editor_block_group_order(),
+				'blockGroupOrder' => herd_editor_block_group_order( $post ),
 				'modifiedHuman' => herd_editor_saved_label( $post ),
 				'statusLabel' => herd_editor_status_label( $post ),
 				'isPublished' => 'publish' === $post->post_status,
@@ -1350,12 +1434,181 @@ function herd_editor_enqueue_assets( $hook_suffix ) {
 				'successfulSave' => ! empty( $_GET['message'] ), // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 				'saveMarker' => (string) get_post_modified_time( 'U', true, $post ),
 				'icons' => herd_editor_icon_set(),
+				/* The field name that means "hidden", or '' where the site has none. */
+				'visibilityField' => herd_editor_visibility_field(),
+				/* Per-block summary wording and choice rules; see src/ui/acf/profiles.js. */
+				'profiles' => herd_editor_block_profiles(),
 			)
 		) . ';',
 		'before'
 	);
 }
 add_action( 'admin_enqueue_scripts', 'herd_editor_enqueue_assets' );
+
+/**
+ * Herd's stylesheet, enqueued as late as the queue allows.
+ *
+ * Separate from the script enqueue above, and hooked at 9999, for one reason:
+ * print order. A theme's admin CSS is hooked at the default priority, and
+ * plugins load before themes, so Herd's sheet was being *queued* first and
+ * therefore *printed* first -- which handed every equal-specificity collision to
+ * the theme without a single `!important` being involved. Queued last, it prints
+ * last, and a tie goes to the screen that drew the markup.
+ *
+ * herd_editor_suppress_theme_styles() takes care of the rules that are not ties.
+ *
+ * @return void
+ */
+function herd_editor_enqueue_screen_style() {
+	if ( ! herd_editor_is_active_screen() ) {
+		return;
+	}
+	$asset = herd_editor_asset( 'herd-editor' );
+	wp_enqueue_style( 'herd-editor', HERD_EDITOR_URL . 'build/herd-editor.css', array( 'acf-input', 'dashicons' ), $asset['version'] );
+
+	/* The one selector the stylesheet cannot carry: see herd_editor_visibility_style(). */
+	$visibility = herd_editor_visibility_style();
+	if ( '' !== $visibility ) {
+		wp_add_inline_style( 'herd-editor', $visibility );
+	}
+}
+add_action( 'admin_enqueue_scripts', 'herd_editor_enqueue_screen_style', 9999 );
+
+/**
+ * A stylesheet URL reduced to a comparable path.
+ *
+ * Scheme and host go, because a theme URI and a registered `src` routinely
+ * disagree about http/https and about www while naming the same file.
+ *
+ * @param string $src Registered stylesheet src.
+ * @return string
+ */
+function herd_editor_style_path( $src ) {
+	$src = (string) $src;
+	$src = preg_replace( '#^https?:#i', '', $src );
+	return (string) preg_replace( '#^//[^/]+#', '', $src );
+}
+
+/**
+ * Registered stylesheet handles served out of the active theme.
+ *
+ * Split out of the suppressor so the settings screen can show an admin the same
+ * list the suppressor is about to act on, rather than describing it.
+ *
+ * @param WP_Styles|null $styles Style queue. Defaults to the global one.
+ * @return string[] Handles, in registration order.
+ */
+function herd_editor_theme_style_handles( $styles = null ) {
+	$styles = $styles instanceof WP_Styles ? $styles : wp_styles();
+	if ( ! $styles instanceof WP_Styles ) {
+		return array();
+	}
+
+	/* Both, so a child theme's parent is covered too. */
+	$roots = array_filter(
+		array_unique(
+			array_map(
+				'herd_editor_style_path',
+				array( trailingslashit( get_stylesheet_directory_uri() ), trailingslashit( get_template_directory_uri() ) )
+			)
+		)
+	);
+
+	$handles = array();
+	foreach ( $styles->registered as $handle => $style ) {
+		/*
+		 * `src === true` is core's `colors` handle, which resolves at print
+		 * time from the admin colour scheme rather than carrying a URL. It is
+		 * never a theme sheet even when a theme registered the scheme -- and
+		 * dropping it would strip the admin menu and admin bar bare.
+		 */
+		if ( ! is_string( $style->src ) || '' === $style->src ) {
+			continue;
+		}
+		$path = herd_editor_style_path( $style->src );
+		foreach ( $roots as $root ) {
+			if ( '' !== $root && 0 === strpos( $path, $root ) ) {
+				$handles[] = (string) $handle;
+				break;
+			}
+		}
+	}
+	return $handles;
+}
+
+/**
+ * Take the active theme's admin CSS off this screen.
+ *
+ * Herd draws every surface it renders -- the block list, the ACF field host,
+ * the meta boxes in the rail. A theme's admin CSS was written for the Classic
+ * and Block editors, it carries `!important` to beat ACF Pro's own stylesheet,
+ * and on this screen it is not a customization but a repaint.
+ *
+ * The alternative is to out-bid it, rule by rule, forever, in a fight the
+ * plugin cannot win: a theme's overrides can be arbitrarily specific and Herd
+ * does not know what they are. Rather than ask every theme to fence itself off
+ * -- which is a coordinated edit in every theme, and the thing being ended here
+ * -- the screen simply does not load them.
+ *
+ * @return void
+ */
+function herd_editor_suppress_theme_styles() {
+	if ( ! herd_editor_is_active_screen() ) {
+		return;
+	}
+
+	/**
+	 * Filter whether Herd drops the theme's admin stylesheets on its screen.
+	 *
+	 * @param bool $suppress Whether to suppress. Default true.
+	 */
+	if ( ! apply_filters( 'herd_editor_suppress_theme_styles', (bool) herd_editor_setting( 'suppress_theme_styles', true ) ) ) {
+		return;
+	}
+
+	$styles = wp_styles();
+	if ( ! $styles instanceof WP_Styles ) {
+		return;
+	}
+
+	$handles = herd_editor_theme_style_handles( $styles );
+	/* The settings screen's two lists, applied before the filter so code still wins. */
+	$handles = array_diff( $handles, (array) herd_editor_setting( 'style_handles_keep', array() ) );
+	$handles = array_values( array_unique( array_merge( $handles, (array) herd_editor_setting( 'style_handles_drop', array() ) ) ) );
+
+	/**
+	 * Filter the stylesheet handles Herd drops on its screen.
+	 *
+	 * `array_diff()` to keep one. Append to drop a sheet that is not served
+	 * from the theme directory and so cannot be found by URL -- a Vite dev
+	 * server or a CDN, most often.
+	 *
+	 * @param string[]  $handles Handles about to be dropped.
+	 * @param WP_Styles $styles  The style queue.
+	 */
+	$handles = (array) apply_filters( 'herd_editor_suppressed_style_handles', $handles, $styles );
+
+	foreach ( $handles as $handle ) {
+		$handle = (string) $handle;
+		wp_dequeue_style( $handle );
+		/*
+		 * Marked done, not deregistered. A handle another sheet depends on has
+		 * to keep existing, or WP_Dependencies::all_deps() fails on the missing
+		 * dependency and silently drops the dependent sheet as well. Marked
+		 * done it simply never prints -- and any wp_add_inline_style() attached
+		 * to it goes quiet with it.
+		 */
+		if ( ! in_array( $handle, $styles->done, true ) ) {
+			$styles->done[] = $handle;
+		}
+	}
+}
+/*
+ * 19, because core's print_admin_styles() is hooked to this at 20 and both
+ * `admin_enqueue_scripts` and `admin_print_styles-{$hook_suffix}` have already
+ * fired by now. This is the last moment anything can be taken out of the queue.
+ */
+add_action( 'admin_print_styles', 'herd_editor_suppress_theme_styles', 19 );
 
 /**
  * The SVG vocabulary a block icon may use.
@@ -1434,27 +1687,96 @@ function herd_editor_block_icon( $type ) {
 }
 
 /**
+ * Per-block presentation rules the editor cannot infer.
+ *
+ * Three things about a block cannot be read off ACF's rendered markup: how its
+ * summary line should read, which of its controls is better drawn as a glyph
+ * than as a label, and which of its choices carries a rule the field group does
+ * not record. All three are facts about a site's content model, so a site
+ * states them rather than Herd guessing.
+ *
+ * Empty by default. A block with no profile gets the generic treatment, which
+ * is a summary derived from whatever its most identifying fields turn out to
+ * be -- good enough that a profile is an improvement, never a requirement.
+ *
+ * The value crosses `wp_json_encode()` to the browser, so it is data and not
+ * callables. src/ui/acf/profiles.js documents the shape.
+ *
+ * @return array<string,array> Block name to profile.
+ */
+function herd_editor_block_profiles() {
+	/**
+	 * Filter the per-block profiles published to the Herd Editor screen.
+	 *
+	 * @param array $profiles Block name to profile array.
+	 */
+	return (array) apply_filters( 'herd_editor_block_profiles', array() );
+}
+
+/**
+ * The ACF field name a theme uses to hide a block on the front end.
+ *
+ * A theme that offers per-block visibility normally does it by attaching one
+ * true/false field to every registered block. There is no convention for what
+ * it is called, and nothing in the registry says which field means "hidden",
+ * so Herd is told rather than guessing.
+ *
+ * Empty by default. A site with no such field gets no hidden pill, no dimmed
+ * row and no grey switch, which is exactly right: it has no such state.
+ *
+ * @return string Field name, or '' when the site has none.
+ */
+function herd_editor_visibility_field() {
+	/**
+	 * Filter the ACF field name that marks a block hidden.
+	 *
+	 * @param string $field Field name. Empty means the site has no such field.
+	 */
+	return (string) apply_filters( 'herd_editor_visibility_field', (string) herd_editor_setting( 'visibility_field', '' ) );
+}
+
+/**
+ * The two rules that grey a visibility switch, keyed on the site's field name.
+ *
+ * These cannot be compiled into the stylesheet, because the selector contains a
+ * name only the site knows. The declarations are still the stylesheet's -- it
+ * defines `--herd-visibility-off` and its hover -- so this contributes a
+ * selector and nothing else, and a site that restyles the tokens restyles this
+ * with them.
+ *
+ * @return string CSS, or '' when the site has no visibility field.
+ */
+function herd_editor_visibility_style() {
+	$field = herd_editor_visibility_field();
+	if ( '' === $field ) {
+		return '';
+	}
+	$selector = '.herd-editor__field-host .acf-field-true-false[data-name="' . esc_attr( $field ) . '"] input[type="checkbox"]:checked';
+	return $selector . '{background:var(--herd-visibility-off);}'
+		. $selector . ':hover{background:var(--herd-visibility-off-hover);}';
+}
+
+/**
  * The named SVG icons an editor can choose from.
  *
- * Several ACF selects on this site pick from the theme's icon set by name, which
+ * A theme that keeps a named SVG set commonly points ACF selects at it, which
  * asks an editor to choose a picture by reading its slug. Handing the markup to
- * the browser lets Herd draw the icons instead. The theme owns the set; a site
- * without it simply gets no picker.
+ * the browser lets Herd draw the icons instead.
+ *
+ * Empty by default, and the filter is the only way in: the set belongs to
+ * whoever owns the icons, and a theme without one gets no picker rather than a
+ * broken control. See src/ui/acf/icons.js, where an empty set leaves every
+ * select exactly as ACF rendered it.
  *
  * @return array<string, string> Icon name to inline SVG.
  */
 function herd_editor_icon_set() {
-	if ( ! function_exists( 'mu_icons' ) ) {
-		return array();
-	}
-	$icons = mu_icons();
-
 	/**
 	 * Filter the icon set published to the Herd Editor screen.
 	 *
 	 * @param array $icons Icon name to inline SVG markup.
 	 */
-	$icons = apply_filters( 'herd_editor_icons', is_array( $icons ) ? $icons : array() );
+	$icons = (array) apply_filters( 'herd_editor_icons', array() );
 
 	/*
 	 * The editor inserts these with `innerHTML`, so they go through the same

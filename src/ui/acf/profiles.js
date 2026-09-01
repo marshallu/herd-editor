@@ -1,108 +1,122 @@
 /**
- * The one place a block name appears.
+ * Per-block presentation rules, supplied by the site.
  *
  * Everything else in `src/ui/acf/` reads the shape of ACF's rendered markup, so
- * it works on any block the site registers. Four things cannot be inferred from
- * shape, and only those live here:
+ * it works on any block a site registers. Three things cannot be inferred from
+ * shape:
  *
  *   - the summary line's wording and ordering
  *   - which control renders as a glyph rather than its label
  *   - which choice carries a rule the field group does not record
  *
- * A block with no profile keeps the fully generic treatment.
+ * None of those are Herd's to know, so none of them are written here. They
+ * arrive from the server as `window.HerdEditor.profiles` -- see the
+ * `herd_editor_block_profiles` filter -- and a block with no profile keeps the
+ * fully generic treatment.
+ *
+ * The format is data rather than code, because it crosses `wp_json_encode()`.
+ * `summary` is a list of parts, each of which is one of:
+ *
+ *   'heading'                       the field's value, as authored
+ *   { field, labels }               the value mapped through a lookup
+ *   { template, requires }          a string with {field} interpolation
+ *   { oneOf: [ part, ... ] }        the first part that produces anything
+ *
+ * Any part may carry `when: { field: value, ... }`, and is skipped unless every
+ * named field currently holds that value. That is what makes `oneOf` a
+ * first-match-wins list rather than merely a coalesce.
+ *
+ * In a template, `{name}` is the field's value and `{name:one|many}` is a noun
+ * agreeing with the number in `name`. `requires` names fields that must hold
+ * something before the part is used at all, so an empty repeater contributes no
+ * fragment rather than "0 cards".
  */
 
-/**
- * Cards Collection's three card styles.
- *
- * Names follow the field group, not the prototype: the third style is Enhanced.
- */
-const CARD_STYLES = {
-	minimalist: {
-		name: 'Minimalist',
-	},
-	icon: {
-		name: 'Icon',
-	},
-	enhanced: {
-		name: 'Enhanced',
-	},
-};
-
-const BILLBOARD_PLACEMENT = { left: 'Left', right: 'Right', center: 'Centered' };
-const BILLBOARD_CTA = { buttons: 'Buttons', links: 'Links' };
-const BILLBOARD_LAYOUTS = [ 'grid', 'split', 'modern' ];
-
-/**
- * Which of Billboard's three layouts a block is set to.
- *
- * A single `layout` field replaced the `background_image_layout` + `modern` pair.
- * Both shapes are in the document until the data migration runs, and revisions
- * keep the old one for good, so this reads whichever is present. The theme's
- * `herdpress_billboard_layout()` resolves the same mapping at render time and the
- * two must agree — including on the pair the old form could not reach, where
- * `background_image_layout` off wins and the block renders as the grid.
- *
- * @param {Object} data Raw block `data` attributes.
- * @return {string} `grid`, `split` or `modern`.
- */
-export function billboardLayout( data = {} ) {
-	if ( BILLBOARD_LAYOUTS.includes( data.layout ) ) return data.layout;
-	if ( data.background_image_layout !== '1' ) return 'grid';
-	return data.modern === '1' ? 'modern' : 'split';
+/** The profiles the server published, or none. */
+function profiles() {
+	const map = typeof window === 'undefined' ? null : window.HerdEditor?.profiles;
+	return map && typeof map === 'object' ? map : {};
 }
 
+export function profileFor( blockName ) {
+	const profile = profiles()[ blockName ];
+	return profile && typeof profile === 'object' ? profile : null;
+}
+
+/** A field's value as a plain string, whatever ACF stored it as. */
+function valueOf( data, field ) {
+	const value = data?.[ field ];
+	if ( value === null || value === undefined || typeof value === 'object' ) return '';
+	return String( value );
+}
+
+/** Whether every field named in `when` currently holds the value it names. */
+function matches( data, when ) {
+	if ( ! when || typeof when !== 'object' ) return true;
+	return Object.entries( when ).every( ( [ field, expected ] ) => valueOf( data, field ) === String( expected ) );
+}
+
+/** `{cards} {cards:card|cards}` against the block's data. */
+function interpolate( template, data ) {
+	return String( template ).replace( /\{([^{}:]+)(?::([^{}]*))?\}/g, ( whole, field, forms ) => {
+		const value = valueOf( data, field );
+		if ( forms === undefined ) return value;
+		const [ one = '', many = '' ] = forms.split( '|' );
+		return Number( value ) === 1 ? one : many;
+	} );
+}
 
 /**
- * A choice the field group offers everywhere that only one site may use.
+ * One summary part.
  *
- * Profiles' `background` offers White and Black on every site, but Black belongs
- * to Cyber. Nothing in `group_65fc55754b1a6.json` says so, so the rule lived
- * only in whoever remembered it. This says it at the moment it is broken.
- *
- * The notice warns and nothing more. Herd is not told which site it is running
- * on, and a guardrail that guessed wrong would take Black away from the one site
- * entitled to it.
+ * Returns '' for anything that did not apply, which the caller drops -- a part
+ * that produces nothing is an absence, not an empty fragment.
  */
-const PROFILES_BACKGROUND = {
-	field: 'background',
-	value: 'black',
-	title: 'Black is for the Cyber site',
-	body: 'A black background on Profiles is only allowed on the Cyber site. Everywhere else, use White.',
-};
+function renderPart( part, data ) {
+	if ( typeof part === 'string' ) return valueOf( data, part );
+	if ( ! part || typeof part !== 'object' ) return '';
+	if ( ! matches( data, part.when ) ) return '';
 
-export const PROFILES = {
-	'acf/cards-collection': {
-		/**
-		 * "Meet the Marshall family · Minimalist · 4 cards, 3 per row"
-		 *
-		 * The most identifying field, then the configuration that changes how it
-		 * looks. "Cards collection" twice tells an editor nothing.
-		 */
-		summary: ( data ) => {
-			const count = Number( data.cards ) || 0;
-			return [
-				data.heading,
-				CARD_STYLES[ data.card_style ]?.name,
-				count && `${ count } ${ count === 1 ? 'card' : 'cards' }, ${ data.cards_per_row } per row`,
-			];
-		},
-		budgets: { card_content: 220, card_content_enhanced: 220 },
-	},
+	if ( Array.isArray( part.oneOf ) ) {
+		for ( const candidate of part.oneOf ) {
+			const rendered = renderPart( candidate, data );
+			if ( rendered ) return rendered;
+		}
+		return '';
+	}
 
-	'acf/profiles': {
-		choiceNotices: [ PROFILES_BACKGROUND ],
-	},
+	// A required field that is empty, or a literal zero, drops the whole part.
+	const required = part.requires === undefined ? [] : [].concat( part.requires );
+	if ( required.some( ( field ) => {
+		const value = valueOf( data, field );
+		return value === '' || Number( value ) === 0;
+	} ) ) return '';
 
-	'acf/billboard': {
-		summary: ( data ) => [
-			data.heading,
-			billboardLayout( data ) === 'modern' ? 'Modern' : BILLBOARD_PLACEMENT[ data.content_place ],
-			BILLBOARD_CTA[ data.type_of_cta ],
-		],
-	},
-};
+	if ( part.template !== undefined ) return interpolate( part.template, data );
 
-export function profileFor( blockName ) {
-	return PROFILES[ blockName ] || null;
+	if ( part.value !== undefined ) return String( part.value );
+
+	if ( part.field !== undefined ) {
+		const value = valueOf( data, part.field );
+		if ( part.labels && typeof part.labels === 'object' ) {
+			return value in part.labels ? String( part.labels[ value ] ) : '';
+		}
+		return value;
+	}
+
+	return '';
+}
+
+/**
+ * A block's summary fragments, or an empty list when it has no profile.
+ *
+ * @param {string} blockName Registered block name.
+ * @param {Object} data      Raw block `data` attributes.
+ * @return {string[]}
+ */
+export function profileSummary( blockName, data ) {
+	const summary = profileFor( blockName )?.summary;
+	if ( ! Array.isArray( summary ) ) return [];
+	const source = data && typeof data === 'object' ? data : {};
+	return summary.map( ( part ) => renderPart( part, source ) ).filter( Boolean );
 }

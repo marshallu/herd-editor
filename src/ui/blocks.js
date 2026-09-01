@@ -33,12 +33,26 @@ export function bodyFor( block ) {
 /*
  * Whether a block is hidden on the front end.
  *
- * `hide_block` comes from the Block Visibility group in the theme
- * (themes/herdpress/inc/blocks.php), which ACF attaches to every registered
- * block. It is a true/false field, so ACF stores it as the string "1" or "0".
+ * A theme that offers per-block visibility usually does it by attaching one
+ * true/false field to every registered block. Herd does not know what that
+ * field is called, so the name comes from the server -- see the
+ * `herd_editor_visibility_field` filter -- and a site that has no such field
+ * publishes nothing, which makes this return false for every block and costs
+ * only the pill that would have been drawn.
+ *
+ * ACF stores a true/false as the string "1" or "0".
  */
+export function visibilityField() {
+	// `typeof` rather than a bare reference: this module is imported by tests
+	// that run in plain Node, where there is no window at all.
+	const name = typeof window === 'undefined' ? '' : window.HerdEditor?.visibilityField;
+	return typeof name === 'string' && name ? name : '';
+}
+
 export function isHidden( block ) {
-	const value = block?.attributes?.data?.hide_block;
+	const field = visibilityField();
+	if ( ! field ) return false;
+	const value = block?.attributes?.data?.[ field ];
 	return value === true || value === 1 || value === '1';
 }
 

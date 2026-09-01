@@ -7,11 +7,12 @@
  *
  * A handful of blocks earn a better line than generic ranking can produce —
  * "4 cards, 3 per row" is not something a flat key/value walk can discover. Those
- * are declared in `./acf/profiles.js` and consulted first; everything else, and
- * anything a profile leaves empty, falls back to the generic path.
+ * come from the site's own profiles — see `./acf/profiles.js` — and are consulted
+ * first; everything else, and anything a profile leaves empty, falls back to the
+ * generic path.
  */
 
-import { profileFor } from './acf/profiles.js';
+import { profileSummary } from './acf/profiles.js';
 
 const PREFERRED_KEYS = [ 'title', 'heading', 'headline', 'label', 'name', 'subheading', 'subhead', 'text', 'content', 'message', 'type', 'style' ];
 /** Values that describe an absence, and so say nothing worth a summary slot. */
@@ -103,19 +104,14 @@ export function acfSummaryParts( data ) {
  * @return {string[]} Fragments, or an empty list when there is no profile.
  */
 export function profileSummaryParts( blockName, data ) {
-	const summary = profileFor( blockName )?.summary;
-	if ( typeof summary !== 'function' ) return [];
-	const source = data && typeof data === 'object' ? data : {};
 	let parts;
 	try {
-		parts = summary( source );
+		parts = profileSummary( blockName, data );
 	} catch ( error ) {
 		// A profile is site configuration; a broken one must not blank the row.
 		return [];
 	}
 	return ( Array.isArray( parts ) ? parts : [] )
-		// A profile guards its own optional parts with `&&`, which leaves a literal
-		// 0 or false behind. Those are absences, not fragments.
 		.filter( Boolean )
 		.map( ( part ) => cleanText( part ) )
 		.filter( Boolean )

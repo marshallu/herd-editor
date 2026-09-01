@@ -1,0 +1,8 @@
+.DS_Store
+node_modules
+vendor
+.phpcs-cache
+
+# build/ is deliberately NOT ignored. WordPress VIP runs no build step, and
+# Composer installs this package as plain files, so the compiled assets have to
+# ship with it. `npm run build` before tagging a release.

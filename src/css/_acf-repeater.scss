@@ -100,20 +100,16 @@
 /* ---------- table as a grid ---------- */
 
 /*
- * Wipe every border the table carries before drawing our own. ACF, WP core admin
- * and the site's admin CSS all have opinions about table cells, and a dark rule
- * from any of them reads as a bar across the row once the table is laid out as a
- * grid. Herd draws one hairline between rows and nothing else.
- */
-/*
- * `!important` because the site's own admin CSS carries it:
+ * Wipe every border the table carries before drawing our own. ACF and WP core
+ * admin both have opinions about table cells, and a dark rule from either reads
+ * as a bar across the row once the table is laid out as a grid. Herd draws one
+ * hairline between rows and nothing else.
  *
- *   .acf-repeater.-block > table > tbody > tr > td {
- *     border-top: 4px solid var(--mu-black) !important;
- *   }
- *
- * That rule is the black bar across every row. These selectors are more specific
- * than it, so matching its `!important` is enough to win.
+ * `!important` because ACF's own table borders carry it, and a theme's admin CSS
+ * commonly restyles `.acf-repeater` cells with `!important` too -- a 4px rule
+ * between rows is the usual one. herd_editor_suppress_theme_styles() takes the
+ * theme out of the picture on this screen, but ACF is still here, so these stay.
+ * The selectors below are more specific, so matching the `!important` is enough.
  */
 @include boxes.in-surfaces(".herd-repeater table.acf-table, .herd-repeater table.acf-table tbody, .herd-repeater table.acf-table tr, .herd-repeater table.acf-table td") {
 	background: transparent !important;

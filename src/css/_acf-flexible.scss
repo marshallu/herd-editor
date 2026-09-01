@@ -244,8 +244,7 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
  * `.acf-flexible-content .layout .acf-fc-layout-actions-wrap:hover
  * .acf-fc-layout-draggable-icon`, which is five classes to that chain's four, so
  * the row came out with two grips side by side the moment it was hovered -- and
- * ACF's, on the layout being edited, painted in the accent this site sets to
- * Marshall green.
+ * ACF's, on the layout being edited, painted in the WP admin accent.
  */
 @include on-fields(".acf-flexible-content .layout .herd-fcrow .acf-fc-layout-order, .acf-flexible-content .layout .herd-fcrow .acf-fc-layout-draggable-icon") {
 	display: none;
@@ -468,11 +467,12 @@ $surfaces: ".herd-editor-screen .herd-editor__field-host", ".herd-editor-screen 
 /* ---------- buttons ---------- */
 
 /*
- * ACF ships the add button as `button-primary`, which this site's admin CSS
- * paints green with `!important` on every other screen. src/ui/acf/flexible.js
- * drops those classes rather than fighting them -- the same move ./repeater.js
- * and ./link.js make, and for the same reason: Update is the only filled button
- * on this screen. What is left is anything Herd's JS did not reach.
+ * ACF ships the add button as `button-primary`, which core admin fills with the
+ * admin accent and which a theme's admin CSS routinely repaints with
+ * `!important`. src/ui/acf/flexible.js drops those classes rather than fighting
+ * them -- the same move ./repeater.js and ./link.js make, and for the same
+ * reason: Update is the only filled button on this screen. What is left here is
+ * anything Herd's JS did not reach.
  */
 @include on-fields(".acf-flexible-content .acf-btn, .acf-flexible-content .button, .acf-flexible-content .acf-button") {
 	background: var(--herd-surface);

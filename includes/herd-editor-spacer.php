@@ -3,10 +3,15 @@
  * Registration and lifecycle for the Spacer field type.
  *
  * The field itself is class-herd-editor-field-spacer.php. This is everything
- * around it: registration, where the Style setting is really stored, and the
- * one ACF layout a spacer cannot survive. This file is deliberately a
- * compatibility shim: it loads independently of the Herd screen and never
- * rewrites host field groups during activation or deactivation.
+ * around it: registration, where the Style setting is really stored, the one
+ * ACF layout a spacer cannot survive, and the activation pair at the bottom.
+ *
+ * This file is deliberately a compatibility shim: it loads independently of the
+ * Herd screen, so the field type survives whether or not anybody ever opens the
+ * editor. Deactivation converts stored spacers to empty Message fields and
+ * activation converts them back -- see herd_editor_convert_spacers_to_messages()
+ * for why that write is worth making. Only database-backed field groups are
+ * touched; `acf-json` and PHP-local groups are somebody else's files.
  *
  * @package herd-editor
  */
@@ -433,3 +438,45 @@ function herd_editor_restore_converted_spacers() {
 		acf_update_field( $field );
 	}
 }
+
+/* -------------------------------------------------------------------------
+ * Activation and deactivation
+ * ---------------------------------------------------------------------- */
+
+/**
+ * Deactivation: land every stored spacer somewhere ACF understands.
+ *
+ * The conversion itself, and why it is worth writing to a host site at all, is
+ * documented on herd_editor_convert_spacers_to_messages(). This is only the
+ * hook, kept as a named function so the WP-CLI verifier can drive the same
+ * lifecycle the plugin does rather than an approximation of it.
+ *
+ * Uninstall is deliberately different and still rewrites nothing: see
+ * uninstall.php. A deactivated plugin can be reactivated, so leaving a trap
+ * behind is a real cost; a deleted one cannot, so the field groups it leaves
+ * are all the site has.
+ *
+ * @return void
+ */
+function herd_editor_deactivate() {
+	herd_editor_convert_spacers_to_messages();
+}
+register_deactivation_hook( HERD_EDITOR_FILE, 'herd_editor_deactivate' );
+
+/**
+ * Activation: turn Herd's markers back into spacers.
+ *
+ * The field type is registered here as well as on `acf/include_field_types`.
+ * Activation runs after ACF's `init` has already fired for this request, so the
+ * hook this file adds has missed its moment and `spacer` would be an unknown
+ * type at exactly the point the restore is writing fields of that type.
+ *
+ * @return void
+ */
+function herd_editor_activate() {
+	if ( function_exists( 'acf_register_field_type' ) ) {
+		herd_editor_register_spacer();
+	}
+	herd_editor_restore_converted_spacers();
+}
+register_activation_hook( HERD_EDITOR_FILE, 'herd_editor_activate' );

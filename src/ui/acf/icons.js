@@ -1,8 +1,8 @@
 /**
  * Icon selects become a picker that shows the icons.
  *
- * The theme registers ~106 named SVGs and points several ACF selects at them
- * (`themes/herdpress/inc/icons.php`). Rendered as a select, the control asks an
+ * A site that keeps a named SVG set commonly points several ACF selects at it
+ * (see the `herd_editor_icons` filter). Rendered as a select, the control asks an
  * editor to pick a picture by reading its slug. `herd-editor.php` publishes the
  * name-to-SVG map, and any select whose options are mostly icon names is fronted
  * with a trigger that shows the current icon and its name, and a panel that opens
