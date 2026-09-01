@@ -65,8 +65,10 @@ export function HerdEditorApp( { config } ) {
 
 	const refresh = () => setGeneration( ( value ) => value + 1 );
 	const syncContent = () => {
+		const serialized = controller.serialize();
 		const content = document.getElementById( 'content' );
-		if ( content ) content.value = controller.serialize();
+		if ( content ) content.value = serialized;
+		return serialized;
 	};
 	const registerAcfForm = ( bridge, previous ) => {
 		if ( previous ) mountedAcfForms.current.delete( previous );
@@ -102,7 +104,12 @@ export function HerdEditorApp( { config } ) {
 		}
 	};
 
-	useEffect( syncContent, [ generation ] );
+	/* Keep core's hidden content field current without serializing the whole
+	 * document on every keystroke. Saves still call syncContent synchronously. */
+	useEffect( () => {
+		const timer = window.setTimeout( syncContent, 250 );
+		return () => window.clearTimeout( timer );
+	}, [ generation ] );
 
 	/* The document never leaves this browser: only ciphertext is committed to
 	 * IndexedDB. The key arrives inline in config, so nothing here touches the
@@ -138,8 +145,8 @@ export function HerdEditorApp( { config } ) {
 
 	useEffect( () => {
 		if ( ! recovery.key ) return undefined;
-		const timer = window.setTimeout( persistRecovery, 600 );
-		const immediate = () => { persistRecovery(); };
+		const timer = window.setTimeout( persistRecovery, 1500 );
+		const immediate = () => { flushAcfForms(); syncContent(); persistRecovery(); };
 		const onVisibility = () => { if ( document.visibilityState === 'hidden' ) immediate(); };
 		window.addEventListener( 'pagehide', immediate );
 		document.addEventListener( 'visibilitychange', onVisibility );
@@ -169,6 +176,15 @@ export function HerdEditorApp( { config } ) {
 		if ( ! $ ) return undefined;
 		const doc = $( document );
 		const onBefore = ( event, postData ) => {
+			/* Core builds its autosave body independently of hidden custom fields.
+			 * Flush any pending text input into both that body and #content, then mark
+			 * it as Herd-originated so server normalization remains scoped. */
+			flushAcfForms();
+			const content = syncContent();
+			if ( postData ) {
+				postData.content = content;
+				postData['herd-editor'] = 1;
+			}
 			autosavingContent.current = postData?.content ?? null;
 			window.clearTimeout( savedTimer.current );
 			setSaveState( 'autosaving' );

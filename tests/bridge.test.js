@@ -79,9 +79,33 @@ test( 'merges each edit with current controller data rather than the opened bloc
 	// This represents a second mounted control committing after the panel opened.
 	current = { ...current, title: 'Edited elsewhere', recently_added: 'Retain me' };
 	listeners.get( 'input' )();
+	bridge.flush();
 	assert.deepEqual( commits[ 0 ], { data: {
 		title: 'Edited elsewhere', recently_added: 'Retain me', cards: '1', cards_0_title: 'Changed', cards_0_hidden: 'Keep',
 	} } );
+	bridge.dispose();
+} );
+
+test( 'coalesces rapid text input until a synchronous flush is requested', async () => {
+	let serializations = 0;
+	const commits = [];
+	global.window = {
+		jQuery: ( value ) => value,
+		acf: { doAction() {}, serialize: () => { serializations += 1; return { title: String( serializations ) }; } },
+	};
+	const bridge = new AcfBlockFormBridge( { block: { clientId: 'one' }, postId: 1, onAttributes: ( value ) => commits.push( value ) } );
+	bridge.fetchForm = async () => '<div class="acf-block-fields"></div>';
+	const { host, listeners } = fakeHost();
+	await bridge.mount( host );
+
+	listeners.get( 'input' )();
+	listeners.get( 'input' )();
+	listeners.get( 'input' )();
+	assert.equal( serializations, 0 );
+
+	bridge.flush();
+	assert.equal( serializations, 1 );
+	assert.deepEqual( commits, [ { data: { title: '1' } } ] );
 	bridge.dispose();
 } );
 

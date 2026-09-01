@@ -19,11 +19,13 @@ export class AcfBlockFormBridge {
 		this.host = null;
 		this.form = null;
 		this.changeHandler = this.handleChange.bind( this );
+		this.inputHandler = this.handleInput.bind( this );
 		this.jqueryChangeHandler = this.handleJqueryChange.bind( this );
 		this.$form = null;
 		this.lastSerialized = null;
 		this.request = null;
 		this.disposed = false;
+		this.inputTimer = null;
 	}
 
 	async fetchForm() {
@@ -63,13 +65,17 @@ export class AcfBlockFormBridge {
 		// `prepare`. Anything it needs to unwind comes back as a disposer.
 		if ( this.enhance ) this.teardown = this.enhance( this.form ) || null;
 		this.form.addEventListener( 'change', this.changeHandler );
-		this.form.addEventListener( 'input', this.changeHandler );
+		this.form.addEventListener( 'input', this.inputHandler );
 		this.$form = window.jQuery( this.form );
 		this.$form?.on?.( 'change', this.jqueryChangeHandler );
 		return { status: 'mounted' };
 	}
 
 	flush() {
+		if ( this.inputTimer !== null ) {
+			globalThis.clearTimeout( this.inputTimer );
+			this.inputTimer = null;
+		}
 		if ( ! this.form ) return;
 		const submitted = dataAttributesFromForm( this.form, this.block.clientId, window.acf );
 		const data = mergeAcfBlockData( this.getData?.() ?? this.block.attributes?.data, submitted );
@@ -81,6 +87,17 @@ export class AcfBlockFormBridge {
 
 	handleChange() {
 		this.flush();
+	}
+
+	/* Text controls can emit an input event for every keystroke. ACF form
+	 * serialization walks the complete mounted form, so coalesce that work while
+	 * keeping discrete changes and every explicit flush synchronous. */
+	handleInput() {
+		if ( this.inputTimer !== null ) globalThis.clearTimeout( this.inputTimer );
+		this.inputTimer = globalThis.setTimeout( () => {
+			this.inputTimer = null;
+			this.flush();
+		}, 250 );
 	}
 
 	/**
@@ -120,10 +137,12 @@ export class AcfBlockFormBridge {
 		this.teardown = null;
 		if ( this.form ) {
 			this.form.removeEventListener( 'change', this.changeHandler );
-			this.form.removeEventListener( 'input', this.changeHandler );
+			this.form.removeEventListener( 'input', this.inputHandler );
 			this.$form?.off?.( 'change', this.jqueryChangeHandler );
 			window.acf.doAction( 'remove', window.jQuery( this.form ) );
 		}
+		if ( this.inputTimer !== null ) globalThis.clearTimeout( this.inputTimer );
+		this.inputTimer = null;
 		if ( this.host ) this.host.replaceChildren();
 		this.form = null;
 		this.host = null;

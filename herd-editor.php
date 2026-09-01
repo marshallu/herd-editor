@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Herd Editor
  * Description: A dedicated Herd Editor mode for editing existing ACF blocks alongside Classic and Block Editor.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Requires at least: 7.1
  * Requires PHP: 7.4
  * Requires Plugins: advanced-custom-fields-pro
@@ -13,7 +13,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'HERD_EDITOR_VERSION', '1.0.1' );
+define( 'HERD_EDITOR_VERSION', '1.0.2' );
 define( 'HERD_EDITOR_URL', plugin_dir_url( __FILE__ ) );
 /** This file's path, for the activation and deactivation hooks in includes/herd-editor-spacer.php. */
 define( 'HERD_EDITOR_FILE', __FILE__ );
@@ -495,6 +495,15 @@ function herd_editor_normalize_acf_block_data( $data ) {
  * @return string
  */
 function herd_editor_normalize_saved_blocks( $text = '' ) {
+	/*
+	 * This compatibility pass exists for Herd's mixed form/meta representation.
+	 * Gutenberg, REST, imports and WP-CLI already hand ACF a dialect it owns, so
+	 * do not parse or rewrite their documents. The Herd screen carries this field
+	 * on deliberate saves, and src/ui/App.js adds it to core autosaves as well.
+	 */
+	if ( empty( $_POST['herd-editor'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Missing -- this only scopes a filter; the owning save path verifies its nonce and capability.
+		return $text;
+	}
 	if ( ! function_exists( 'acf_has_block_type' ) ) {
 		return $text;
 	}
