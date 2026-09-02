@@ -1039,7 +1039,6 @@ export function HerdEditorApp( { config } ) {
 				onDuplicate: () => requestDuplicate( block ),
 				onMove: structural && policy.move && allowed( 'move', block ) && named.length > 1 ? () => setMovingId( block.clientId ) : null,
 				onPreview: adapter.id === 'acf' && metadata.registered ? ( event ) => openBlockPreview( block, event.currentTarget ) : null,
-				previewThumbnail: adapter.id === 'acf' && metadata.registered ? { preview: { block, postId: config.postId, key: `${ block.name }-${ JSON.stringify( block.attributes?.data || {} ) }`, context: config.previewContext || {} }, nonce: config.previewNonce } : null,
 				onDelete: () => deleteBlock( block ),
 			}, ...( renderPanel
 				? [

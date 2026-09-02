@@ -2,7 +2,6 @@
 
 import { createElement } from '@wordpress/element';
 import { BlockIcon, Dashicon, GripIcon, IconButton } from './primitives.js';
-import { PreviewThumbnail } from './PreviewThumbnail.js';
 
 const el = createElement;
 
@@ -51,7 +50,6 @@ export function BlockRow( {
 	onDelete,
 	onMove,
 	onPreview,
-	previewThumbnail,
 	children,
 } ) {
 	const classes = [ 'herd-block' ];
@@ -117,7 +115,7 @@ export function BlockRow( {
 		el( Dashicon, { icon: 'arrow-down-alt2', className: 'herd-block__chev' } ) ),
 
 		structural && el( 'span', { className: 'herd-block__tools' },
-			previewThumbnail ? el( PreviewThumbnail, { ...previewThumbnail, onOpen: onPreview } ) : ( onPreview && el( IconButton, { icon: 'visibility', label: `Preview ${ title }`, className: 'herd-block__tool', onClick: onPreview } ) ),
+			onPreview && el( IconButton, { icon: 'visibility', label: `Preview ${ title }`, className: 'herd-block__tool', onClick: onPreview } ),
 			onMove && el( IconButton, { icon: 'move', label: `Move ${ title }`, className: 'herd-block__tool herd-block__move', onClick: onMove } ),
 			el( IconButton, {
 				icon: 'admin-page',

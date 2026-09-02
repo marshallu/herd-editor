@@ -183,7 +183,7 @@ export function AdvancedPanel( { block, permalink, isDuplicate, onAnchor } ) {
 					value: anchor,
 					spellCheck: false,
 					autoComplete: 'off',
-					placeholder: 'admissions-deadlines',
+					placeholder: 'schedule',
 					'aria-describedby': `${ fieldId }-help`,
 					onChange: ( event ) => {
 						const value = normalizeAnchor( event.target.value );
@@ -195,7 +195,7 @@ export function AdvancedPanel( { block, permalink, isDuplicate, onAnchor } ) {
 					el( 'code', { ref: urlRef, className: 'herd-advanced__url' }, url ),
 					el( 'button', { type: 'button', className: 'herd-ghost herd-advanced__copy', onClick: copy }, copied ? 'Copied' : 'Copy link' ) )
 				: el( 'p', { className: 'herd-advanced__hint', id: `${ fieldId }-help` },
-					'Name this block and it becomes a jump link — a web address that scrolls straight to it. Leave it blank for no link.' ) )
+					'Name this block to create a jump link that takes visitors directly to it. Leave blank if you don’t need one.' ) )
 			: null );
 }
 
