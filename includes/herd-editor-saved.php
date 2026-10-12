@@ -199,14 +199,27 @@ function herd_editor_message_table( $post ) {
 		10 => sprintf( __( '%s draft updated.', 'herd-editor' ), $name ),
 	);
 
+	/*
+	 * Callbacks on this filter read the global $post, which post.php always
+	 * has set by now (Safe Redirect Manager and Jetpack both do). Herd's save
+	 * endpoint is an AJAX request with no global post, so lend them this one
+	 * for the duration and put back whatever was there.
+	 */
+	$previous = isset( $GLOBALS['post'] ) ? $GLOBALS['post'] : null;
+	$GLOBALS['post'] = $post; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- restored below.
+
 	/** This filter is documented in wp-admin/edit-form-advanced.php */
-	return apply_filters(
+	$table = apply_filters(
 		'post_updated_messages', // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- core's own filter, read so Herd's notice says what post.php would have.
 		array(
 			'post'           => $messages,
 			$post->post_type => $messages,
 		)
 	);
+
+	$GLOBALS['post'] = $previous; // phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- restoring the value saved above.
+
+	return $table;
 }
 
 /**
